@@ -98,6 +98,15 @@ format = '[[ $symbol $branch ](fg:color_yellow bg:color_green)]($style)'
 [git_status]
 style = "bg:color_green"
 format = '[[($all_status$ahead_behind )](fg:color_yellow bg:color_green)]($style)'
+ahead = '⇡${count}'
+diverged = '⇕⇡${ahead_count}⇣${behind_count}'
+behind = '⇣${count}'
+conflicted = '=${count}'
+deleted = '✘${count}'
+renamed = '»${count}'
+modified = '!${count}'
+staged = '+${count}'
+untracked = '?${count}'
 
 [nodejs]
 symbol = ""
