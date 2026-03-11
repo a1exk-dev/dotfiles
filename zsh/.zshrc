@@ -1,7 +1,8 @@
+
 # ---- basic Zsh behavior ----
 
 # Path to the file where Zsh stores command history
-HISTFILE=~/.zsh_history
+HISTFILE=~/.histfile
 # Number of commands kept in memory during the session
 HISTSIZE=50000
 # Number of commands saved to the history file on disk
@@ -20,6 +21,16 @@ autoload -Uz compinit
 # Initialize command and option tab-completion
 compinit
 
+# ---- Hotkeys Binding ----
+bindkey "^[[1;5C" forward-word
+bindkey "^L"      forward-word
+bindkey "^H"      backward-word
+bindkey "^[[1;5D" backward-word
+bindkey "^[h"     beginning-of-line
+bindkey "^[[1;3D" beginning-of-line
+bindkey "^[[1;3C" end-of-line
+bindkey "^[l"     end-of-line
+
 # ---- zinit (self-bootstrapping) ----
 ZINIT_HOME="$HOME/.local/share/zinit/zinit.git"
 if ! command -v zinit >/dev/null 2>&1; then
@@ -28,6 +39,7 @@ if ! command -v zinit >/dev/null 2>&1; then
     git clone https://github.com/zdharma-continuum/zinit.git "$ZINIT_HOME"
   fi
 fi
+
 if [ -f "$ZINIT_HOME/zinit.zsh" ]; then
   source "$ZINIT_HOME/zinit.zsh"
 fi
@@ -43,6 +55,7 @@ zinit light ajeetdsouza/zoxide
 if [ -f /usr/share/fzf/shell/key-bindings.zsh ]; then
   source /usr/share/fzf/shell/key-bindings.zsh
 fi
+
 if [ -f /usr/share/fzf/shell/completion.zsh ]; then
   source /usr/share/fzf/shell/completion.zsh
 fi
@@ -55,9 +68,17 @@ if command -v zoxide >/dev/null 2>&1; then
   eval "$(zoxide init zsh)"
 fi
 
+# fzf search for ZSH history
+source <(fzf --zsh)
+
+# ---- aliases ----
+EDITOR=nvim
+alias vi='nvim'
+
 # Should be last
 eval "$(starship init zsh)"
 export PATH=$PATH:$HOME/.local/bin
 
 # opencode
 export PATH=/home/a1exk/.opencode/bin:$PATH
+
