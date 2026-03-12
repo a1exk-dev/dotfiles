@@ -31,3 +31,11 @@ Apply via GUI (upload a theme file).
 3. Select the import or upload option.
 4. Choose the EverForest (dark hard) theme file.
 5. Apply the theme and confirm it is active.
+
+## Virtual Console (vconsole)
+
+TTY font and keyboard settings:
+
+```sh
+sudo cp vconsole.conf /etc/vconsole.conf
+```

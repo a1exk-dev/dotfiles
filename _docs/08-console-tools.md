@@ -13,7 +13,7 @@ sudo pacman -S --needed zsh git stow fzf zoxide tmux starship ghostty thefuck
 From the dotfiles repo root, run:
 
 ```sh
-stow --adopt -t "$HOME" zsh starship tmux ghostty
+stow --adopt -t "$HOME" zsh starship tmux ghostty opencode
 ```
 
 ## Features
