@@ -74,6 +74,11 @@ source <(fzf --zsh)
 # ---- aliases ----
 EDITOR=nvim
 alias vi='nvim'
+alias ll='ls -la'
+alias ~='cd ~'
+alias ..='cd ..'
+alias ...='cd ../..'
+alias ....='cd ../../..'
 
 # Should be last
 eval "$(starship init zsh)"
