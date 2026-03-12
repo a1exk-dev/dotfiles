@@ -11,13 +11,9 @@ Personal dotfiles and scripts.
 ## Docs
 Order is defined by numeric prefixes in `_docs/`.
 - [System and app update](_docs/01-system-and-app-update.md)
-- [Starship](_docs/02-starship.md)
-- [Zsh](_docs/03-zsh.md)
-- [Tmux](_docs/04-tmux.md)
-- [Thefuck](_docs/05-thefuck.md)
-- [Lazygit](_docs/06-lazygit.md)
 - [Docker](_docs/07-docker.md)
-- [Lazydocker](_docs/08-lazydocker.md)
+- [Console tools](_docs/08-console-tools.md)
+- [TUI tools](_docs/09-tui-tools.md)
 - [Discord](_docs/Discord.md)
 - [Firefox](_docs/Firefox.md)
 

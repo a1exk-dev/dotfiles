@@ -2,39 +2,22 @@
 
 Starting point for keeping the system, apps, and firmware up to date.
 
-Refresh native package metadata.
-```bash
-sudo dnf makecache --refresh
+## Initial Setup
+
+Install base development tools and yay (AUR helper):
+
+```sh
+sudo pacman -S --needed base-devel git
+git clone https://aur.archlinux.org/yay.git
+cd yay && makepkg -si && cd .. && rm -rf yay
 ```
 
-Update native packages.
-```bash
-sudo dnf upgrade
-```
+## Update System
 
-Update Flathub packages.
-```bash
-flatpak update
-```
+Refresh and update:
 
-Update device firmware.
-```bash
-fwupdmgr refresh && fwupdmgr update
-```
-
-Remove unused native packages.
-```bash
-sudo dnf autoremove
-```
-
-Remove unused Flatpak runtimes.
-```bash
-flatpak uninstall --unused
-```
-
-Clean native package caches.
-```bash
-sudo dnf clean all
+```sh
+yay -Syu
 ```
 
 ## COSMIC Theme (EverForest Dark Hard)
