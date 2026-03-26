@@ -6,7 +6,6 @@ Personal dotfiles and scripts.
 - `firefox/` - Firefox-related assets and scripts. See [Firefox](_docs/Firefox.md).
 - `discord/` - Discord-related assets and scripts. See [Discord](_docs/Discord.md).
 - `hyprland/` - Hyprland window manager config. See [Hyprland](_docs/10-hyprland.md).
-- `ly/` - Linux TTY login manager (ly) config. See [ly](_docs/11-ly.md).
 - `vconsole.conf` - Virtual console config. See [System](_docs/01-system-and-app-update.md).
 - `_docs/` - Per-app or per-step documentation. See the [Docs](#docs) section.
 - `_scripts/` - Shared helper script(s) (file copy utility).
@@ -18,7 +17,6 @@ Order is defined by numeric prefixes in `_docs/`.
 - [Console tools](_docs/08-console-tools.md)
 - [TUI tools](_docs/09-tui-tools.md)
 - [Hyprland](_docs/10-hyprland.md)
-- [ly](_docs/11-ly.md)
 - [Discord](_docs/Discord.md)
 - [Firefox](_docs/Firefox.md)
 
