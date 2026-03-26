@@ -5,7 +5,7 @@ font-style = Regular
 font-size = 10
 
 theme = Everforest Dark Hard
-background-opacity = 0.95
+background-opacity = 0.85
 background-blur = true
 cursor-style-blink = true
 
