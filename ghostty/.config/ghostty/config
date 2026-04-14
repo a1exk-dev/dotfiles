@@ -11,3 +11,8 @@ cursor-style-blink = true
 
 # Override theme cursor
 cursor-style = block
+
+# Clipboard behavior
+copy-on-select = clipboard
+clipboard-read = allow
+clipboard-write = allow
