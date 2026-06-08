@@ -1,0 +1,102 @@
+@import "./colors.css";
+
+* {
+	border: none;
+	border-radius: 0;
+	font-family: "Terminess Nerd Font Mono", "Terminess Nerd Font", monospace;
+	font-size: 1rem;
+	min-height: 0;
+}
+
+window#waybar {
+	background: @ef_bg_0;
+	border-top: 1px solid @ef_bg_2;
+	border-bottom: 1px solid @ef_bg_2;
+	color: @ef_foreground;
+	border-radius: 0.8rem;
+}
+
+window#waybar>box {
+	border: 1px dashed @ef_yellow;
+	border-radius: 0;
+	margin: 0.4rem;
+	padding: 0.4rem 0;
+	border-radius: 0.4rem;
+}
+
+window#waybar widget {
+	margin: 0 0.4rem;
+	padding: 0 0.4rem;
+}
+
+window#waybar widget>* {
+	border-right: 1px dashed @ef_yellow;
+}
+
+window#waybar widget:first-child>*,
+window#waybar widget:last-child>*,
+window#waybar #backlight,
+window#waybar #custom-bracket-left,
+window#waybar #custom-backlight-bar {
+	border-right: none;
+}
+
+.waybar-bracket,
+.waybar-bracket-left,
+.waybar-bracket-right {
+	font-size: 1.5rem;
+	min-height: 1.5rem;
+	padding-bottom: 0;
+	padding-top: 0;
+}
+
+#backlight {
+	font-size: 1.5rem;
+	margin-left: 0.8rem;
+	margin-right: 0;
+	min-height: 1.5rem;
+	padding-bottom: 0;
+	padding-right: 0.4rem;
+	padding-top: 0;
+}
+
+#custom-bracket-left,
+#custom-bracket-right {
+	margin-left: 0;
+	margin-right: 0;
+	padding-left: 0;
+	padding-right: 0;
+}
+
+#custom-backlight-bar {
+	font-size: 1rem;
+	margin-right: 0;
+	min-height: 1.5rem;
+	padding-bottom: 0;
+	padding-right: 0.03rem;
+	padding-left: 0.03rem;
+	padding-top: 0;
+	margin-left: 0;
+}
+
+#custom-bracket-right {
+	margin-right: 0.4rem;
+	padding-right: 0.4rem;
+}
+
+@keyframes blink {
+	to {
+		background-color: #ffffff;
+		color: black;
+	}
+}
+
+#battery.warning:not(.charging) {
+	background: #f53c3c;
+	color: white;
+	animation-name: blink;
+	animation-duration: 0.5s;
+	animation-timing-function: steps(12);
+	animation-iteration-count: infinite;
+	animation-direction: alternate;
+}
