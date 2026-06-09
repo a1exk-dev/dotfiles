@@ -37,8 +37,7 @@ find_backlight() {
 	return 1
 }
 
-print_status() {
-	normalize_bar_sections
+read_percent() {
 	find_backlight || exit 1
 
 	IFS= read -r brightness < "$base/brightness" || exit 1
@@ -67,6 +66,28 @@ print_status() {
 	elif [ "$percent" -gt 100 ]; then
 		percent=100
 	fi
+}
+
+brightness_class() {
+	if [ "$percent" -gt 70 ]; then
+		printf 'brightness-high'
+	elif [ "$percent" -gt 25 ]; then
+		printf 'brightness-medium'
+	else
+		printf 'brightness-low'
+	fi
+}
+
+print_icon() {
+	read_percent
+	class=$(brightness_class)
+
+	printf '{"text":"󰛨","percentage":%s,"class":["waybar-icon","waybar-icon-brightness","%s"]}\n' "$percent" "$class"
+}
+
+print_status() {
+	normalize_bar_sections
+	read_percent
 
 	filled=$(((percent * bar_sections + 50) / 100))
 
@@ -89,7 +110,8 @@ print_status() {
 		empty=$((empty - 1))
 	done
 
-	printf '{"text":"%s","percentage":%s}\n' "$bar" "$percent"
+	class=$(brightness_class)
+	printf '{"text":"%s","percentage":%s,"class":["waybar-progress","waybar-progress-brightness","%s"]}\n' "$bar" "$percent" "$class"
 }
 
 change_brightness() {
@@ -110,6 +132,9 @@ case "$action" in
 	get)
 		print_status
 		;;
+	icon)
+		print_icon
+		;;
 	up)
 		change_brightness up
 		;;
@@ -117,7 +142,7 @@ case "$action" in
 		change_brightness down
 		;;
 	*)
-		printf 'Usage: %s {get|up|down}\n' "$0" >&2
+		printf 'Usage: %s {get|icon|up|down}\n' "$0" >&2
 		exit 64
 		;;
 esac

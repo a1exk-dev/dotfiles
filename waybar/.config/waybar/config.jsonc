@@ -6,10 +6,7 @@
 	"margin-left": 4,
 	"margin-right": 4,
 	"modules-left": [
-		"backlight",
-		"custom/bracket-left",
-		"custom/backlight-bar",
-		"custom/bracket-right",
+		"group/brightness",
 		"hyprland/workspaces"
 	],
     "modules-center": [
@@ -23,39 +20,32 @@
         "tray"
     ],
 
-	"backlight": {
-		"device": "intel_backlight",
-		"on-scroll-up": "~/.config/waybar/widgets/brightness.sh up",
-		"on-scroll-down": "~/.config/waybar/widgets/brightness.sh down",
-		"format": "{icon}",
-		"format-icons": ["", "", "", "", "", "", "", "", ""],
-		"tooltip": false
-	},
-
-	"custom/bracket-left": {
-		"exec": "~/.config/waybar/widgets/bracket.sh left",
-		"return-type": "json",
-		"format": "{text}",
-		"interval": "once",
-		"tooltip": false
-	},
-
-	"custom/backlight-bar": {
-		"exec": "~/.config/waybar/widgets/brightness.sh get",
+	"custom/brightness-icon": {
+		"exec": "~/.config/waybar/widgets/brightness-icon.sh",
 		"on-scroll-up": "~/.config/waybar/widgets/brightness.sh up",
 		"on-scroll-down": "~/.config/waybar/widgets/brightness.sh down",
 		"return-type": "json",
 		"format": "{text}",
 		"interval": 1,
+		"tooltip": false
+	},
+
+	"custom/brightness": {
+		"exec": "~/.config/waybar/widgets/brightness.sh get",
+		"on-scroll-up": "~/.config/waybar/widgets/brightness.sh up",
+		"on-scroll-down": "~/.config/waybar/widgets/brightness.sh down",
+		"return-type": "json",
+		"format": "[{text}]",
+		"interval": 1,
 		"escape": false,
 		"tooltip": false
 	},
 
-	"custom/bracket-right": {
-		"exec": "~/.config/waybar/widgets/bracket.sh right",
-		"return-type": "json",
-		"format": "{text}",
-		"interval": "once",
-		"tooltip": false
+	"group/brightness": {
+		"orientation": "horizontal",
+		"modules": [
+			"custom/brightness-icon",
+			"custom/brightness"
+		]
 	}
 }

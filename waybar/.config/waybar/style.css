@@ -1,19 +1,13 @@
 @import "./colors.css";
 
-* {
-	border: none;
-	border-radius: 0;
-	font-family: "Terminess Nerd Font Mono", "Terminess Nerd Font", monospace;
-	font-size: 1rem;
-	min-height: 0;
-}
-
 window#waybar {
-	background: @ef_bg_0;
+	background: alpha(@ef_bg_0, 0.9);
 	border-top: 1px solid @ef_bg_2;
 	border-bottom: 1px solid @ef_bg_2;
 	color: @ef_foreground;
 	border-radius: 0.8rem;
+	font-family: "Terminess Nerd Font Mono", "Terminess Nerd Font", monospace;
+	font-size: 0.9rem;
 }
 
 window#waybar>box {
@@ -24,64 +18,66 @@ window#waybar>box {
 	border-radius: 0.4rem;
 }
 
-window#waybar widget {
-	margin: 0 0.4rem;
-	padding: 0 0.4rem;
-}
-
-window#waybar widget>* {
-	border-right: 1px dashed @ef_yellow;
-}
-
-window#waybar widget:first-child>*,
-window#waybar widget:last-child>*,
-window#waybar #backlight,
-window#waybar #custom-bracket-left,
-window#waybar #custom-backlight-bar {
-	border-right: none;
-}
-
 .waybar-bracket,
 .waybar-bracket-left,
 .waybar-bracket-right {
-	font-size: 1.5rem;
-	min-height: 1.5rem;
+	font-size: 1.4rem;
 	padding-bottom: 0;
 	padding-top: 0;
 }
 
-#backlight {
-	font-size: 1.5rem;
-	margin-left: 0.8rem;
-	margin-right: 0;
-	min-height: 1.5rem;
-	padding-bottom: 0;
-	padding-right: 0.4rem;
-	padding-top: 0;
+#group-brightness,
+#workspaces,
+#clock,
+#pulseaudio,
+#network,
+#power-profiles-daemon,
+#battery,
+#tray {
+	border-right: 1px dashed @ef_yellow;
+	margin: 0;
+	padding: 0 0.8rem;
 }
 
-#custom-bracket-left,
-#custom-bracket-right {
-	margin-left: 0;
-	margin-right: 0;
-	padding-left: 0;
-	padding-right: 0;
+#custom-brightness-icon {
+	font-size: 1.6rem;
+	padding-right: 0.25rem;
+	padding-left: 0.8rem;
 }
 
-#custom-backlight-bar {
-	font-size: 1rem;
-	margin-right: 0;
-	min-height: 1.5rem;
-	padding-bottom: 0;
-	padding-right: 0.03rem;
-	padding-left: 0.03rem;
-	padding-top: 0;
-	margin-left: 0;
+#custom-brightness {
+	padding-right: 0.8rem;
+	border-right: 1px dashed @ef_yellow;
 }
 
-#custom-bracket-right {
-	margin-right: 0.4rem;
-	padding-right: 0.4rem;
+#custom-brightness-icon.brightness-high,
+#custom-brightness.brightness-high {
+	color: alpha(@ef_red, 0.5);
+}
+
+#custom-brightness-icon.brightness-medium,
+#custom-brightness.brightness-medium {
+	color: alpha(@ef_green, 0.5);
+}
+
+#custom-brightness-icon.brightness-low,
+#custom-brightness.brightness-low {
+	color: alpha(@ef_orange, 0.5);
+}
+
+#workspaces>*,
+#clock>*,
+#pulseaudio>*,
+#network>*,
+#power-profiles-daemon>*,
+#battery>*,
+#tray>* {
+	margin: 0;
+	padding: 0;
+}
+
+#tray {
+	border-right: none;
 }
 
 @keyframes blink {
