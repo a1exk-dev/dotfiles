@@ -80,6 +80,10 @@ alias ..='cd ..'
 alias ...='cd ../..'
 alias ....='cd ../../..'
 
+alias ai-on='sudo systemctl start ollama'
+alias ai-off='sudo systemctl stop ollama'
+alias ai-status='systemctl status ollama --no-pager'
+
 # Should be last
 eval "$(starship init zsh)"
 export PATH=$PATH:$HOME/.local/bin
