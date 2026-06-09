@@ -27,18 +27,19 @@ window#waybar>box {
 }
 
 #group-brightness,
+#group-battery,
 #workspaces,
 #clock,
 #pulseaudio,
 #network,
 #power-profiles-daemon,
-#battery,
 #tray {
 	border-right: 1px dashed @ef_yellow;
 	margin: 0;
 	padding: 0 0.8rem;
 }
 
+#custom-battery-icon,
 #custom-brightness-icon {
 	font-size: 1.6rem;
 	padding-right: 0.25rem;
@@ -65,12 +66,71 @@ window#waybar>box {
 	color: alpha(@ef_orange, 0.5);
 }
 
+/* #custom-battery-icon { */
+/* 	font-size: 1.6rem; */
+/* 	padding-right: 0.25rem; */
+/* } */
+
+#custom-battery-icon.battery-disconnected {
+	font-size: 1rem;
+}
+
+#custom-battery-progress {
+	padding-right: 0.25rem;
+}
+
+#custom-battery-info {
+	padding-left: 0.25rem;
+	padding-right: 0.8rem;
+}
+
+#custom-battery-icon.battery-connected,
+#custom-battery-progress.battery-connected,
+#custom-battery-info.battery-connected {
+	color: alpha(@ef_blue, 0.5);
+}
+
+#custom-battery-icon.battery-disconnected,
+#custom-battery-progress.battery-disconnected,
+#custom-battery-info.battery-disconnected {
+	color: alpha(@ef_foreground, 0.5);
+}
+
+#custom-battery-icon.battery-level-4,
+#custom-battery-progress.battery-level-4,
+#custom-battery-info.battery-level-4 {
+	color: alpha(@ef_green, 0.5);
+}
+
+#custom-battery-icon.battery-level-3,
+#custom-battery-progress.battery-level-3,
+#custom-battery-info.battery-level-3 {
+	color: alpha(@ef_aqua, 0.5);
+}
+
+#custom-battery-icon.battery-level-2,
+#custom-battery-progress.battery-level-2,
+#custom-battery-info.battery-level-2 {
+	color: alpha(@ef_yellow, 0.5);
+}
+
+#custom-battery-icon.battery-level-1,
+#custom-battery-progress.battery-level-1,
+#custom-battery-info.battery-level-1 {
+	color: alpha(@ef_red, 0.5);
+}
+
+#custom-battery-icon.battery-full,
+#custom-battery-progress.battery-full,
+#custom-battery-info.battery-full {
+	color: alpha(@ef_green, 0.7);
+}
+
 #workspaces>*,
 #clock>*,
 #pulseaudio>*,
 #network>*,
 #power-profiles-daemon>*,
-#battery>*,
 #tray>* {
 	margin: 0;
 	padding: 0;
@@ -80,19 +140,8 @@ window#waybar>box {
 	border-right: none;
 }
 
-@keyframes blink {
-	to {
-		background-color: #ffffff;
-		color: black;
-	}
-}
-
-#battery.warning:not(.charging) {
-	background: #f53c3c;
-	color: white;
-	animation-name: blink;
-	animation-duration: 0.5s;
-	animation-timing-function: steps(12);
-	animation-iteration-count: infinite;
-	animation-direction: alternate;
+#group-brightness>box,
+#group-battery>box {
+	margin: 0;
+	padding: 0;
 }

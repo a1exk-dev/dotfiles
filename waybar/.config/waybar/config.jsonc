@@ -9,16 +9,16 @@
 		"group/brightness",
 		"hyprland/workspaces"
 	],
-    "modules-center": [
+	"modules-center": [
 		"clock"
-    ],
-    "modules-right": [
-        "pulseaudio",
-        "network",
-        "power-profiles-daemon",
-        "battery",
-        "tray"
-    ],
+	],
+	"modules-right": [
+		"pulseaudio",
+		"network",
+		"power-profiles-daemon",
+		"group/battery",
+		"tray"
+	],
 
 	"custom/brightness-icon": {
 		"exec": "~/.config/waybar/widgets/brightness-icon.sh",
@@ -26,7 +26,9 @@
 		"on-scroll-down": "~/.config/waybar/widgets/brightness.sh down",
 		"return-type": "json",
 		"format": "{text}",
-		"interval": 1,
+		"interval": "once",
+		"signal": 1,
+		"exec-on-event": false,
 		"tooltip": false
 	},
 
@@ -36,7 +38,9 @@
 		"on-scroll-down": "~/.config/waybar/widgets/brightness.sh down",
 		"return-type": "json",
 		"format": "[{text}]",
-		"interval": 1,
+		"interval": "once",
+		"signal": 1,
+		"exec-on-event": false,
 		"escape": false,
 		"tooltip": false
 	},
@@ -46,6 +50,40 @@
 		"modules": [
 			"custom/brightness-icon",
 			"custom/brightness"
+		]
+	},
+
+	"custom/battery-icon": {
+		"exec": "~/.config/waybar/widgets/battery.sh icon",
+		"return-type": "json",
+		"format": "{text}",
+		"interval": 30,
+		"tooltip": false
+	},
+
+	"custom/battery-progress": {
+		"exec": "~/.config/waybar/widgets/battery.sh progress",
+		"return-type": "json",
+		"format": "[{text}]",
+		"interval": 30,
+		"escape": false,
+		"tooltip": false
+	},
+
+	"custom/battery-info": {
+		"exec": "~/.config/waybar/widgets/battery.sh info",
+		"return-type": "json",
+		"format": "[{text}]",
+		"interval": 30,
+		"tooltip": false
+	},
+
+	"group/battery": {
+		"orientation": "horizontal",
+		"modules": [
+			"custom/battery-icon",
+			"custom/battery-progress",
+			"custom/battery-info"
 		]
 	}
 }

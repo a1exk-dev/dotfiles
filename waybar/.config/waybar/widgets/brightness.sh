@@ -4,6 +4,7 @@ action="${1:-get}"
 device="${BRIGHTNESS_DEVICE:-intel_backlight}"
 bar_sections="${BRIGHTNESS_BAR_SECTIONS:-10}"
 step="${BRIGHTNESS_STEP:-5%}"
+waybar_signal="${WAYBAR_BRIGHTNESS_SIGNAL:-1}"
 base="/sys/class/backlight/$device"
 
 normalize_bar_sections() {
@@ -128,6 +129,17 @@ change_brightness() {
 	esac
 }
 
+refresh_waybar() {
+	case "$waybar_signal" in
+		"" | *[!0-9]*)
+			return 0
+			;;
+	esac
+
+	command -v pkill >/dev/null 2>&1 || return 0
+	pkill "-RTMIN+$waybar_signal" waybar 2>/dev/null || true
+}
+
 case "$action" in
 	get)
 		print_status
@@ -137,9 +149,11 @@ case "$action" in
 		;;
 	up)
 		change_brightness up
+		refresh_waybar
 		;;
 	down)
 		change_brightness down
+		refresh_waybar
 		;;
 	*)
 		printf 'Usage: %s {get|icon|up|down}\n' "$0" >&2
