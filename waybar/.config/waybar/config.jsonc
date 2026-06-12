@@ -15,9 +15,9 @@
 	"modules-right": [
 		"pulseaudio",
 		"network",
+		"tray",
 		"power-profiles-daemon",
 		"group/battery",
-		"tray"
 	],
 
 	"custom/brightness-icon": {
@@ -85,5 +85,26 @@
 			"custom/battery-progress",
 			"custom/battery-info"
 		]
+	},
+
+	"power-profiles-daemon": {
+		"format": "{icon}",
+		"tooltip-format": "Power profile: {profile}\nDriver: {driver}",
+		"tooltip": true,
+		"format-icons": {
+			"default": "󰐦",
+			"performance": "󰓅",
+			"balanced": "󰗑",
+			"power-saver": "󰌪"
+		}
+	},
+
+	"tray": {
+		"icon-size": 16,
+		"spacing": 10,
+		"icons": {
+			"blueman": "bluez",
+			"TelegramDesktop": "$HOME/.local/share/icons/hicolor/16x16/apps/telegram.png"
+		}
 	}
 }

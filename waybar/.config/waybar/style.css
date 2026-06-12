@@ -18,6 +18,21 @@ window#waybar>box {
 	border-radius: 0.4rem;
 }
 
+tooltip {
+	border: none;
+	margin: 0;
+	padding: 0;
+	background: transparent;
+}
+
+tooltip label {
+	margin: 0.4rem 0 0 0;
+	background: alpha(@ef_bg_0, 0.9);
+	padding: 0.8rem;
+	border: 1px dashed @ef_yellow;
+	color: @ef_foreground;
+}
+
 .waybar-bracket,
 .waybar-bracket-left,
 .waybar-bracket-right {
@@ -44,6 +59,22 @@ window#waybar>box {
 	font-size: 1.6rem;
 	padding-right: 0.25rem;
 	padding-left: 0.8rem;
+}
+
+#power-profiles-daemon {
+	font-size: 1.6rem;
+}
+
+#power-profiles-daemon.performance {
+	color: alpha(@ef_red, 0.7);
+}
+
+#power-profiles-daemon.balanced {
+	color: alpha(@ef_blue, 0.7);
+}
+
+#power-profiles-daemon.power-saver {
+	color: alpha(@ef_green, 0.7);
 }
 
 #custom-brightness {
