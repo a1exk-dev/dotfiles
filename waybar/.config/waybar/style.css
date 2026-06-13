@@ -46,6 +46,7 @@ tooltip label {
 #group-battery,
 #workspaces,
 #clock,
+#wireplumber,
 #network,
 #power-profiles-daemon,
 #tray {
@@ -60,6 +61,18 @@ tooltip label {
 	font-size: 1.6rem;
 	padding-right: 0.25rem;
 	padding-left: 0.8rem;
+}
+
+#wireplumber.mic {
+	font-size: 1.1rem;
+	min-width: 2.4rem;
+	color: alpha(@ef_green, 0.5);
+}
+
+#wireplumber.mic.muted,
+#wireplumber.mic.source-muted {
+	font-size: 1.5rem;
+	color: alpha(@ef_foreground, 0.5);
 }
 
 #power-profiles-daemon {
@@ -82,6 +95,10 @@ tooltip label {
 #custom-volume {
 	padding-right: 0.8rem;
 	border-right: 1px dashed @ef_yellow;
+}
+
+#clock.minutes {
+	border-right: none;
 }
 
 #custom-brightness-icon.brightness-high,
@@ -188,12 +205,25 @@ tooltip label {
 
 #workspaces>*,
 #clock>*,
+#wireplumber>*,
 #group-volume>*,
 #network>*,
 #power-profiles-daemon>*,
 #tray>* {
 	margin: 0;
 	padding: 0;
+}
+
+#workspaces button {
+	background: transparent;
+	border: none;
+	border-radius: 0;
+	color: alpha(@ef_foreground, 0.5);
+	padding: 0 0.25rem;
+}
+
+#workspaces button.active {
+	color: @ef_foreground;
 }
 
 #tray {

@@ -6,13 +6,15 @@
 	"margin-left": 4,
 	"margin-right": 4,
 	"modules-left": [
-		"group/brightness",
-		"hyprland/workspaces"
+		"group/brightness"
 	],
 	"modules-center": [
-		"clock"
+		"clock#hours",
+		"hyprland/workspaces",
+		"clock#minutes"
 	],
 	"modules-right": [
+		"wireplumber#mic",
 		"group/volume",
 		"network",
 		"tray",
@@ -51,6 +53,27 @@
 			"custom/brightness-icon",
 			"custom/brightness"
 		]
+	},
+
+	"clock#hours": {
+		"format": "{:%H}",
+		"interval": 1,
+		"tooltip": false
+	},
+
+	"clock#minutes": {
+		"format": "{:%M}",
+		"interval": 1,
+		"tooltip": false
+	},
+
+	"wireplumber#mic": {
+		"node-type": "Audio/Source",
+		"format": "[󰍰]",
+		"format-muted": "[󰍱]",
+		"on-click": "wpctl set-mute @DEFAULT_AUDIO_SOURCE@ toggle",
+		"tooltip": true,
+		"tooltip-format": "Toggle Microphone"
 	},
 
 	"custom/volume-icon": {
@@ -134,11 +157,9 @@
 	},
 
 	"tray": {
-		"icon-size": 16,
+		"icon-size": 14,
 		"spacing": 10,
 		"icons": {
-			"blueman": "bluez",
-			"TelegramDesktop": "$HOME/.local/share/icons/hicolor/16x16/apps/telegram.png"
 		}
 	}
 }
