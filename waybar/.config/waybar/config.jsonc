@@ -13,7 +13,7 @@
 		"clock"
 	],
 	"modules-right": [
-		"pulseaudio",
+		"group/volume",
 		"network",
 		"tray",
 		"power-profiles-daemon",
@@ -50,6 +50,40 @@
 		"modules": [
 			"custom/brightness-icon",
 			"custom/brightness"
+		]
+	},
+
+	"custom/volume-icon": {
+		"exec": "~/.config/waybar/widgets/volume-icon.sh",
+		"on-click": "~/.config/waybar/widgets/volume.sh mute",
+		"return-type": "json",
+		"format": "{text}",
+		"interval": "once",
+		"signal": 2,
+		"exec-on-event": false,
+		"tooltip": true
+	},
+
+	"custom/volume": {
+		"exec": "~/.config/waybar/widgets/volume.sh get",
+		"on-click": "pavucontrol",
+		"on-scroll-up": "~/.config/waybar/widgets/volume.sh up",
+		"on-scroll-down": "~/.config/waybar/widgets/volume.sh down",
+		"return-type": "json",
+		"format": "[{text}]",
+		"interval": "once",
+		"signal": 2,
+		"exec-on-event": false,
+		"escape": false,
+		"tooltip": true,
+		"tooltip-format": "Open Mixer"
+	},
+
+	"group/volume": {
+		"orientation": "horizontal",
+		"modules": [
+			"custom/volume-icon",
+			"custom/volume"
 		]
 	},
 

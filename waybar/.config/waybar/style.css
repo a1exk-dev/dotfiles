@@ -42,10 +42,10 @@ tooltip label {
 }
 
 #group-brightness,
+#group-volume,
 #group-battery,
 #workspaces,
 #clock,
-#pulseaudio,
 #network,
 #power-profiles-daemon,
 #tray {
@@ -55,7 +55,8 @@ tooltip label {
 }
 
 #custom-battery-icon,
-#custom-brightness-icon {
+#custom-brightness-icon,
+#custom-volume-icon {
 	font-size: 1.6rem;
 	padding-right: 0.25rem;
 	padding-left: 0.8rem;
@@ -77,7 +78,8 @@ tooltip label {
 	color: alpha(@ef_green, 0.7);
 }
 
-#custom-brightness {
+#custom-brightness,
+#custom-volume {
 	padding-right: 0.8rem;
 	border-right: 1px dashed @ef_yellow;
 }
@@ -95,6 +97,33 @@ tooltip label {
 #custom-brightness-icon.brightness-low,
 #custom-brightness.brightness-low {
 	color: alpha(@ef_orange, 0.5);
+}
+
+#custom-volume-icon.volume-high,
+#custom-volume.volume-high {
+	color: alpha(@ef_red, 0.5);
+}
+
+#custom-volume-icon.volume-medium-high,
+#custom-volume.volume-medium-high {
+	color: alpha(@ef_orange, 0.5);
+}
+
+#custom-volume-icon.volume-medium,
+#custom-volume.volume-medium {
+	color: alpha(@ef_green, 0.5);
+}
+
+#custom-volume-icon.volume-low,
+#custom-volume.volume-low {
+	color: alpha(@ef_blue, 0.5);
+}
+
+#custom-volume-icon.volume-off,
+#custom-volume.volume-off,
+#custom-volume-icon.volume-muted,
+#custom-volume.volume-muted {
+	color: alpha(@ef_foreground, 0.5);
 }
 
 /* #custom-battery-icon { */
@@ -159,7 +188,7 @@ tooltip label {
 
 #workspaces>*,
 #clock>*,
-#pulseaudio>*,
+#group-volume>*,
 #network>*,
 #power-profiles-daemon>*,
 #tray>* {
@@ -172,6 +201,7 @@ tooltip label {
 }
 
 #group-brightness>box,
+#group-volume>box,
 #group-battery>box {
 	margin: 0;
 	padding: 0;
