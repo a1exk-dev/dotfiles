@@ -44,10 +44,13 @@ tooltip label {
 #group-brightness,
 #group-volume,
 #group-battery,
+#group-wireless,
 #workspaces,
 #clock,
 #wireplumber,
 #network,
+#bluetooth,
+#privacy,
 #power-profiles-daemon,
 #tray {
 	border-right: 1px dashed @ef_yellow;
@@ -63,16 +66,74 @@ tooltip label {
 	padding-left: 0.8rem;
 }
 
+#group-wireless #network,
+#group-wireless #bluetooth {
+	border-right: none;
+	margin: 0;
+	padding: 0;
+}
+
+#group-wireless #network {
+	padding-right: 0.25rem;
+}
+
+#group-wireless #bluetooth {
+	padding-left: 0.25rem;
+}
+
+#clock.hours,
+#clock.minutes {
+	font-weight: bold;
+}
+
 #wireplumber.mic {
 	font-size: 1.1rem;
 	min-width: 2.4rem;
-	color: alpha(@ef_green, 0.5);
+	color: @ef_foreground;
 }
 
 #wireplumber.mic.muted,
 #wireplumber.mic.source-muted {
 	font-size: 1.5rem;
-	color: alpha(@ef_foreground, 0.5);
+	color: alpha(@ef_grey_0, 0.5);
+}
+
+#network.wifi {
+	color: @ef_foreground;
+}
+
+#network.disconnected {
+	color: alpha(@ef_grey_0, 0.5);
+}
+
+#network.disabled {
+	color: alpha(@ef_grey_0, 0.5);
+}
+
+#bluetooth {
+	color: alpha(@ef_blue, 0.5);
+}
+
+#bluetooth.connected {
+	color: alpha(@ef_blue, 0.7);
+}
+
+#bluetooth.disabled,
+#bluetooth.off {
+	color: alpha(@ef_grey_0, 0.5);
+}
+
+#privacy-item.audio-in {
+	background: alpha(@ef_red, 0.8);
+	border-radius: 999px;
+	margin: 0.25rem 0;
+	min-height: 0.6rem;
+	min-width: 0.6rem;
+	padding: 0;
+}
+
+#privacy-item.audio-in image {
+	opacity: 0;
 }
 
 #power-profiles-daemon {
@@ -208,6 +269,8 @@ tooltip label {
 #wireplumber>*,
 #group-volume>*,
 #network>*,
+#bluetooth>*,
+#privacy>*,
 #power-profiles-daemon>*,
 #tray>* {
 	margin: 0;
@@ -232,7 +295,8 @@ tooltip label {
 
 #group-brightness>box,
 #group-volume>box,
-#group-battery>box {
+#group-battery>box,
+#group-wireless>box {
 	margin: 0;
 	padding: 0;
 }
