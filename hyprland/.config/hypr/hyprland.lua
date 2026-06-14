@@ -230,8 +230,18 @@ hl.bind(
 	hl.dsp.exec_cmd("wpctl set-mute @DEFAULT_AUDIO_SOURCE@ toggle"),
 	{ locked = true, repeating = true }
 )
-hl.bind("XF86MonBrightnessUp", hl.dsp.exec_cmd("~/.config/waybar/widgets/brightness.sh up"), { locked = true, repeating = true })
-hl.bind("XF86MonBrightnessDown", hl.dsp.exec_cmd("~/.config/waybar/widgets/brightness.sh down"), { locked = true, repeating = true })
+hl.bind(
+	"XF86MonBrightnessUp",
+	hl.dsp.exec_cmd("~/.config/waybar/widgets/brightness.sh up"),
+	{ locked = true, repeating = true }
+)
+hl.bind(
+	"XF86MonBrightnessDown",
+	hl.dsp.exec_cmd("~/.config/waybar/widgets/brightness.sh down"),
+	{ locked = true, repeating = true }
+)
+-- ASUS Fn+F8 is the screen capture hotkey.
+hl.bind("Print", hl.dsp.exec_cmd("hyprshot -m region --raw | satty --filename -"), { locked = true })
 
 -- Requires playerctl
 hl.bind("XF86AudioNext", hl.dsp.exec_cmd("playerctl next"), { locked = true })
@@ -274,12 +284,58 @@ hl.window_rule({
 
 hl.window_rule({
 	name = "float-pavucontrol",
-	match = { class = ".*pavucontrol.*" },
+	match = {
+		class = ".*pavucontrol.*",
+	},
+	float = true,
+	size = "900 650",
+	center = true,
+})
 
+hl.window_rule({
+	name = "float-impala",
+	match = {
+		title = "^impala$",
+	},
+	float = true,
+	size = "900 650",
+	center = true,
+})
+
+hl.window_rule({
+	name = "float-bluetui",
+	match = {
+		title = "^bluetui$",
+	},
+	float = true,
+	size = "900 650",
+	center = true,
+})
+
+hl.window_rule({
+	name = "no-anim-zen",
+	match = {
+		class = "zen",
+	},
+	no_anim = true,
+})
+
+hl.on("window.title", function(w)
+	if w.title == "Extension: (Bitwarden Password Manager) - Bitwarden — Zen Browser" then
+		hl.dispatch(hl.dsp.window.float({ action = "enable", window = w }))
+		hl.dispatch(hl.dsp.window.resize({ x = 900, y = 650, window = w }))
+		hl.dispatch(hl.dsp.window.center({ window = w }))
+	end
+end)
+
+hl.window_rule({
+	name = "satty-float-helper",
+	match = {
+		class = "com.gabm.satty",
+	},
 	float = true,
 	size = "900 650",
 })
-
 -- Layer rules also return a handle.
 -- local overlayLayerRule = hl.layer_rule({
 --     name  = "no-anim-overlay",
