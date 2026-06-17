@@ -136,7 +136,7 @@
 		"on-click": "~/.config/waybar/widgets/volume.sh mute",
 		"return-type": "json",
 		"format": "{text}",
-		"interval": "once",
+		"interval": 10,
 		"signal": 2,
 		"exec-on-event": false,
 		"tooltip": true
@@ -149,7 +149,7 @@
 		"on-scroll-down": "~/.config/waybar/widgets/volume.sh down",
 		"return-type": "json",
 		"format": "[{text}]",
-		"interval": "once",
+		"interval": 10,
 		"signal": 2,
 		"exec-on-event": false,
 		"escape": false,

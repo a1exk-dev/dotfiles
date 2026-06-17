@@ -5,6 +5,8 @@ bar_sections="${VOLUME_BAR_SECTIONS:-10}"
 step="${VOLUME_STEP:-5%}"
 max_volume="${VOLUME_MAX:-1}"
 waybar_signal="${WAYBAR_VOLUME_SIGNAL:-2}"
+ready_retries="${VOLUME_READY_RETRIES:-10}"
+available=true
 percent=0
 muted=false
 
@@ -18,6 +20,14 @@ normalize_bar_sections() {
 	if [ "$bar_sections" -le 0 ]; then
 		bar_sections=10
 	fi
+}
+
+normalize_ready_retries() {
+	case "$ready_retries" in
+		"" | *[!0-9]*)
+			ready_retries=10
+			;;
+	esac
 }
 
 read_volume_pactl() {
@@ -88,12 +98,37 @@ read_volume_wpctl() {
 	percent=$((whole * 100 + frac))
 }
 
+read_volume_once() {
+	read_volume_pactl || read_volume_wpctl
+}
+
 read_volume() {
-	read_volume_pactl || read_volume_wpctl || exit 1
+	normalize_ready_retries
+	retries=$ready_retries
+
+	while :; do
+		if read_volume_once; then
+			available=true
+			return 0
+		fi
+
+		if [ "$retries" -le 0 ]; then
+			break
+		fi
+
+		retries=$((retries - 1))
+		sleep 1
+	done
+
+	available=false
+	muted=true
+	percent=0
 }
 
 volume_class() {
-	if [ "$muted" = true ]; then
+	if [ "$available" = false ]; then
+		printf 'volume-unavailable'
+	elif [ "$muted" = true ]; then
 		printf 'volume-muted'
 	elif [ "$percent" -eq 0 ]; then
 		printf 'volume-off'
@@ -109,7 +144,9 @@ volume_class() {
 }
 
 volume_icon() {
-	if [ "$muted" = true ]; then
+	if [ "$available" = false ]; then
+		printf '󰖁'
+	elif [ "$muted" = true ]; then
 		printf '󰖁'
 	elif [ "$percent" -eq 0 ]; then
 		printf '󰖁'
@@ -125,7 +162,9 @@ print_icon() {
 	class=$(volume_class)
 	icon=$(volume_icon)
 
-	if [ "$muted" = true ]; then
+	if [ "$available" = false ]; then
+		tooltip="Audio unavailable"
+	elif [ "$muted" = true ]; then
 		tooltip="Unmute"
 	else
 		tooltip="Mute"
