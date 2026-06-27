@@ -22,6 +22,7 @@ Order is defined by numeric prefixes in `_docs/`.
 - [Hyprland](_docs/10-hyprland.md)
 - [Tmux](_docs/11-tmux.md)
 - [greetd](_docs/12-greetd.md)
+- [Arch hibernation](_docs/13-arch-hibernation.md)
 - [Discord](_docs/Discord.md)
 - [Firefox](_docs/Firefox.md)
 
