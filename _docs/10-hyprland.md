@@ -17,3 +17,5 @@ stow --adopt -t "$HOME" hyprland
 ## Autostart
 
 Hyprland starts Ollama with `OLLAMA_IGPU_ENABLE=1` so `ollama-vulkan` can use the AMD integrated GPU.
+
+Hyprland also starts `~/.config/hypr/scripts/edp-refresh-rate.sh` to keep the laptop display at `120 Hz` when external power is online and `60 Hz` on battery.
