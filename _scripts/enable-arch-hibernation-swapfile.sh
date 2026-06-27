@@ -321,6 +321,16 @@ rebuild_initramfs() {
   log "rebuilt initramfs images"
 }
 
+configure_lid_hibernate() {
+  local script_dir lid_script
+
+  script_dir="$(CDPATH= cd -- "$(dirname -- "$0")" && pwd)"
+  lid_script="$script_dir/configure-lid-hibernate.sh"
+
+  [ -x "$lid_script" ] || die "lid hibernate script is not executable: $lid_script"
+  "$lid_script"
+}
+
 print_summary() {
   printf '\n'
   log "configuration complete"
@@ -358,6 +368,7 @@ main() {
   ensure_mkinitcpio_resume_hook
   update_systemd_boot_entry
   rebuild_initramfs
+  configure_lid_hibernate
   print_summary
 }
 

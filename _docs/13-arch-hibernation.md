@@ -46,7 +46,7 @@ The script prefers the largest existing disk swap partition. On this system, tha
 
 If no swap partition exists, the script creates `/swapfile` on the root filesystem. The default fallback size is installed RAM rounded up to GiB plus 8 GiB. It then adds the file to `/etc/fstab` and configures both `resume=...` and `resume_offset=...`.
 
-In both modes, the script adds the `resume` mkinitcpio hook, updates the systemd-boot entry, and runs `mkinitcpio -P`.
+In both modes, the script adds the `resume` mkinitcpio hook, updates the systemd-boot entry, runs `mkinitcpio -P`, and launches `_scripts/configure-lid-hibernate.sh` at the end.
 
 It does not reboot or hibernate automatically. After it finishes, reboot:
 
@@ -67,6 +67,40 @@ sudo SWAPFILE=/swapfile SWAP_SIZE=36G BOOT_ENTRY=/boot/loader/entries/2026-03-09
 ```
 
 `SWAP_SIZE` is only used when the script has to create a fallback swap file.
+
+## Lid Close Hibernation
+
+The lid helper configures systemd-logind so closing the laptop lid triggers hibernation:
+
+```sh
+sudo _scripts/configure-lid-hibernate.sh
+```
+
+It writes this drop-in:
+
+```ini
+# /etc/systemd/logind.conf.d/hibernate-on-lid.conf
+[Login]
+HandleLidSwitch=hibernate
+HandleLidSwitchExternalPower=hibernate
+HandleLidSwitchDocked=ignore
+```
+
+The main hibernation setup script runs this automatically. The lid helper does not restart `systemd-logind` by default because that can disrupt the current graphical session. The policy applies after reboot.
+
+To apply it immediately instead, run:
+
+```sh
+sudo RESTART_LOGIND=1 _scripts/configure-lid-hibernate.sh
+```
+
+Optional lid policy overrides:
+
+```sh
+sudo HANDLE_LID_SWITCH=hibernate HANDLE_LID_SWITCH_EXTERNAL_POWER=hibernate HANDLE_LID_SWITCH_DOCKED=hibernate _scripts/configure-lid-hibernate.sh
+```
+
+Lid-open wake from hibernation is firmware-dependent. Linux can configure lid close to hibernate, but waking from S4/powered-off hibernation on lid open usually requires firmware support such as a BIOS/UEFI "power on lid open" option. If the firmware does not support it, press the power button to resume.
 
 ## Inspect the System
 
