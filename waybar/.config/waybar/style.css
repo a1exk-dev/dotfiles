@@ -1,16 +1,20 @@
 @import "./colors.css";
 
-window#waybar {
+* {
+	all: initial;
+	font-family: "Terminess Nerd Font Propo", monospace;
+	font-size: 0.9rem;
+}
+
+#waybar {
 	background: alpha(@ef_bg_0, 0.9);
 	border-top: 1px solid @ef_bg_2;
 	border-bottom: 1px solid @ef_bg_2;
 	color: @ef_foreground;
 	border-radius: 0.8rem;
-	font-family: "Terminess Nerd Font Mono", "Terminess Nerd Font", monospace;
-	font-size: 0.9rem;
 }
 
-window#waybar>box {
+#waybar>box {
 	border: 1px dashed @ef_yellow;
 	border-radius: 0;
 	margin: 0.4rem;
@@ -45,6 +49,7 @@ tooltip label {
 #group-volume,
 #group-battery,
 #group-wireless,
+#custom-workspaces,
 #workspaces,
 #clock,
 #wireplumber,
@@ -61,7 +66,6 @@ tooltip label {
 #custom-battery-icon,
 #custom-brightness-icon,
 #custom-volume-icon {
-	font-size: 1.6rem;
 	padding-right: 0.25rem;
 	padding-left: 0.8rem;
 }
@@ -87,14 +91,12 @@ tooltip label {
 }
 
 #wireplumber.mic {
-	font-size: 1.1rem;
 	min-width: 2.4rem;
 	color: @ef_foreground;
 }
 
 #wireplumber.mic.muted,
 #wireplumber.mic.source-muted {
-	font-size: 1.5rem;
 	color: alpha(@ef_grey_0, 0.5);
 }
 
@@ -136,9 +138,7 @@ tooltip label {
 	opacity: 0;
 }
 
-#power-profiles-daemon {
-	font-size: 1.6rem;
-}
+#power-profiles-daemon {}
 
 #power-profiles-daemon.performance {
 	color: alpha(@ef_red, 0.7);
@@ -209,9 +209,7 @@ tooltip label {
 /* 	padding-right: 0.25rem; */
 /* } */
 
-#custom-battery-icon.battery-disconnected {
-	font-size: 1rem;
-}
+#custom-battery-icon.battery-disconnected {}
 
 #custom-battery-progress {
 	padding-right: 0.25rem;
@@ -282,11 +280,16 @@ tooltip label {
 	border: none;
 	border-radius: 0;
 	color: alpha(@ef_foreground, 0.5);
-	padding: 0 0.25rem;
+	padding: 0 0.15rem;
 }
 
 #workspaces button.active {
-	color: @ef_foreground;
+	color: @ef_yellow;
+	font-weight: bold;
+}
+
+#custom-workspaces {
+	color: alpha(@ef_foreground, 0.5);
 }
 
 #tray {

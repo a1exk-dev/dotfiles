@@ -15,7 +15,7 @@
 	],
 	"modules-center": [
 		"clock#hours",
-		"hyprland/workspaces",
+		"custom/workspaces",
 		"clock#minutes"
 	],
 	"modules-right": [
@@ -69,8 +69,13 @@
 		"tooltip": false
 	},
 
-	"hyprland/workspaces": {
-		"move-to-monitor": true
+	"custom/workspaces": {
+		"exec": "~/.config/waybar/widgets/workspaces.sh --watch",
+		"return-type": "json",
+		"format": "{text}",
+		"restart-interval": 1,
+		"escape": false,
+		"tooltip": false
 	},
 
 	"wireplumber#mic": {
@@ -98,9 +103,6 @@
 
 	"bluetooth": {
 		"format": "[󰂯]",
-		"format-disabled": "[󰂲]",
-		"format-connected": "[󰂱]",
-		"format-connected-battery": "[󰂱]",
 		"tooltip": true,
 		"tooltip-format": "Bluetooth {status}",
 		"tooltip-format-disabled": "Bluetooth disabled",

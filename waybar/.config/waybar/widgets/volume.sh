@@ -150,10 +150,8 @@ volume_icon() {
 		printf '󰖁'
 	elif [ "$percent" -eq 0 ]; then
 		printf '󰖁'
-	elif [ "$percent" -gt 50 ]; then
-		printf '󰕾'
 	else
-		printf '󰖀'
+		printf '󰕾'
 	fi
 }
 
