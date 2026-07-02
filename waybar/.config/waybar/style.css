@@ -91,7 +91,6 @@ tooltip label {
 }
 
 #wireplumber.mic {
-	min-width: 2.4rem;
 	color: @ef_foreground;
 }
 
@@ -293,7 +292,20 @@ tooltip label {
 }
 
 #tray {
-	border-right: none;
+	padding: 0 0.8rem;
+}
+
+#tray>widget,
+#tray image {
+	margin: 0;
+	min-height: 0;
+	padding: 0;
+}
+
+#tray image {
+	margin-top: 0.1rem;
+	min-height: 0.9rem;
+	min-width: 0.9rem;
 }
 
 #group-brightness>box,
