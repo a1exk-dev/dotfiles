@@ -6,6 +6,7 @@ Personal dotfiles and scripts.
 - `firefox/` - Firefox-related assets and scripts. See [Firefox](_docs/Firefox.md).
 - `discord/` - Discord-related assets and scripts. See [Discord](_docs/Discord.md).
 - `hyprland/` - Hyprland window manager config. See [Hyprland](_docs/10-hyprland.md).
+- `waybar/` - Waybar status bar config. See [Waybar](_docs/15-waybar.md).
 - `tmux/` - Tmux configuration. See [Tmux](_docs/11-tmux.md).
 - `greetd/` - greetd login manager config. See [greetd](_docs/12-greetd.md).
 - `sysc-greet/` - sysc-greet themes. See [greetd](_docs/12-greetd.md).
@@ -23,6 +24,8 @@ Order is defined by numeric prefixes in `_docs/`.
 - [Tmux](_docs/11-tmux.md)
 - [greetd](_docs/12-greetd.md)
 - [Arch hibernation](_docs/13-arch-hibernation.md)
+- [Desktop app theming](_docs/14-desktop-app-theming.md)
+- [Waybar](_docs/15-waybar.md)
 - [Discord](_docs/Discord.md)
 - [Firefox](_docs/Firefox.md)
 
