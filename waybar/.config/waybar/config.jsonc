@@ -22,6 +22,7 @@
 		"group/brightness",
 		"tray",
 		"group/battery",
+		"custom/wlogout",
 	],
 
 	"custom/brightness-icon": {
@@ -212,6 +213,16 @@
 			"balanced": "󰗑",
 			"power-saver": "󰌪"
 		}
+	},
+
+	"custom/wlogout": {
+		"exec": "printf '{\"text\":\"󰐥\"}'",
+		"return-type": "json",
+		"format": "[{text}]",
+		"interval": "once",
+		"on-click": "wlogout",
+		"tooltip": true,
+		"tooltip-format": "Power"
 	},
 
 	"tray": {

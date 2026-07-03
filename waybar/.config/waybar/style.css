@@ -57,6 +57,7 @@ tooltip label {
 #bluetooth,
 #privacy,
 #power-profiles-daemon,
+#custom-wlogout,
 #tray {
 	border-right: 1px dashed @ef_yellow;
 	margin: 0;
@@ -306,6 +307,12 @@ tooltip label {
 	margin-top: 0.1rem;
 	min-height: 0.9rem;
 	min-width: 0.9rem;
+}
+
+#custom-wlogout {
+	border-left: 1px dashed @ef_yellow;
+	border-right: none;
+	color: alpha(@ef_red, 0.7);
 }
 
 #group-brightness>box,
