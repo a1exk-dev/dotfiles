@@ -5,14 +5,19 @@ Window manager configuration.
 ## Installation
 
 ```sh
-sudo pacman -S hyprland
+sudo pacman -S --needed hyprland hypridle hyprlock
 ```
+yay -S wlogout
 
 ## Link config
 
 ```sh
-stow --adopt -t "$HOME" hyprland
+stow -t "$HOME" hyprland
+stow -t "$HOME" hypridle 
+stow -t "$HOME" wlogout 
 ```
+
+systemctl --user enable --now hypridle.service
 
 ## Autostart
 
