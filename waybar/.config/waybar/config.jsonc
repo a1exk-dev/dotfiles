@@ -11,6 +11,7 @@
 		"wireplumber#mic",
 		"group/wireless",
 		"power-profiles-daemon",
+		"custom/wlogout",
 		"privacy"
 	],
 	"modules-center": [
@@ -22,7 +23,7 @@
 		"group/brightness",
 		"tray",
 		"group/battery",
-		"custom/wlogout",
+		"custom/notifications",
 	],
 
 	"custom/brightness-icon": {
@@ -213,6 +214,15 @@
 			"balanced": "󰗑",
 			"power-saver": "󰌪"
 		}
+	},
+
+	"custom/notifications": {
+		"exec": "~/.config/waybar/widgets/notifications.sh",
+		"return-type": "json",
+		"format": "[{text}]",
+		"interval": 1,
+		"on-click": "swaync-client --toggle-panel",
+		"tooltip": true
 	},
 
 	"custom/wlogout": {
