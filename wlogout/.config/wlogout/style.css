@@ -1,124 +1,59 @@
-@define-color ef_foreground #d3c6aa;
-@define-color ef_red #e67e80;
-@define-color ef_yellow #dbbc7f;
-@define-color ef_green #a7c080;
-@define-color ef_blue #7fbbb3;
-@define-color ef_purple #d699b6;
-@define-color ef_orange #e69875;
-@define-color ef_bg_dim #1e2326;
-@define-color ef_bg_0 #272e33;
-@define-color ef_bg_1 #2e383c;
-@define-color ef_bg_2 #374145;
-@define-color ef_bg_red #493b40;
-@define-color ef_bg_yellow #45443c;
-@define-color ef_bg_green #3c4841;
-@define-color ef_bg_blue #384b55;
-@define-color ef_bg_purple #463f48;
-
-* {
-	background-image: none;
-	box-shadow: none;
-	font-family: "Terminess Nerd Font Propo", monospace;
-	text-shadow: none;
-}
-
 window {
-	background-color: alpha(@ef_bg_dim, 0.96);
+  font-family: "Terminess Nerd Font Propo", monospace;
+  font-size: 12pt;
+  color: #d3c6aa;
+  background-color: rgba(30, 35, 38, 0.9);
+  background-image: linear-gradient(rgba(30, 35, 38, 0.78), rgba(30, 35, 38, 0.78)), url("/home/a1exk/Pictures/wallpapers/everforest-forest-4k.jpg");
+  background-position: center;
+  background-repeat: no-repeat;
+  background-size: cover;
 }
 
 button {
-	background-color: alpha(@ef_bg_0, 0.92);
-	background-position: center;
-	background-repeat: no-repeat;
-	background-size: 44%;
-	border: 1px solid @ef_bg_2;
-	border-radius: 0;
-	color: transparent;
-	font-size: 0;
-	margin: 0;
-	outline-style: none;
-	padding: 0;
-	text-decoration: none;
-}
-
-button label {
-	color: transparent;
-	font-size: 0;
-	margin: 0;
-	padding: 0;
+  background-repeat: no-repeat;
+  background-position: center;
+  background-size: 25%;
+  border-style: solid;
+  border-width: 0.15rem;
+  background-color: rgba(39, 46, 51, 0.55);
+  border-color: rgba(122, 132, 120, 0.45);
+  color: #d3c6aa;
+  margin: 5px;
+  border-radius: 1rem;
+  font-weight: normal;
+  transition: background-size 180ms ease-out, background-color 180ms ease-out, border-color 180ms ease-out, font-weight 180ms ease-out;
 }
 
 button:focus,
 button:active,
 button:hover {
-	background-color: alpha(@ef_bg_1, 0.96);
-	color: @ef_yellow;
-	outline: 1px dashed @ef_yellow;
-	outline-offset: -0.8rem;
+  background-color: rgba(46, 56, 60, 0.78);
+  background-size: 30%;
+  border-color: #dbbc7f;
+  font-weight: bold;
+  outline-style: none;
 }
 
 #lock {
-	background-image: url("icons/lock.svg");
-}
-
-#lock:focus,
-#lock:active,
-#lock:hover {
-	background-color: alpha(@ef_bg_blue, 0.96);
-	outline: 1px dashed @ef_blue;
-}
-
-#hibernate {
-	background-image: url("icons/hibernate.svg");
-}
-
-#hibernate:focus,
-#hibernate:active,
-#hibernate:hover {
-	background-color: alpha(@ef_bg_purple, 0.96);
-	outline: 1px dashed @ef_purple;
+  background-image: image(url("./icons/lock.svg"));
 }
 
 #logout {
-	background-image: url("icons/logout.svg");
-}
-
-#logout:focus,
-#logout:active,
-#logout:hover {
-	background-color: alpha(@ef_bg_yellow, 0.96);
-	outline: 1px dashed @ef_yellow;
-}
-
-#shutdown {
-	background-image: url("icons/shutdown.svg");
-}
-
-#shutdown:focus,
-#shutdown:active,
-#shutdown:hover {
-	background-color: alpha(@ef_bg_red, 0.96);
-	outline: 1px dashed @ef_red;
+  background-image: image(url("./icons/logout.svg"));
 }
 
 #suspend {
-	background-image: url("icons/suspend.svg");
+  background-image: image(url("./icons/suspend.svg"));
 }
 
-#suspend:focus,
-#suspend:active,
-#suspend:hover {
-	background-color: alpha(@ef_bg_green, 0.96);
-	outline: 1px dashed @ef_green;
+#hibernate {
+  background-image: image(url("./icons/hibernate.svg"));
 }
 
 #reboot {
-	background-image: url("icons/reboot.svg");
+  background-image: image(url("./icons/reboot.svg"));
 }
 
-#reboot:focus,
-#reboot:active,
-#reboot:hover {
-	background-color: alpha(@ef_bg_yellow, 0.96);
-	outline: 1px dashed @ef_orange;
+#shutdown {
+  background-image: image(url("./icons/shutdown.svg"));
 }
