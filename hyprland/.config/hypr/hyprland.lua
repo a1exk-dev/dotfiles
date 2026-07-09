@@ -315,6 +315,16 @@ hl.window_rule({
 })
 
 hl.window_rule({
+	name = "float-wlctl",
+	match = {
+		title = "^wlctl$",
+	},
+	float = true,
+	size = "900 650",
+	center = true,
+})
+
+hl.window_rule({
 	name = "no-anim-zen",
 	match = {
 		class = "zen",
