@@ -29,6 +29,8 @@ button:active,
 button:hover {
   background-color: rgba(46, 56, 60, 0.78);
   background-size: 30%;
+  border-style: dashed;
+  border-width: 0.1rem;
   border-color: #dbbc7f;
   font-weight: bold;
   outline-style: none;

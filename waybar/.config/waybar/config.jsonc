@@ -231,7 +231,7 @@
 		"return-type": "json",
 		"format": "[{text}]",
 		"interval": "once",
-		"on-click": "wlogout --buttons-per-row 3 --column-spacing 0 --row-spacing 0 --margin 0",
+		"on-click": "wlogout",
 		"tooltip": true,
 		"tooltip-format": "Power"
 	},
