@@ -32,7 +32,7 @@ apply_mode() {
 
 	[ "$state" = "$last_state" ] && return 0
 
-	hyprctl keyword monitor "$monitor,$mode,$position,$scale" >/dev/null 2>&1 || return 1
+	hyprctl eval "hl.monitor({ output = \"$monitor\", mode = \"$mode\", position = \"$position\", scale = \"$scale\" })" >/dev/null 2>&1 || return 1
 	last_state="$state"
 }
 
