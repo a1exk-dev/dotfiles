@@ -14,6 +14,12 @@ Tools and commands for theming GTK, Qt5, and Qt6 applications on a Wayland deskt
 
 ## Install Tools
 
+Current Hyprland theming baseline:
+
+- `nwg-look` handles GTK theme, icon, cursor, and font settings.
+- `kvantum` provides Kvantum Manager and the Qt6 style engine.
+- `kvantum-qt5` adds the same Kvantum style support for Qt5 apps.
+
 Install the core theming tools on Arch:
 
 ```sh
@@ -27,6 +33,53 @@ sudo pacman -S --needed papirus-icon-theme materia-gtk-theme breeze-gtk
 ```
 
 Install additional GTK, icon, cursor, and Kvantum themes as needed from the Arch repositories, AUR, or upstream theme releases.
+
+## Graphite Themes
+
+Use Graphite GTK for GTK apps and Graphite KDE for Kvantum/Qt themes.
+
+Install Graphite GTK dependencies on Arch:
+
+```sh
+sudo pacman -S --needed git sassc gtk-engine-murrine gnome-themes-extra
+```
+
+Install Graphite GTK for the current user:
+
+```sh
+mkdir -p ~/Projects/themes
+git clone https://github.com/vinceliuice/Graphite-gtk-theme.git ~/Projects/themes/Graphite-gtk-theme
+cd ~/Projects/themes/Graphite-gtk-theme
+./install.sh -d ~/.local/share/themes
+```
+
+Common Graphite GTK options:
+
+```sh
+./install.sh -d ~/.local/share/themes -t all
+./install.sh -d ~/.local/share/themes -c dark
+./install.sh -d ~/.local/share/themes -l
+```
+
+Install Graphite KDE for Kvantum and KDE/Plasma assets:
+
+```sh
+mkdir -p ~/Projects/themes
+git clone https://github.com/vinceliuice/Graphite-kde-theme.git ~/Projects/themes/Graphite-kde-theme
+cd ~/Projects/themes/Graphite-kde-theme
+./install.sh
+```
+
+Common Graphite KDE options:
+
+```sh
+./install.sh -t default
+./install.sh -t nord
+./install.sh -c dark
+./install.sh --rimless
+```
+
+After installing, use `nwg-look` to select the Graphite GTK theme. Use `kvantummanager` to select a Graphite Kvantum theme, then set the widget style to `Kvantum` in `qt5ct` and `qt6ct`.
 
 ## Theme Locations
 
