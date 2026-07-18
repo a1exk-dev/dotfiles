@@ -1,0 +1,53 @@
+#!/bin/sh
+
+set -eu
+
+if ! command -v fzf >/dev/null 2>&1; then
+  printf 'tmux-session: fzf is required\n' >&2
+  exit 1
+fi
+
+sessions=$(tmux list-sessions -F '#{session_name}' 2>/dev/null) || sessions=
+
+choice=$(
+  {
+    printf 'new Create a new session\n'
+    if [ -n "$sessions" ]; then
+      printf '%s\n' "$sessions" | while IFS= read -r session; do
+        printf 'attach %s\n' "$session"
+      done
+    fi
+  } | fzf \
+    --delimiter=' ' \
+    --with-nth=2.. \
+    --height=40% \
+    --layout=reverse \
+    --border \
+    --prompt='tmux session> '
+) || exit 0
+
+action=${choice%% *}
+session_name=${choice#* }
+
+if [ "$action" = new ]; then
+  printf 'Session name: '
+  IFS= read -r session_name
+  [ -n "$session_name" ] || exit 0
+elif [ "$action" != attach ]; then
+  printf 'tmux-session: invalid selection\n' >&2
+  exit 1
+fi
+
+if tmux has-session -t "=$session_name" 2>/dev/null; then
+  if [ -n "${TMUX:-}" ]; then
+    exec tmux switch-client -t "=$session_name"
+  fi
+  exec tmux attach-session -t "=$session_name"
+fi
+
+if [ -n "${TMUX:-}" ]; then
+  tmux new-session -d -s "$session_name" -c "$PWD"
+  exec tmux switch-client -t "=$session_name"
+fi
+
+exec tmux new-session -s "$session_name" -c "$PWD"

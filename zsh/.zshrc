@@ -86,10 +86,19 @@ alias ai-status='systemctl status ollama --no-pager'
 
 alias cd='z'
 
+# Open the session picker for a bare tmux command; preserve normal subcommands.
+tmux() {
+  if (( $# == 0 )) && command -v tmux-session >/dev/null 2>&1; then
+    tmux-session
+    return
+  fi
+
+  command tmux "$@"
+}
+
 # Should be last
 eval "$(starship init zsh)"
 export PATH=$PATH:$HOME/.local/bin
 
 # opencode
 export PATH=/home/a1exk/.opencode/bin:$PATH
-
