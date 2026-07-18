@@ -5,7 +5,13 @@ Additional terminal UI tools.
 ## Installation
 
 ```sh
-yay -S lazygit lazydocker wlctl-bin bluetui
+yay -S btop lazygit lazydocker wlctl-bin bluetui
+```
+
+Stow the btop configuration from the repository root:
+
+```sh
+stow --adopt -t "$HOME" btop
 ```
 
 ## Wi-Fi Backend
@@ -32,6 +38,7 @@ sudo systemctl enable --now wpa_supplicant
 
 ## Tools
 
+- **btop** - Resource monitor configured with the built-in Everforest Dark Hard theme
 - **lazygit** - Terminal UI for git
 - **lazydocker** - Terminal UI for docker
 - **wlctl** - Terminal UI for Wi-Fi using NetworkManager
