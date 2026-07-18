@@ -68,6 +68,7 @@ blankwindow {
 
 .notification-row .notification-background .notification {
 	background: transparent;
+	border: 1px dashed @ef_bg_2;
 	border-radius: 0.4rem;
 	box-shadow: none;
 	color: @ef_foreground;
@@ -85,10 +86,15 @@ blankwindow {
 	box-shadow: none;
 	color: @ef_foreground;
 	padding: 0.8rem;
+	transition: background 180ms ease-in-out;
 }
 
 .notification-row .notification-background .notification .notification-default-action:hover {
 	background: alpha(@ef_bg_1, 0.9);
+}
+
+.notification-row .notification-background .notification .notification-default-action:active {
+	background: alpha(@ef_bg_2, 0.9);
 }
 
 .notification-row .notification-background .notification .notification-default-action .notification-content {
@@ -197,16 +203,26 @@ blankwindow {
 	min-height: 1.8rem;
 	min-width: 1.8rem;
 	padding: 0;
+	transition: background 180ms ease-in-out;
 }
 
 .notification-group .notification-group-collapse-button:hover {
 	background: alpha(@ef_blue, 0.55);
 }
 
+.notification-group .notification-group-collapse-button:active {
+	background: alpha(@ef_blue, 0.75);
+}
+
 .notification-group .notification-group-close-all-button:hover,
 .notification-group .notification-group-close-button .close-button:hover {
 	background: alpha(@ef_red, 0.55);
 	color: @ef_foreground;
+}
+
+.notification-group .notification-group-close-all-button:active,
+.notification-group .notification-group-close-button .close-button:active {
+	background: alpha(@ef_red, 0.75);
 }
 
 .notification-action>button,
@@ -221,6 +237,11 @@ blankwindow {
 .notification-action>button:hover,
 .inline-reply-button:hover {
 	background: alpha(@ef_bg_1, 0.9);
+}
+
+.notification-action>button:active,
+.inline-reply-button:active {
+	background: alpha(@ef_bg_2, 0.9);
 }
 
 progressbar,
@@ -246,20 +267,19 @@ progressbar progress {
 }
 
 .widget-title>label {
-	color: @ef_foregro font-sizi: 1rem;
+	color: @ef_foreground;
+	font-size: 1rem;
 }
 
 .widget-title>button {
-	background: alpha(@ef_blue, 0.25);
+	background-color: alpha(@ef_blue, 0.25);
 	border: none;
 	border-radius: 0.35rem;
 	box-shadow: none;
-	color: alpha(@ef_foreground, 0.75);
+	color: @ef_foreground;
+	min-height: 2.4rem;
+	padding: 0 0.8rem;
 	transition: background 180ms ease-in-out;
-}
-
-.widget-title>button:hover {
-	background: alpha(@ef_blue, 0.55);
 }
 
 .widget-dnd {
@@ -276,12 +296,22 @@ progressbar progress {
 	background: linear-gradient(to right, alpha(@ef_green, 0.3), alpha(@ef_green, 0.6));
 	border: 1px solid alpha(@ef_green, 0.7);
 	border-radius: 0.35rem;
-	transition: background 180ms ease-in-out, border 180ms ease-in-out;
+	transition: background 180ms ease-in-out, border 180ms ease-in-out, box-shadow 180ms ease-in-out;
+}
+
+.widget-dnd>switch:hover {
+	border-color: @ef_green;
+	box-shadow: 0 0 0 2px alpha(@ef_green, 0.15);
 }
 
 .widget-dnd>switch:checked {
 	background: linear-gradient(to right, alpha(@ef_red, 0.6), alpha(@ef_red, 0.9));
 	border: 1px solid alpha(@ef_red, 0.8);
+}
+
+.widget-dnd>switch:checked:hover {
+	border-color: @ef_red;
+	box-shadow: 0 0 0 2px alpha(@ef_red, 0.15);
 }
 
 .widget-dnd>switch slider {
@@ -321,8 +351,25 @@ progressbar progress {
 	transition: background 180ms ease-in-out;
 }
 
+.widget-title>button.control-center-clear-all:hover {
+	background: alpha(@ef_red, 0.55);
+}
+
+.widget-title>button.control-center-clear-all:active {
+	background: alpha(@ef_red, 0.75);
+}
+
 .widget-buttons-grid flowboxchild>button:hover {
-	background-color: alpha(@ef_blue, 0.55);
+	background: alpha(@ef_blue, 0.55);
+}
+
+.widget-buttons-grid flowboxchild>button:active {
+	background: alpha(@ef_blue, 0.75);
+}
+
+.widget-title>button.control-center-clear-all:disabled {
+	background: alpha(@ef_grey_0, 0.15);
+	color: alpha(@ef_grey_1, 0.45);
 }
 
 .widget-mpris {
@@ -367,11 +414,17 @@ progressbar progress {
 	border-radius: 0.4rem;
 	box-shadow: none;
 	color: @ef_foreground;
+	transition: background 180ms ease-in-out;
 }
 
 .widget-mpris .widget-mpris-player .mpris-overlay button:hover,
 .widget-mpris>box>button:hover {
 	background: alpha(@ef_bg_1, 0.9);
+}
+
+.widget-mpris .widget-mpris-player .mpris-overlay button:active,
+.widget-mpris>box>button:active {
+	background: alpha(@ef_bg_2, 0.9);
 }
 
 .widget-mpris>box>button:disabled {
