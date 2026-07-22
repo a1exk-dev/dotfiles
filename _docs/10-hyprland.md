@@ -29,17 +29,31 @@ Hyprland 0.55 Lua configurations require `hyprctl eval` for runtime monitor chan
 
 ## Suspend display corruption
 
-On the ASUS Zenbook S16 UM5606GA, AMD PSR2 selective update can cause full-screen noise or display corruption after resuming from `s2idle`. Add this kernel parameter to the boot loader options to disable PSR2 selective update while retaining legacy PSR:
+On the ASUS Zenbook S16 UM5606GA, AMD PSR2 selective update can cause full-screen noise or display corruption after resuming from `s2idle`. Start with this kernel parameter to disable PSR2 selective update while retaining legacy PSR:
 
 ```text
 amdgpu.dcdebugmask=0x200
 ```
 
-For systemd-boot, append it to the `options` line in the active entry under `/boot/loader/entries/`, then reboot. Verify that it is active:
+If artifacts persist, change the parameter from `0x200` to `0x600` to also disable AMD Panel Replay:
+
+```text
+amdgpu.dcdebugmask=0x600
+```
+
+If artifacts still persist, replace `0x600` with `0x410` to disable legacy PSR as well as PSR selective update and Panel Replay:
+
+```text
+amdgpu.dcdebugmask=0x410
+```
+
+Disabling all PSR modes can increase panel power consumption.
+
+For systemd-boot, edit the `options` line in the active entry under `/boot/loader/entries/`, not `/boot/loader/loader.conf`, then reboot. Use `bootctl status` to identify the active entry. Verify that the parameter is active:
 
 ```sh
 cat /proc/cmdline
 cat /sys/module/amdgpu/parameters/dcdebugmask
 ```
 
-The module parameter should report `512`, the decimal representation of `0x200`. If corruption persists, try `amdgpu.dcdebugmask=0x600` to also disable Panel Replay.
+The module parameter should report `512` for `0x200`, `1536` for `0x600`, or `1040` for `0x410`.
