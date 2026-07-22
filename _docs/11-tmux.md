@@ -36,10 +36,11 @@ command -v tmux-session
 tmux
 ```
 
-Select an existing session to attach to it, or select `Create a new session`
-and enter a name. When run from inside tmux, the picker switches the current
-client instead of nesting tmux. Commands with arguments, such as `tmux ls`,
-continue to call tmux normally.
+Type a new session name and press Enter, select an existing session to attach
+to it, or select `Create a new session` and enter a name at the second prompt.
+When run from inside tmux, the picker switches the current client instead of
+nesting tmux. Commands with arguments, such as `tmux ls`, continue to call tmux
+normally.
 
 ## Notes
 

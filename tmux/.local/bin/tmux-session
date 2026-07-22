@@ -7,8 +7,23 @@ if ! command -v fzf >/dev/null 2>&1; then
   exit 1
 fi
 
+# TMUX can leak into terminal environments, so verify the current TTY is a pane.
+inside_tmux=
+if [ -n "${TMUX:-}" ] && [ -n "${TMUX_PANE:-}" ]; then
+  current_tty=$(tty 2>/dev/null) || current_tty=
+  pane_tty=$(tmux display-message -p -t "$TMUX_PANE" '#{pane_tty}' 2>/dev/null) || pane_tty=
+  if [ -n "$current_tty" ] && [ "$current_tty" = "$pane_tty" ]; then
+    inside_tmux=1
+  fi
+fi
+
+if [ -z "$inside_tmux" ]; then
+  unset TMUX TMUX_PANE
+fi
+
 sessions=$(tmux list-sessions -F '#{session_name}' 2>/dev/null) || sessions=
 
+fzf_status=0
 choice=$(
   {
     printf 'new Create a new session\n'
@@ -23,15 +38,39 @@ choice=$(
     --height=40% \
     --layout=reverse \
     --border \
+    --print-query \
     --prompt='tmux session> '
-) || exit 0
+) || fzf_status=$?
 
-action=${choice%% *}
-session_name=${choice#* }
+case $fzf_status in
+  0)
+    newline='
+'
+    query=${choice%%"$newline"*}
+    choice=${choice#*"$newline"}
+    action=${choice%% *}
+    session_name=${choice#* }
+    ;;
+  1)
+    action=new
+    query=$choice
+    session_name=$query
+    ;;
+  130)
+    exit 0
+    ;;
+  *)
+    exit "$fzf_status"
+    ;;
+esac
 
 if [ "$action" = new ]; then
-  printf 'Session name: '
-  IFS= read -r session_name
+  if [ -n "$query" ]; then
+    session_name=$query
+  else
+    printf 'Session name: '
+    IFS= read -r session_name
+  fi
   [ -n "$session_name" ] || exit 0
 elif [ "$action" != attach ]; then
   printf 'tmux-session: invalid selection\n' >&2
@@ -39,13 +78,13 @@ elif [ "$action" != attach ]; then
 fi
 
 if tmux has-session -t "=$session_name" 2>/dev/null; then
-  if [ -n "${TMUX:-}" ]; then
+  if [ -n "$inside_tmux" ]; then
     exec tmux switch-client -t "=$session_name"
   fi
   exec tmux attach-session -t "=$session_name"
 fi
 
-if [ -n "${TMUX:-}" ]; then
+if [ -n "$inside_tmux" ]; then
   tmux new-session -d -s "$session_name" -c "$PWD"
   exec tmux switch-client -t "=$session_name"
 fi
