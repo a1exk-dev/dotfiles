@@ -65,6 +65,18 @@ amdgpu.dcdebugmask=0x410
 
 Disabling all PSR modes can increase panel power consumption.
 
+If corruption persists but manually reapplying the current display mode clears it, the resumed eDP pipeline is stale. The Hypridle configuration waits two seconds for DPMS and backlight restoration, then runs the refresh-rate helper once to force a clean modeset:
+
+```text
+after_sleep_cmd = sleep 2 && ~/.config/hypr/scripts/edp-refresh-rate.sh --once
+```
+
+The helper selects `120 Hz` on external power or `60 Hz` on battery. Restart Hypridle after changing this hook:
+
+```sh
+systemctl --user restart hypridle.service
+```
+
 For systemd-boot, edit the `options` line in the active entry under `/boot/loader/entries/`, not `/boot/loader/loader.conf`, then reboot. Use `bootctl status` to identify the active entry. Verify that the parameter is active:
 
 ```sh
