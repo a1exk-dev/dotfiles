@@ -5,7 +5,7 @@ Waybar status bar configuration.
 ## Installation
 
 ```sh
-sudo pacman -S --needed waybar jq socat swaync noto-fonts-emoji
+sudo pacman -S --needed waybar jq socat swaync noto-fonts-emoji pipewire geoclue psmisc dbus v4l-utils
 ```
 
 ## Link config
@@ -24,6 +24,16 @@ stow --adopt -t "$HOME" waybar
 ## Keyboard layout
 
 The `hyprland/language` module displays the US or Russian flag. Click the flag to switch every connected keyboard to the next layout; `Super+Space` provides the same action. `noto-fonts-emoji` provides the flag glyphs.
+
+## Privacy widget
+
+The privacy widget always displays microphone, camera, and location indicators. Grey means inactive, red means active, and orange means a detector is unavailable.
+
+- `pw-dump` and `pw-mon` detect active PipeWire microphone and camera streams.
+- `fuser`, provided by `psmisc`, detects applications that open ALSA capture or V4L2 devices directly; `v4l2-ctl` filters out metadata and virtual video nodes.
+- `busctl` reads GeoClue's global location-in-use state, and `dbus-monitor` watches for changes.
+
+The tooltip identifies microphone and camera applications and PIDs when available. GeoClue intentionally hides client identities from other processes, so active location use cannot be attributed to an application. Denied device opens and location providers that bypass GeoClue are outside the widget's detection scope.
 
 ## Network widget
 

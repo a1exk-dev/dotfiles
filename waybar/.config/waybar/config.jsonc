@@ -20,8 +20,9 @@
 		"clock#minutes"
 	],
 	"modules-right": [
-		"group/brightness",
+		"custom/privacy",
 		"tray",
+		"group/brightness",
 		"group/battery",
 		"custom/notifications",
 	],
@@ -82,8 +83,8 @@
 
 	"hyprland/language": {
 		"format": "{}",
-		"format-en": "<span foreground=\"#7fbbb3\">[</span> 🇺🇸 <span foreground=\"#7fbbb3\">]</span>",
-		"format-ru": "<span foreground=\"#e67e80\">[</span> 🇷🇺 <span foreground=\"#e67e80\">]</span>",
+		"format-en": "<span foreground=\"#7fbbb3\">[</span>🇺🇸<span foreground=\"#7fbbb3\">]</span>",
+		"format-ru": "<span foreground=\"#e67e80\">[</span>🇷🇺<span foreground=\"#e67e80\">]</span>",
 		"keyboard-name": "at-translated-set-2-keyboard",
 		"on-click": "hyprctl switchxkblayout all next",
 		"tooltip": true,
@@ -172,7 +173,7 @@
 		"return-type": "json",
 		"format": "{text}",
 		"interval": 30,
-		"tooltip": false
+		"tooltip": true
 	},
 
 	"custom/battery-progress": {
@@ -181,23 +182,14 @@
 		"format": "[{text}]",
 		"interval": 30,
 		"escape": false,
-		"tooltip": false
-	},
-
-	"custom/battery-info": {
-		"exec": "~/.config/waybar/widgets/battery.sh info",
-		"return-type": "json",
-		"format": "[{text}]",
-		"interval": 30,
-		"tooltip": false
+		"tooltip": true
 	},
 
 	"group/battery": {
 		"orientation": "horizontal",
 		"modules": [
 			"custom/battery-icon",
-			"custom/battery-progress",
-			"custom/battery-info"
+			"custom/battery-progress"
 		]
 	},
 
@@ -211,6 +203,15 @@
 			"balanced": "󰗑",
 			"power-saver": "󰌪"
 		}
+	},
+
+	"custom/privacy": {
+		"exec": "~/.config/waybar/widgets/privacy.sh --watch",
+		"return-type": "json",
+		"format": "[{text}]",
+		"restart-interval": 1,
+		"escape": false,
+		"tooltip": true
 	},
 
 	"custom/notifications": {
