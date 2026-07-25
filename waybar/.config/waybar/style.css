@@ -51,11 +51,11 @@ tooltip label {
 #group-wireless,
 #custom-workspaces,
 #workspaces,
+#language,
 #clock,
 #wireplumber,
 #network,
 #bluetooth,
-#privacy,
 #power-profiles-daemon,
 #custom-notifications,
 #custom-wlogout,
@@ -63,6 +63,10 @@ tooltip label {
 	border-right: 1px dashed @ef_yellow;
 	margin: 0;
 	padding: 0 0.8rem;
+}
+
+#waybar .modules-left>widget:last-child>* {
+	border-right: none;
 }
 
 #custom-battery-icon,
@@ -126,19 +130,6 @@ tooltip label {
 	color: alpha(@ef_grey_0, 0.5);
 }
 
-#privacy-item.audio-in {
-	background: alpha(@ef_red, 0.8);
-	border-radius: 999px;
-	margin: 0.25rem 0;
-	min-height: 0.6rem;
-	min-width: 0.6rem;
-	padding: 0;
-}
-
-#privacy-item.audio-in image {
-	opacity: 0;
-}
-
 #power-profiles-daemon {}
 
 #power-profiles-daemon.performance {
@@ -191,6 +182,11 @@ tooltip label {
 
 #clock.minutes {
 	border-right: none;
+}
+
+#language {
+	font-family: "Noto Color Emoji";
+	font-size: 0.75rem;
 }
 
 #custom-brightness-icon.brightness-high,
@@ -294,12 +290,12 @@ tooltip label {
 }
 
 #workspaces>*,
+#language>*,
 #clock>*,
 #wireplumber>*,
 #group-volume>*,
 #network>*,
 #bluetooth>*,
-#privacy>*,
 #power-profiles-daemon>*,
 #custom-notifications>*,
 #tray>* {

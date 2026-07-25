@@ -5,7 +5,7 @@ Waybar status bar configuration.
 ## Installation
 
 ```sh
-sudo pacman -S --needed waybar jq socat swaync
+sudo pacman -S --needed waybar jq socat swaync noto-fonts-emoji
 ```
 
 ## Link config
@@ -20,6 +20,10 @@ stow --adopt -t "$HOME" waybar
 - `socat` listens to the Hyprland event socket for instant workspace updates; without it, the workspace widget falls back to polling once per second.
 - `hyprctl` comes from Hyprland and is used by the workspace widget.
 - `swaync-client` opens the notification center and reports notification mute state.
+
+## Keyboard layout
+
+The `hyprland/language` module displays the US or Russian flag. Click the flag to switch every connected keyboard to the next layout; `Super+Space` provides the same action. `noto-fonts-emoji` provides the flag glyphs.
 
 ## Network widget
 

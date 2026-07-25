@@ -12,7 +12,7 @@
 		"group/wireless",
 		"power-profiles-daemon",
 		"custom/wlogout",
-		"privacy"
+		"hyprland/language"
 	],
 	"modules-center": [
 		"clock#hours",
@@ -80,6 +80,16 @@
 		"tooltip": false
 	},
 
+	"hyprland/language": {
+		"format": "{}",
+		"format-en": "<span foreground=\"#7fbbb3\">[</span> 🇺🇸 <span foreground=\"#7fbbb3\">]</span>",
+		"format-ru": "<span foreground=\"#e67e80\">[</span> 🇷🇺 <span foreground=\"#e67e80\">]</span>",
+		"keyboard-name": "at-translated-set-2-keyboard",
+		"on-click": "hyprctl switchxkblayout all next",
+		"tooltip": true,
+		"tooltip-format": "{long}\nClick to switch layout"
+	},
+
 	"wireplumber#mic": {
 		"node-type": "Audio/Source",
 		"format": "[󰍰]",
@@ -121,20 +131,6 @@
 			"network#wifi",
 			"bluetooth"
 		]
-	},
-
-	"privacy": {
-		"icon-spacing": 4,
-		"icon-size": 1,
-		"transition-duration": 250,
-		"modules": [
-			{
-				"type": "audio-in",
-				"tooltip": true,
-				"tooltip-icon-size": 24
-			}
-		],
-		"ignore-monitor": true
 	},
 
 	"custom/volume-icon": {

@@ -19,6 +19,22 @@ stow -t "$HOME" wlogout
 
 systemctl --user enable --now hypridle.service
 
+## Russian input
+
+The input configuration provides US English and Russian keyboard layouts. Press `Super+Space` to switch every connected keyboard to the next layout.
+
+Generate the Russian UTF-8 locale without changing the system's default English locale:
+
+```sh
+sudoedit /etc/locale.gen
+```
+
+Uncomment `ru_RU.UTF-8 UTF-8`, then generate the enabled locales:
+
+```sh
+sudo locale-gen
+```
+
 ## Autostart
 
 Hyprland starts Ollama with `OLLAMA_IGPU_ENABLE=1` so `ollama-vulkan` can use the AMD integrated GPU.
