@@ -8,6 +8,7 @@ Personal dotfiles and scripts.
 - `hyprland/` - Hyprland window manager config. See [Hyprland](_docs/10-hyprland.md).
 - `waybar/` - Waybar status bar config. See [Waybar](_docs/15-waybar.md).
 - `swaync/` - SwayNC notification styling. See [SwayNC](_docs/16-swaync.md).
+- `nvim/` - Neovim LazyVim config. See [Neovim](_docs/17-nvim.md).
 - `tmux/` - Tmux configuration. See [Tmux](_docs/11-tmux.md).
 - `greetd/` - greetd login manager config. See [greetd](_docs/12-greetd.md).
 - `sysc-greet/` - sysc-greet themes. See [greetd](_docs/12-greetd.md).
@@ -28,6 +29,7 @@ Order is defined by numeric prefixes in `_docs/`.
 - [Desktop app theming](_docs/14-desktop-app-theming.md)
 - [Waybar](_docs/15-waybar.md)
 - [SwayNC](_docs/16-swaync.md)
+- [Neovim](_docs/17-nvim.md)
 - [Discord](_docs/Discord.md)
 - [Firefox](_docs/Firefox.md)
 
