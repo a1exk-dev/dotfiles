@@ -203,13 +203,19 @@ battery_time() {
 	format_minutes $(((remaining * 60 + power_now / 2) / power_now))
 }
 
+battery_tooltip() {
+	time_left=$(battery_time)
+	printf '%s %s%%' "$time_left" "$capacity"
+}
+
 print_icon() {
 	read_battery
 	level=$(battery_level)
 	classes=$(battery_state "$level")
 	icon=$(battery_icon "$level")
+	tooltip=$(battery_tooltip)
 
-	printf '{"text":"%s","percentage":%s,"class":["waybar-icon","waybar-icon-battery",%s]}\n' "$icon" "$capacity" "$classes"
+	printf '{"text":"%s","tooltip":"%s","percentage":%s,"class":["waybar-icon","waybar-icon-battery",%s]}\n' "$icon" "$tooltip" "$capacity" "$classes"
 }
 
 print_progress() {
@@ -217,17 +223,9 @@ print_progress() {
 	level=$(battery_level)
 	classes=$(battery_state "$level")
 	bar=$(battery_progress "$capacity")
+	tooltip=$(battery_tooltip)
 
-	printf '{"text":"%s","percentage":%s,"class":["waybar-progress","waybar-progress-battery",%s]}\n' "$bar" "$capacity" "$classes"
-}
-
-print_info() {
-	read_battery
-	level=$(battery_level)
-	classes=$(battery_state "$level")
-	time_left=$(battery_time)
-
-	printf '{"text":"%s %s%%","percentage":%s,"class":["waybar-info","waybar-info-battery",%s]}\n' "$time_left" "$capacity" "$capacity" "$classes"
+	printf '{"text":"%s","tooltip":"%s","percentage":%s,"class":["waybar-progress","waybar-progress-battery",%s]}\n' "$bar" "$tooltip" "$capacity" "$classes"
 }
 
 case "$action" in
@@ -237,11 +235,8 @@ case "$action" in
 	progress | get)
 		print_progress
 		;;
-	info)
-		print_info
-		;;
 	*)
-		printf 'Usage: %s {icon|progress|info}\n' "$0" >&2
+		printf 'Usage: %s {icon|progress}\n' "$0" >&2
 		exit 64
 		;;
 esac
