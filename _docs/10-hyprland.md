@@ -65,10 +65,10 @@ amdgpu.dcdebugmask=0x410
 
 Disabling all PSR modes can increase panel power consumption.
 
-If corruption persists but manually reapplying the current display mode clears it, the resumed eDP pipeline is stale. The Hypridle configuration waits two seconds for DPMS and backlight restoration, then runs the refresh-rate helper once to force a clean modeset:
+If corruption persists but manually reapplying the current display mode clears it, the resumed eDP pipeline is stale. Hypridle runs the refresh-rate helper immediately on resume, while Hyprlock still owns the locked session, to force a clean modeset before unlock:
 
 ```text
-after_sleep_cmd = sleep 2 && ~/.config/hypr/scripts/edp-refresh-rate.sh --once
+after_sleep_cmd = ~/.config/hypr/scripts/edp-refresh-rate.sh --once
 ```
 
 The helper selects `120 Hz` on external power or `60 Hz` on battery. Restart Hypridle after changing this hook:
