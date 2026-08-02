@@ -37,6 +37,39 @@ tooltip label {
 	color: @ef_foreground;
 }
 
+menu {
+	background: alpha(@ef_bg_0, 0.9);
+	border: 1px dashed @ef_yellow;
+	padding: 0.4rem;
+}
+
+menu menuitem {
+	background: transparent;
+	padding: 0.4rem 0.8rem;
+}
+
+menu menuitem label {
+	color: @ef_foreground;
+}
+
+menu menuitem:hover {
+	background: @ef_bg_2;
+}
+
+menu menuitem:hover label {
+	color: @ef_yellow;
+}
+
+menu menuitem:disabled label {
+	color: alpha(@ef_grey_0, 0.5);
+}
+
+menu separator {
+	background: @ef_bg_2;
+	margin: 0.3rem 0.5rem;
+	min-height: 1px;
+}
+
 .waybar-bracket,
 .waybar-bracket-left,
 .waybar-bracket-right {
