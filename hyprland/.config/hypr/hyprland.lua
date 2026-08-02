@@ -243,8 +243,12 @@ hl.bind(
 	{ locked = true, repeating = true }
 )
 -- ASUS Fn+F8 is the screen capture hotkey.
-hl.bind("Print", hl.dsp.exec_cmd("hyprshot -m region --raw | satty --filename -"), { locked = true })
-hl.bind("SHIFT + Print", hl.dsp.exec_cmd("hyprshot -m output -m active --raw | satty --filename -"), { locked = true })
+hl.bind("Print", hl.dsp.exec_cmd("hyprshot -m region --raw | satty --filename - --copy-command wl-copy"), { locked = true })
+hl.bind(
+	"SHIFT + Print",
+	hl.dsp.exec_cmd("hyprshot -m output -m active --raw | satty --filename - --copy-command wl-copy"),
+	{ locked = true }
+)
 
 -- Requires playerctl
 hl.bind("XF86AudioNext", hl.dsp.exec_cmd("playerctl next"), { locked = true })
