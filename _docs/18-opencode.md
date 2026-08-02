@@ -16,6 +16,6 @@ The global plugin at `~/.config/opencode/plugins/notifications.js` sends desktop
 
 - OpenCode asks a question
 - OpenCode requests permission
-- An operation finishes and its session becomes idle
+- An operation finishes and its top-level session becomes idle
 
 Ensure `notify-send` is installed and a notification daemon is running. Quit and restart OpenCode after changing plugins because they are loaded only at startup.
