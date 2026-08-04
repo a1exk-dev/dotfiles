@@ -1,0 +1,91 @@
+{
+  "snapshot": {
+    "browser version": "Brave 151.1.93.129",
+    "format": "curated descriptive UI snapshot",
+    "automatic application": "none; documentation only"
+  },
+  "navigation and default controls": {
+    "Back": "visible (default)",
+    "Reload": "visible (default)",
+    "Forward": "visible",
+    "Add Bookmark": "visible (default)",
+    "Home": "hidden",
+    "bookmark bar": "visible on all tabs",
+    "Tab Search": "visible and pinned to the horizontal tab strip"
+  },
+  "toolbar": {
+    "pinned actions in order": [
+      "Chrome Labs",
+      "Send to your devices",
+      "Task Manager"
+    ],
+    "pinned extensions": [
+      "AdGuard AdBlocker",
+      "Bitwarden Password Manager"
+    ],
+    "hidden browser buttons and actions": [
+      "Sidebar",
+      "Leo",
+      "Wallet",
+      "Rewards",
+      "Brave News"
+    ]
+  },
+  "sidebar": {
+    "display": "never show",
+    "configured built-in items in order": [
+      "Brave Talk",
+      "Wallet",
+      "Bookmarks",
+      "Reading List"
+    ],
+    "Leo": "hidden"
+  },
+  "tabs": {
+    "orientation": "horizontal",
+    "compact mode": "off"
+  },
+  "address bar": {
+    "layout": "standard, narrow, centered",
+    "wide layout": false
+  },
+  "window": {
+    "decorations": "native system decorations",
+    "close-window confirmation": "on"
+  },
+  "web content": {
+    "rounded corners": "on"
+  },
+  "theme": {
+    "repository theme source": "Everforest Hard",
+    "palette": "Everforest Hard",
+    "extension format": "Manifest V3 theme",
+    "code and permissions": "none",
+    "activation": "pending one-time Load unpacked in Brave",
+    "forced dark web content": "off"
+  },
+  "new tabs": {
+    "effective mode": "Dashboard",
+    "configured selector": "Homepage",
+    "homepage target": "New Tab Page",
+    "dashboard preferences": {
+      "state": "active",
+      "clock": "on",
+      "clock format": "24-hour",
+      "branded backgrounds": "on",
+      "News widget": "off",
+      "Rewards widget": "off",
+      "Shields stats widget": "off",
+      "Brave Talk widget": "off",
+      "shortcuts": "off",
+      "shortcut source if enabled": "Top Sites"
+    }
+  },
+  "languages": [
+    "en-US",
+    "en"
+  ],
+  "privacy controls": {
+    "Related Website Sets": "off"
+  }
+}

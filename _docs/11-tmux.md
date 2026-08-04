@@ -10,6 +10,10 @@ git clone https://github.com/tmux-plugins/tpm ~/.tmux/plugins/tpm
 
 After launching tmux, press `prefix + I` to fetch plugins.
 
+The configured plugins include Resurrect and Continuum. Continuum saves tmux
+state every 15 minutes and restores it automatically when a new tmux server
+starts.
+
 ## Config
 
 - `tmux/.tmux.conf` - Main configuration
@@ -36,16 +40,20 @@ command -v tmux-session
 tmux
 ```
 
-Type a new session name and press Enter, select an existing session to attach
-to it, or select `Create a new session` and enter a name at the second prompt.
-When run from inside tmux, the picker switches the current client instead of
-nesting tmux. Commands with arguments, such as `tmux ls`, continue to call tmux
-normally.
+With no running tmux server, the launcher starts a `main` session directly so
+Continuum can restore saved state automatically; `fzf` is not shown or required
+for this cold start. Once the server is running, the launcher opens the `fzf`
+picker to select a live or restored session or create a new one. When run from
+inside tmux, the picker switches the current client instead of nesting tmux.
+Commands with arguments, such as `tmux ls`, continue to call tmux normally.
 
 ## Notes
 
 - Prefix is `Ctrl+a`.
 - Reload config with `prefix + r`.
+- Save session state manually with `prefix + Ctrl+s`.
+- Restore session state manually with `prefix + Ctrl+r`.
+- Continuum automatically saves every 15 minutes and restores on tmux startup.
 - Status bar uses Everforest palette values from root `ReadMe.md`.
 - Session shortcuts:
   - `prefix + S` - Create new named session (prompt)

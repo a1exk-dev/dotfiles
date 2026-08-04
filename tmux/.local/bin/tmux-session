@@ -2,11 +2,6 @@
 
 set -eu
 
-if ! command -v fzf >/dev/null 2>&1; then
-  printf 'tmux-session: fzf is required\n' >&2
-  exit 1
-fi
-
 # TMUX can leak into terminal environments, so verify the current TTY is a pane.
 inside_tmux=
 if [ -n "${TMUX:-}" ] && [ -n "${TMUX_PANE:-}" ]; then
@@ -22,6 +17,15 @@ if [ -z "$inside_tmux" ]; then
 fi
 
 sessions=$(tmux list-sessions -F '#{session_name}' 2>/dev/null) || sessions=
+
+if [ -z "$inside_tmux" ] && [ -z "$sessions" ]; then
+  exec tmux new-session -s main -c "$PWD"
+fi
+
+if ! command -v fzf >/dev/null 2>&1; then
+  printf 'tmux-session: fzf is required\n' >&2
+  exit 1
+fi
 
 fzf_status=0
 choice=$(

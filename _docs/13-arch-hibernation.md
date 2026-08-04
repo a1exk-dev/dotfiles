@@ -286,6 +286,12 @@ Example busybox hook order:
 HOOKS=(base udev autodetect microcode modconf kms keyboard keymap consolefont block filesystems resume fsck)
 ```
 
+On affected AMD Krackan-family systems, early AMDGPU initialization can race hibernation restore and leave display corruption with `MES failed to respond` errors. Omit `kms` on those systems; the current machine uses:
+
+```sh
+HOOKS=(base plymouth udev autodetect microcode modconf keyboard keymap consolefont block filesystems resume fsck)
+```
+
 If root is encrypted, on LVM, or on another stacked device, place `resume` after the hook that unlocks or activates the mapped device.
 
 Regenerate all initramfs images:
