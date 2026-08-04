@@ -4,6 +4,8 @@ state_file="${XDG_RUNTIME_DIR:?XDG_RUNTIME_DIR is not set}/hypridle-screen-brigh
 
 case "${1:-}" in
 	dim)
+		[ -e "$state_file" ] && exit 0
+
 		brightness=$(brightnessctl -c backlight get) || exit 1
 		case "$brightness" in
 			'' | *[!0-9]*) exit 1 ;;
