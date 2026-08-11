@@ -100,7 +100,7 @@ If artifacts are visible on the physical display but absent from a screenshot, d
 amdgpu.sg_display=0
 ```
 
-Add the parameter to the active boot-loader entry and reboot. Rebuilding the initramfs is unnecessary when AMDGPU is not embedded in it.
+Add the parameter to the active boot-loader entry and reboot. Rebuilding the initramfs is unnecessary when AMDGPU is not embedded in it. This reduces the affected scanout paths but does not fully prevent post-hibernation shimmer on this machine.
 
 For hibernation-only corruption on Krackan-family AMD GPUs, check the kernel journal for `MES failed to respond` and `failed to unmap legacy queue`. If those errors occur, remove the `kms` hook from `/etc/mkinitcpio.conf` so AMDGPU is not initialized before the hibernation image is restored, then rebuild the initramfs:
 
@@ -109,6 +109,18 @@ sudo mkinitcpio -P
 ```
 
 This workaround takes effect after reboot and may remove the graphical Plymouth phase during early boot.
+
+If the resumed panel shimmers until a manual refresh-rate change, force a real modeset immediately after resume:
+
+```text
+after_sleep_cmd = ~/.config/hypr/scripts/edp-refresh-rate.sh --resume
+```
+
+The helper switches to the opposite supported refresh rate, waits until Hyprland reports that the mode committed, and restores the correct AC or battery rate. It repeats the reset five seconds later because resume-time surface initialization can overwrite an earlier modeset. Restart Hypridle after changing the hook:
+
+```sh
+systemctl --user restart hypridle.service
+```
 
 For systemd-boot, edit the `options` line in the active entry under `/boot/loader/entries/`, not `/boot/loader/loader.conf`, then reboot. Use `bootctl status` to identify the active entry. Verify that the parameter is active:
 

@@ -96,6 +96,10 @@ tmux() {
   command tmux "$@"
 }
 
+tradingview() {
+  /usr/bin/snap run tradingview --ozone-platform=x11 "$@"
+}
+
 # Should be last
 eval "$(starship init zsh)"
 export PATH=$PATH:$HOME/.local/bin

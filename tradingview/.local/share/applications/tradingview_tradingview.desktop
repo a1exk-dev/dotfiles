@@ -1,0 +1,12 @@
+[Desktop Entry]
+X-SnapInstanceName=tradingview
+Name=TradingView
+X-SnapAppName=tradingview
+Exec=/usr/bin/snap run tradingview --ozone-platform=x11 %U
+Terminal=false
+Type=Application
+Icon=/var/lib/snapd/snap/tradingview/current/meta/gui/icon.png
+StartupWMClass=TradingView
+Comment=Experience extra power, extra speed and extra flexibility, all with the same UX you know and love.
+MimeType=x-scheme-handler/tradingview;
+Categories=Office;Finance;
