@@ -1,0 +1,271 @@
+@define-color ef_foreground #d3c6aa;
+@define-color ef_red #e67e80;
+@define-color ef_yellow #dbbc7f;
+@define-color ef_green #a7c080;
+@define-color ef_blue #7fbbb3;
+@define-color ef_purple #d699b6;
+@define-color ef_aqua #83c092;
+@define-color ef_orange #e69875;
+
+@define-color ef_statusline_1 #a7c080;
+@define-color ef_statusline_2 #d3c6aa;
+@define-color ef_statusline_3 #e67e80;
+
+@define-color ef_grey_0 #7a8478;
+@define-color ef_grey_1 #859289;
+@define-color ef_grey_2 #9da9a0;
+
+@define-color ef_bg_dim #1e2326;
+@define-color ef_bg_0 #272e33;
+@define-color ef_bg_1 #2e383c;
+@define-color ef_bg_2 #374145;
+@define-color ef_bg_3 #414b50;
+@define-color ef_bg_4 #495156;
+@define-color ef_bg_5 #4f5b58;
+
+@define-color ef_bg_red #493b40;
+@define-color ef_bg_yellow #45443c;
+@define-color ef_bg_green #3c4841;
+@define-color ef_bg_blue #384b55;
+@define-color ef_bg_purple #463f48;
+@define-color ef_bg_visual #4c3743;
+
+#waybar {
+	background: alpha(@ef_bg_0, 0.9);
+	border-top-color: @ef_bg_2;
+	border-bottom-color: @ef_bg_2;
+	color: @ef_foreground;
+}
+
+#waybar>box {
+	border-color: @ef_yellow;
+}
+
+tooltip {
+	background: transparent;
+}
+
+tooltip label {
+	background: alpha(@ef_bg_0, 0.9);
+	border-color: @ef_yellow;
+	color: @ef_foreground;
+}
+
+menu {
+	background: alpha(@ef_bg_0, 0.9);
+	border-color: @ef_yellow;
+}
+
+menu menuitem {
+	background: transparent;
+}
+
+menu menuitem label {
+	color: @ef_foreground;
+}
+
+menu menuitem:hover {
+	background: @ef_bg_2;
+}
+
+menu menuitem:hover label {
+	color: @ef_yellow;
+}
+
+menu menuitem:disabled label {
+	color: alpha(@ef_grey_0, 0.5);
+}
+
+menu separator {
+	background: @ef_bg_2;
+}
+
+#group-brightness,
+#group-volume,
+#group-battery,
+#group-wireless,
+#custom-workspaces,
+#workspaces,
+#language,
+#clock,
+#wireplumber,
+#network,
+#bluetooth,
+#power-profiles-daemon,
+#custom-privacy,
+#custom-notifications,
+#custom-wlogout,
+#tray {
+	border-right-color: @ef_yellow;
+}
+
+#waybar .modules-right>widget>* {
+	border-left-color: @ef_yellow;
+}
+
+#wireplumber.mic {
+	color: @ef_foreground;
+}
+
+#wireplumber.mic.muted,
+#wireplumber.mic.source-muted {
+	color: alpha(@ef_grey_0, 0.5);
+}
+
+#network.wifi {
+	color: @ef_foreground;
+}
+
+#network.disconnected {
+	color: alpha(@ef_grey_0, 0.5);
+}
+
+#network.disabled {
+	color: alpha(@ef_grey_0, 0.5);
+}
+
+#bluetooth {
+	color: alpha(@ef_blue, 0.5);
+}
+
+#bluetooth.connected {
+	color: alpha(@ef_blue, 0.7);
+}
+
+#bluetooth.disabled,
+#bluetooth.off {
+	color: alpha(@ef_grey_0, 0.5);
+}
+
+#power-profiles-daemon.performance {
+	color: alpha(@ef_red, 0.7);
+}
+
+#power-profiles-daemon.balanced {
+	color: alpha(@ef_blue, 0.7);
+}
+
+#power-profiles-daemon.power-saver {
+	color: alpha(@ef_green, 0.7);
+}
+
+@keyframes notification-blink {
+	from {
+		color: alpha(@ef_red, 0.9);
+	}
+
+	to {
+		color: alpha(@ef_red, 0.45);
+	}
+}
+
+#custom-notifications.notifications-enabled {
+	color: alpha(@ef_yellow, 0.8);
+}
+
+#custom-notifications.notifications-active {
+	color: alpha(@ef_red, 0.9);
+}
+
+#custom-notifications.notifications-disabled,
+#custom-notifications.notifications-unavailable {
+	color: alpha(@ef_grey_0, 0.5);
+}
+
+#custom-volume {
+	border-right-color: @ef_yellow;
+}
+
+#custom-brightness-icon.brightness-high,
+#custom-brightness.brightness-high {
+	color: alpha(@ef_red, 0.5);
+}
+
+#custom-brightness-icon.brightness-medium,
+#custom-brightness.brightness-medium {
+	color: alpha(@ef_green, 0.5);
+}
+
+#custom-brightness-icon.brightness-low,
+#custom-brightness.brightness-low {
+	color: alpha(@ef_orange, 0.5);
+}
+
+#custom-volume-icon.volume-high,
+#custom-volume.volume-high {
+	color: alpha(@ef_red, 0.5);
+}
+
+#custom-volume-icon.volume-medium-high,
+#custom-volume.volume-medium-high {
+	color: alpha(@ef_orange, 0.5);
+}
+
+#custom-volume-icon.volume-medium,
+#custom-volume.volume-medium {
+	color: alpha(@ef_green, 0.5);
+}
+
+#custom-volume-icon.volume-low,
+#custom-volume.volume-low {
+	color: alpha(@ef_blue, 0.5);
+}
+
+#custom-volume-icon.volume-off,
+#custom-volume.volume-off,
+#custom-volume-icon.volume-muted,
+#custom-volume.volume-muted {
+	color: alpha(@ef_foreground, 0.5);
+}
+
+#custom-battery-icon.battery-connected,
+#custom-battery-progress.battery-connected {
+	color: alpha(@ef_blue, 0.5);
+}
+
+#custom-battery-icon.battery-disconnected,
+#custom-battery-progress.battery-disconnected {
+	color: alpha(@ef_foreground, 0.5);
+}
+
+#custom-battery-icon.battery-level-4,
+#custom-battery-progress.battery-level-4 {
+	color: alpha(@ef_green, 0.5);
+}
+
+#custom-battery-icon.battery-level-3,
+#custom-battery-progress.battery-level-3 {
+	color: alpha(@ef_aqua, 0.5);
+}
+
+#custom-battery-icon.battery-level-2,
+#custom-battery-progress.battery-level-2 {
+	color: alpha(@ef_yellow, 0.5);
+}
+
+#custom-battery-icon.battery-level-1,
+#custom-battery-progress.battery-level-1 {
+	color: alpha(@ef_red, 0.5);
+}
+
+#custom-battery-icon.battery-full,
+#custom-battery-progress.battery-full {
+	color: alpha(@ef_green, 0.7);
+}
+
+#workspaces button {
+	background: transparent;
+	color: alpha(@ef_foreground, 0.5);
+}
+
+#workspaces button.active {
+	color: @ef_yellow;
+}
+
+#custom-workspaces {
+	color: alpha(@ef_foreground, 0.5);
+}
+
+#custom-wlogout {
+	color: alpha(@ef_red, 0.7);
+}

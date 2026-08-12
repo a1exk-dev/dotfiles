@@ -1,0 +1,55 @@
+@define-color wlogout_foreground #d3c6aa;
+@define-color wlogout_window_background rgba(30, 35, 38, 0.9);
+@define-color wlogout_wallpaper_overlay rgba(30, 35, 38, 0.78);
+@define-color wlogout_button_background rgba(39, 46, 51, 0.55);
+@define-color wlogout_button_border rgba(122, 132, 120, 0.45);
+@define-color wlogout_button_hover_background rgba(46, 56, 60, 0.78);
+@define-color wlogout_button_hover_border #dbbc7f;
+@define-color wlogout_lock #7fbbb3;
+@define-color wlogout_logout #dbbc7f;
+@define-color wlogout_suspend #a7c080;
+@define-color wlogout_hibernate #d699b6;
+@define-color wlogout_reboot #e69875;
+@define-color wlogout_shutdown #e67e80;
+
+window {
+	color: @wlogout_foreground;
+	background-color: @wlogout_window_background;
+}
+
+button {
+	background-color: @wlogout_button_background;
+	border-color: @wlogout_button_border;
+	color: @wlogout_foreground;
+}
+
+button:focus,
+button:active,
+button:hover {
+	background-color: @wlogout_button_hover_background;
+	border-color: @wlogout_button_hover_border;
+}
+
+#lock {
+	color: @wlogout_lock;
+}
+
+#logout {
+	color: @wlogout_logout;
+}
+
+#suspend {
+	color: @wlogout_suspend;
+}
+
+#hibernate {
+	color: @wlogout_hibernate;
+}
+
+#reboot {
+	color: @wlogout_reboot;
+}
+
+#shutdown {
+	color: @wlogout_shutdown;
+}

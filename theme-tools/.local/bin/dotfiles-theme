@@ -1,0 +1,1156 @@
+#!/usr/bin/env bash
+
+set -Eeuo pipefail
+
+resolve_source() {
+	local source_path=${BASH_SOURCE[0]}
+	local source_dir link_target
+
+	while [[ -L $source_path ]]; do
+		source_dir=$(cd -P -- "$(dirname -- "$source_path")" && pwd)
+		link_target=$(readlink -- "$source_path")
+		if [[ $link_target == /* ]]; then
+			source_path=$link_target
+		else
+			source_path=$source_dir/$link_target
+		fi
+	done
+
+	cd -P -- "$(dirname -- "$source_path")" && pwd
+}
+
+SCRIPT_DIR=$(resolve_source)
+REPO_ROOT=$(cd -P -- "$SCRIPT_DIR/../../.." && pwd)
+
+DEFAULT_THEME=everforest-hard
+BUNDLE_MARKER=.dotfiles-theme-name
+DRY_RUN=0
+ZEN_PROFILE_OPTION=
+STAGING_DIR=
+GREETER_SNAPSHOT=
+
+warn() {
+	printf 'warning: %s\n' "$*" >&2
+}
+
+die() {
+	printf 'error: %s\n' "$*" >&2
+	exit 1
+}
+
+usage() {
+	cat <<'EOF'
+Usage:
+  dotfiles-theme [--dry-run] install [--zen-profile PATH]
+  dotfiles-theme [--dry-run] set NAME
+  dotfiles-theme list
+  dotfiles-theme status
+  dotfiles-theme [--dry-run] sync-greeter
+EOF
+}
+
+usage_error() {
+	printf 'error: %s\n' "$*" >&2
+	usage >&2
+	exit 2
+}
+
+cleanup() {
+	if [[ -n $GREETER_SNAPSHOT ]]; then
+		rm -f -- "$GREETER_SNAPSHOT"
+		GREETER_SNAPSHOT=
+	fi
+	if [[ -z $STAGING_DIR ]]; then
+		return
+	fi
+
+	case $STAGING_DIR in
+		"$BUNDLES_DIR"/.*.stage.* | /tmp/dotfiles-theme.*)
+			rm -rf -- "$STAGING_DIR"
+			;;
+	esac
+}
+
+trap cleanup EXIT
+trap 'exit 130' INT
+trap 'exit 143' TERM
+
+[[ -n ${HOME:-} ]] || die 'HOME is not set'
+[[ $HOME == /* ]] || die 'HOME must be an absolute path'
+
+CONFIG_HOME=${XDG_CONFIG_HOME:-$HOME/.config}
+STATE_HOME=${XDG_STATE_HOME:-$HOME/.local/state}
+DATA_HOME=${XDG_DATA_HOME:-$HOME/.local/share}
+
+[[ $CONFIG_HOME == /* ]] || die 'XDG_CONFIG_HOME must be an absolute path'
+[[ $STATE_HOME == /* ]] || die 'XDG_STATE_HOME must be an absolute path'
+[[ $DATA_HOME == /* ]] || die 'XDG_DATA_HOME must be an absolute path'
+
+THEME_SOURCE=$REPO_ROOT/theme/$DEFAULT_THEME
+STARSHIP_BASE=$REPO_ROOT/starship/.config/starship/base.toml
+ZEN_BASE=$REPO_ROOT/zen/profile/user.base.js
+ZEN_USER_CHROME=$REPO_ROOT/zen/profile/chrome/userChrome.css
+STATE_ROOT=$STATE_HOME/dotfiles-theme
+BUNDLES_DIR=$STATE_ROOT/bundles
+ACTIVE_FILE=$STATE_ROOT/active
+CONFIG_THEME_DIR=$CONFIG_HOME/dotfiles-theme
+CURRENT_LINK=$CONFIG_THEME_DIR/current
+
+inside_repo() {
+	local path=$1
+	[[ $path == "$REPO_ROOT" || $path == "$REPO_ROOT"/* ]]
+}
+
+inside_bundles() {
+	local path=$1
+	[[ $path == "$BUNDLES_DIR"/* ]]
+}
+
+trim_whitespace() {
+	local value=$1
+	value=${value#"${value%%[![:space:]]*}"}
+	value=${value%"${value##*[![:space:]]}"}
+	TRIMMED_VALUE=$value
+}
+
+require_file() {
+	local path=$1 description=$2
+	[[ -f $path && -r $path ]] || die "$description is missing or unreadable: $path"
+}
+
+JSON_VALIDATOR_WARNED=0
+TOML_VALIDATOR_WARNED=0
+JS_VALIDATOR_WARNED=0
+LUA_VALIDATOR_WARNED=0
+
+validate_json() {
+	local path=$1
+	if command -v jq >/dev/null 2>&1; then
+		jq empty "$path" >/dev/null 2>&1 || die "malformed JSON: $path"
+	elif command -v python3 >/dev/null 2>&1; then
+		python3 -c 'import json, sys; json.load(open(sys.argv[1], encoding="utf-8"))' "$path" \
+			>/dev/null 2>&1 || die "malformed JSON: $path"
+	elif ((JSON_VALIDATOR_WARNED == 0)); then
+		warn 'jq/python3 not found; JSON validation skipped'
+		JSON_VALIDATOR_WARNED=1
+	fi
+}
+
+validate_toml() {
+	local path=$1
+	if command -v taplo >/dev/null 2>&1; then
+		taplo check "$path" >/dev/null 2>&1 || die "malformed TOML: $path"
+	elif command -v python3 >/dev/null 2>&1 && python3 -c 'import tomllib' >/dev/null 2>&1; then
+		python3 -c 'import sys, tomllib; tomllib.load(open(sys.argv[1], "rb"))' "$path" \
+			>/dev/null 2>&1 || die "malformed TOML: $path"
+	elif ((TOML_VALIDATOR_WARNED == 0)); then
+		warn 'taplo/python3 tomllib not found; general TOML validation skipped'
+		TOML_VALIDATOR_WARNED=1
+	fi
+}
+
+validate_javascript() {
+	local path=$1
+	if command -v node >/dev/null 2>&1; then
+		node --check "$path" >/dev/null 2>&1 || die "malformed JavaScript: $path"
+	elif ((JS_VALIDATOR_WARNED == 0)); then
+		warn 'node not found; JavaScript validation skipped'
+		JS_VALIDATOR_WARNED=1
+	fi
+}
+
+validate_lua() {
+	local path=$1
+	if command -v luac >/dev/null 2>&1; then
+		luac -p "$path" >/dev/null 2>&1 || die "malformed Lua: $path"
+	elif ((LUA_VALIDATOR_WARNED == 0)); then
+		warn 'luac not found; Lua validation skipped'
+		LUA_VALIDATOR_WARNED=1
+	fi
+}
+
+validate_by_extension() {
+	local path=$1
+	case $path in
+		*.json) validate_json "$path" ;;
+		*.toml) validate_toml "$path" ;;
+		*.js) validate_javascript "$path" ;;
+		*.lua) validate_lua "$path" ;;
+		*.sh) bash -n "$path" || die "malformed shell source: $path" ;;
+	esac
+}
+
+validate_greeter_schema() {
+	local path=$1 line section= name_seen=0 key value
+	local name_pattern='^name[[:space:]]*=[[:space:]]*"[^"]+"[[:space:]]*(#.*)?$'
+	local color_pattern='^([a-z_]+)[[:space:]]*=[[:space:]]*"(#[[:xdigit:]]{6})"[[:space:]]*(#.*)?$'
+	local -A required=(
+		[bg_base]=1
+		[bg_active]=1
+		[primary]=1
+		[secondary]=1
+		[accent]=1
+		[warning]=1
+		[danger]=1
+		[fg_primary]=1
+		[fg_secondary]=1
+		[fg_muted]=1
+		[border_focus]=1
+	)
+	local -A seen=()
+
+	while IFS= read -r line || [[ -n $line ]]; do
+		line=${line%$'\r'}
+		trim_whitespace "$line"
+		line=$TRIMMED_VALUE
+		[[ -z $line || $line == \#* ]] && continue
+
+		if [[ $line == '[colors]' ]]; then
+			[[ -z $section ]] || die "invalid sysc-greet theme schema: duplicate [colors] in $path"
+			section=colors
+			continue
+		fi
+
+		if [[ -z $section ]]; then
+			if [[ $line =~ $name_pattern && $name_seen -eq 0 ]]; then
+				name_seen=1
+				continue
+			fi
+			die "invalid sysc-greet theme schema before [colors]: $path"
+		fi
+
+		[[ $line =~ $color_pattern ]] || die "invalid sysc-greet color entry: $path"
+		key=${BASH_REMATCH[1]}
+		value=${BASH_REMATCH[2]}
+		[[ -n ${required[$key]+x} ]] || die "unexpected sysc-greet color key '$key': $path"
+		[[ -z ${seen[$key]+x} ]] || die "duplicate sysc-greet color key '$key': $path"
+		[[ $value =~ ^#[[:xdigit:]]{6}$ ]] || die "invalid sysc-greet color '$value': $path"
+		seen[$key]=1
+	done <"$path"
+
+	((name_seen == 1)) || die "missing sysc-greet theme name: $path"
+	[[ $section == colors ]] || die "missing [colors] in sysc-greet theme: $path"
+	for key in "${!required[@]}"; do
+		[[ -n ${seen[$key]+x} ]] || die "missing sysc-greet color key '$key': $path"
+	done
+}
+
+validate_repo_sources() {
+	local path leaf
+	local -a mandatory=(
+		"$STARSHIP_BASE"
+		"$ZEN_BASE"
+		"$ZEN_USER_CHROME"
+		"$THEME_SOURCE/.config/starship/palette.toml"
+		"$THEME_SOURCE/.config/zen/user.js"
+		"$THEME_SOURCE/.config/zen/chrome/theme.css"
+		"$THEME_SOURCE/.config/hypr/colors.lua"
+		"$THEME_SOURCE/.config/waybar/theme.css"
+		"$THEME_SOURCE/.config/opencode/themes/current.json"
+		"$THEME_SOURCE/.local/share/brave/themes/current/manifest.json"
+		"$THEME_SOURCE/.config/sysc-greet/themes/current.toml"
+	)
+
+	[[ -d $THEME_SOURCE ]] || die "theme source directory is missing: $THEME_SOURCE"
+	for path in "${mandatory[@]}"; do
+		require_file "$path" 'required repository source'
+	done
+
+	while IFS= read -r -d '' leaf; do
+		if [[ -L $leaf ]]; then
+			[[ -e $leaf ]] || die "broken repository source symlink: $leaf"
+		elif [[ ! -f $leaf ]]; then
+			die "unsupported repository source leaf: $leaf"
+		fi
+		[[ -r $leaf ]] || die "unreadable repository source leaf: $leaf"
+		[[ -f $leaf ]] && validate_by_extension "$leaf"
+	done < <(find "$THEME_SOURCE" ! -type d -print0)
+
+	validate_toml "$STARSHIP_BASE"
+	validate_javascript "$ZEN_BASE"
+	validate_greeter_schema "$THEME_SOURCE/.config/sysc-greet/themes/current.toml"
+}
+
+generated_path() {
+	case $1 in
+		"$BUNDLE_MARKER" | \
+			.config/starship.toml | \
+			.config/zen/user.js | \
+			.config/btop/themes/current.theme | \
+			.config/ghostty/themes/current | \
+			.config/nvim/theme.lua)
+			return 0
+			;;
+	esac
+	return 1
+}
+
+prepare_generated_path() {
+	local path=$1
+	if [[ -d $path && ! -L $path ]]; then
+		die "repository source conflicts with generated path: $path"
+	fi
+	rm -f -- "$path"
+	mkdir -p -- "$(dirname -- "$path")"
+}
+
+select_btop_native_theme() {
+	local preferred=/usr/share/btop/themes/everforest-dark-hard.theme
+	local candidate data_dir
+	local -a candidates=()
+
+	if [[ -n ${DOTFILES_THEME_BTOP_NATIVE_THEME:-} ]]; then
+		preferred=$DOTFILES_THEME_BTOP_NATIVE_THEME
+		candidates=("$preferred")
+	else
+		candidates=("$preferred")
+		IFS=: read -r -a data_dirs <<<"${XDG_DATA_DIRS:-/usr/local/share:/usr/share}"
+		for data_dir in "${data_dirs[@]}"; do
+			[[ -n $data_dir ]] || continue
+			candidate=$data_dir/btop/themes/everforest-dark-hard.theme
+			[[ $candidate == "$preferred" ]] || candidates+=("$candidate")
+		done
+	fi
+
+	for candidate in "${candidates[@]}"; do
+		if [[ -f $candidate ]]; then
+			BTOP_NATIVE_THEME=$(readlink -m -- "$candidate")
+			return
+		fi
+	done
+
+	BTOP_NATIVE_THEME=$(readlink -m -- "$preferred")
+	warn "btop native theme not found; selector will be dangling: $BTOP_NATIVE_THEME"
+}
+
+select_ghostty_native_theme() {
+	local preferred='/usr/share/ghostty/themes/Everforest Dark Hard'
+	local candidate data_dir
+	local -a candidates=() data_dirs=()
+
+	if [[ -n ${DOTFILES_THEME_GHOSTTY_NATIVE_THEME:-} ]]; then
+		preferred=$DOTFILES_THEME_GHOSTTY_NATIVE_THEME
+		candidates=("$preferred")
+	else
+		candidates=("$preferred")
+		IFS=: read -r -a data_dirs <<<"${XDG_DATA_DIRS:-/usr/local/share:/usr/share}"
+		for data_dir in "${data_dirs[@]}"; do
+			[[ -n $data_dir ]] || continue
+			candidate="$data_dir/ghostty/themes/Everforest Dark Hard"
+			[[ $candidate == "$preferred" ]] || candidates+=("$candidate")
+		done
+	fi
+
+	for candidate in "${candidates[@]}"; do
+		if [[ -f $candidate ]]; then
+			GHOSTTY_NATIVE_THEME=$(readlink -m -- "$candidate")
+			return
+		fi
+	done
+
+	GHOSTTY_NATIVE_THEME=$(readlink -m -- "$preferred")
+	warn "Ghostty native theme not found; selector will be dangling: $GHOSTTY_NATIVE_THEME"
+}
+
+prepare_bundle() {
+	local bundle=$1 theme=$2 leaf relative destination
+
+	mkdir -p -- "$bundle"
+	while IFS= read -r -d '' leaf; do
+		relative=${leaf#"$THEME_SOURCE"/}
+		destination=$bundle/$relative
+		mkdir -p -- "$(dirname -- "$destination")"
+		ln -s -- "$leaf" "$destination"
+	done < <(find "$THEME_SOURCE" ! -type d -print0)
+
+	destination=$bundle/.config/starship.toml
+	prepare_generated_path "$destination"
+	{
+		printf "palette = 'everforest_hard'\n"
+		cat -- "$STARSHIP_BASE"
+		printf '\n'
+		cat -- "$THEME_SOURCE/.config/starship/palette.toml"
+		printf '\n'
+	} >"$destination"
+
+	destination=$bundle/.config/zen/user.js
+	prepare_generated_path "$destination"
+	{
+		cat -- "$ZEN_BASE"
+		printf '\n'
+		cat -- "$THEME_SOURCE/.config/zen/user.js"
+		printf '\n'
+	} >"$destination"
+
+	destination=$bundle/.config/btop/themes/current.theme
+	prepare_generated_path "$destination"
+	select_btop_native_theme
+	ln -s -- "$BTOP_NATIVE_THEME" "$destination"
+
+	destination=$bundle/.config/ghostty/themes/current
+	prepare_generated_path "$destination"
+	select_ghostty_native_theme
+	ln -s -- "$GHOSTTY_NATIVE_THEME" "$destination"
+
+	destination=$bundle/.config/nvim/theme.lua
+	prepare_generated_path "$destination"
+	cat >"$destination" <<'EOF'
+return {
+  colorscheme = "everforest",
+  background = "hard",
+}
+EOF
+
+	destination=$bundle/$BUNDLE_MARKER
+	prepare_generated_path "$destination"
+	printf '%s\n' "$theme" >"$destination"
+}
+
+validate_bundle() {
+	local bundle=$1 theme=$2 leaf relative bundled first_line
+
+	while IFS= read -r -d '' leaf; do
+		relative=${leaf#"$THEME_SOURCE"/}
+		bundled=$bundle/$relative
+		if generated_path "$relative"; then
+			[[ -e $bundled || -L $bundled ]] || die "missing generated bundle leaf: $relative"
+		else
+			[[ -L $bundled ]] || die "bundle leaf is not a symlink: $relative"
+		fi
+	done < <(find "$THEME_SOURCE" ! -type d -print0)
+
+	while IFS= read -r -d '' leaf; do
+		[[ -f $leaf ]] && validate_by_extension "$leaf"
+	done < <(find "$bundle" ! -type d -print0)
+
+	IFS= read -r first_line <"$bundle/.config/starship.toml"
+	[[ $first_line == "palette = 'everforest_hard'" ]] || die 'generated Starship palette selector is malformed'
+	grep -Fxq '  colorscheme = "everforest",' "$bundle/.config/nvim/theme.lua" || \
+		die 'generated Neovim colorscheme is malformed'
+	grep -Fxq '  background = "hard",' "$bundle/.config/nvim/theme.lua" || \
+		die 'generated Neovim background is malformed'
+	[[ -L $bundle/.config/btop/themes/current.theme ]] || die 'generated btop selector is malformed'
+	[[ -L $bundle/.config/ghostty/themes/current ]] || die 'generated Ghostty selector is malformed'
+	[[ -f $bundle/$BUNDLE_MARKER && ! -L $bundle/$BUNDLE_MARKER ]] || die 'bundle theme marker is malformed'
+	[[ $(<"$bundle/$BUNDLE_MARKER") == "$theme" ]] || die 'bundle theme marker does not match its theme'
+	validate_greeter_schema "$bundle/.config/sysc-greet/themes/current.toml"
+}
+
+validate_theme_name() {
+	local theme=$1
+	[[ $theme == "$DEFAULT_THEME" ]] || die "unknown theme '$theme' (available: $DEFAULT_THEME)"
+}
+
+preflight_manager_paths() {
+	local resolved
+
+	if [[ -e $CONFIG_THEME_DIR || -L $CONFIG_THEME_DIR ]]; then
+		[[ -d $CONFIG_THEME_DIR && ! -L $CONFIG_THEME_DIR ]] || \
+			die "expected a real manager directory: $CONFIG_THEME_DIR"
+	fi
+	if [[ -e $STATE_ROOT || -L $STATE_ROOT ]]; then
+		[[ -d $STATE_ROOT && ! -L $STATE_ROOT ]] || die "expected a real state directory: $STATE_ROOT"
+	fi
+	if [[ -e $BUNDLES_DIR || -L $BUNDLES_DIR ]]; then
+		[[ -d $BUNDLES_DIR && ! -L $BUNDLES_DIR ]] || die "expected a real bundles directory: $BUNDLES_DIR"
+	fi
+	if [[ -L $CURRENT_LINK ]]; then
+		resolved=$(readlink -m -- "$CURRENT_LINK")
+		inside_bundles "$resolved" || die "refusing foreign current link: $CURRENT_LINK -> $resolved"
+	elif [[ -e $CURRENT_LINK ]]; then
+		die "refusing non-symlink current path: $CURRENT_LINK"
+	fi
+	if [[ -L $ACTIVE_FILE ]]; then
+		die "refusing symlink state record: $ACTIVE_FILE"
+	elif [[ -e $ACTIVE_FILE && ! -f $ACTIVE_FILE ]]; then
+		die "refusing non-file state record: $ACTIVE_FILE"
+	fi
+}
+
+preview_bundle() {
+	local theme=$1
+	STAGING_DIR=$(mktemp -d "/tmp/dotfiles-theme.$theme.XXXXXX")
+	prepare_bundle "$STAGING_DIR" "$theme"
+	validate_bundle "$STAGING_DIR" "$theme"
+	rm -rf -- "$STAGING_DIR"
+	STAGING_DIR=
+}
+
+activate_theme() {
+	local theme=$1 final_bundle current_tmp active_tmp stamp
+
+	validate_theme_name "$theme"
+	validate_repo_sources
+	preflight_manager_paths
+
+	if ((DRY_RUN)); then
+		preview_bundle "$theme"
+		printf 'would activate: %s\n' "$theme"
+		printf 'would swap: %s\n' "$CURRENT_LINK"
+		printf 'would record: %s\n' "$ACTIVE_FILE"
+		return
+	fi
+
+	mkdir -p -- "$CONFIG_HOME" "$STATE_HOME"
+	mkdir -p -- "$CONFIG_THEME_DIR" "$STATE_ROOT" "$BUNDLES_DIR"
+
+	STAGING_DIR=$BUNDLES_DIR/.$theme.stage.$$.$RANDOM
+	mkdir -- "$STAGING_DIR"
+	prepare_bundle "$STAGING_DIR" "$theme"
+	validate_bundle "$STAGING_DIR" "$theme"
+
+	stamp=$(date -u +%Y%m%dT%H%M%S)
+	final_bundle=$BUNDLES_DIR/$theme-$stamp-$$-$RANDOM
+	while [[ -e $final_bundle || -L $final_bundle ]]; do
+		final_bundle=$BUNDLES_DIR/$theme-$stamp-$$-$RANDOM
+	done
+	mv -T -- "$STAGING_DIR" "$final_bundle"
+	STAGING_DIR=
+
+	current_tmp=$CONFIG_THEME_DIR/.current.$$.$RANDOM
+	ln -s -- "$final_bundle" "$current_tmp"
+	mv -Tf -- "$current_tmp" "$CURRENT_LINK"
+
+	active_tmp=$STATE_ROOT/.active.$$.$RANDOM
+	printf '%s\n' "$theme" >"$active_tmp"
+	chmod 0600 "$active_tmp"
+	mv -Tf -- "$active_tmp" "$ACTIVE_FILE"
+
+	printf 'active theme: %s\n' "$theme"
+}
+
+INI_DEFAULTS=()
+
+read_install_defaults() {
+	local ini=$1 line section= value section_pattern
+	local default_pattern='^Default[[:space:]]*=[[:space:]]*(.*)$'
+	INI_DEFAULTS=()
+	[[ -f $ini ]] || return 0
+	case ${ini##*/} in
+		installs.ini) section_pattern='^\[[[:alnum:]]+\]$' ;;
+		profiles.ini) section_pattern='^\[Install[^]]*\]$' ;;
+		*) return 0 ;;
+	esac
+
+	while IFS= read -r line || [[ -n $line ]]; do
+		line=${line%$'\r'}
+		trim_whitespace "$line"
+		line=$TRIMMED_VALUE
+		[[ -z $line || $line == \#* || $line == \;* ]] && continue
+		if [[ $line == \[*\] ]]; then
+			if [[ $line =~ $section_pattern ]]; then
+				section=install
+			else
+				section=
+			fi
+			continue
+		fi
+		[[ $section == install && $line =~ $default_pattern ]] || continue
+		value=${BASH_REMATCH[1]}
+		trim_whitespace "$value"
+		value=$TRIMMED_VALUE
+		if [[ $value == \"*\" && ${#value} -ge 2 ]]; then
+			value=${value:1:${#value}-2}
+		fi
+		[[ -n $value ]] && INI_DEFAULTS+=("$value")
+	done <"$ini"
+}
+
+append_profile_candidates() {
+	local base_dir=$1 value candidate existing
+
+	for value in "${INI_DEFAULTS[@]}"; do
+		if [[ $value == /* ]]; then
+			candidate=$(readlink -m -- "$value")
+		else
+			candidate=$(readlink -m -- "$base_dir/$value")
+		fi
+		if [[ -d $candidate ]]; then
+			candidate=$(cd -P -- "$candidate" && pwd)
+		fi
+		for existing in "${PROFILE_CANDIDATES[@]}"; do
+			[[ $existing == "$candidate" ]] && continue 2
+		done
+		PROFILE_CANDIDATES+=("$candidate")
+	done
+}
+
+is_flatpak_zen_profile() {
+	local candidate=$1 flatpak_root=$HOME/.var/app/app.zen_browser.zen
+	local candidate_physical flatpak_physical
+	[[ -d $candidate && -d $flatpak_root ]] || return 1
+	candidate_physical=$(cd -P -- "$candidate" && pwd) || return 1
+	flatpak_physical=$(cd -P -- "$flatpak_root" && pwd) || return 1
+	[[ $flatpak_physical == / ]] && return 0
+	[[ $candidate_physical == "$flatpak_physical" || $candidate_physical == "$flatpak_physical"/* ]]
+}
+
+discover_zen_profile() {
+	local zen_root ini candidate flatpak_registry
+	local flatpak_registry_seen=0 flatpak_candidate_seen=0 supported_candidate_seen=0
+	local -a zen_roots=(
+		"$CONFIG_HOME/zen"
+		"$HOME/.zen"
+	)
+	local -a existing_candidates=()
+	ZEN_PROFILE=
+	flatpak_registry=$HOME/.var/app/app.zen_browser.zen/zen
+
+	if [[ -n $ZEN_PROFILE_OPTION ]]; then
+		[[ -d $ZEN_PROFILE_OPTION ]] || die "explicit Zen profile is not an existing directory: $ZEN_PROFILE_OPTION"
+		ZEN_PROFILE=$(cd -P -- "$ZEN_PROFILE_OPTION" && pwd)
+		if is_flatpak_zen_profile "$ZEN_PROFILE"; then
+			die "Flatpak Zen profiles are unsupported because sandboxed Zen cannot follow host theme links: $ZEN_PROFILE_OPTION"
+		fi
+		return
+	fi
+	if [[ -f $flatpak_registry/installs.ini || -f $flatpak_registry/profiles.ini ]]; then
+		warn "Flatpak Zen is unsupported; ignoring sandboxed registry: $flatpak_registry"
+		flatpak_registry_seen=1
+	fi
+
+	PROFILE_CANDIDATES=()
+	for zen_root in "${zen_roots[@]}"; do
+		for ini in "$zen_root/installs.ini" "$zen_root/profiles.ini"; do
+			read_install_defaults "$ini"
+			((${#INI_DEFAULTS[@]} > 0)) || continue
+			append_profile_candidates "$zen_root"
+			break
+		done
+	done
+
+	for candidate in "${PROFILE_CANDIDATES[@]}"; do
+		if [[ ! -d $candidate ]]; then
+			supported_candidate_seen=1
+			continue
+		fi
+		candidate=$(cd -P -- "$candidate" && pwd)
+		if is_flatpak_zen_profile "$candidate"; then
+			warn "Flatpak Zen profile is unsupported; skipping discovered profile: $candidate"
+			flatpak_candidate_seen=1
+			continue
+		fi
+		supported_candidate_seen=1
+		existing_candidates+=("$candidate")
+	done
+	if ((${#existing_candidates[@]} == 1)); then
+		ZEN_PROFILE=${existing_candidates[0]}
+		return
+	fi
+	if ((${#existing_candidates[@]} > 1)); then
+		warn 'ambiguous Zen install defaults; skipping Zen bridges'
+	elif ((supported_candidate_seen)); then
+		warn 'no existing Zen install default found; skipping Zen bridges'
+	elif ((flatpak_registry_seen || flatpak_candidate_seen)); then
+		return
+	else
+		warn 'no unambiguous Zen install default found; skipping Zen bridges'
+	fi
+}
+
+BRIDGE_ROOTS=()
+BRIDGE_RELATIVES=()
+BRIDGE_TARGETS=()
+
+add_bridge() {
+	BRIDGE_ROOTS+=("$1")
+	BRIDGE_RELATIVES+=("$2")
+	BRIDGE_TARGETS+=("$3")
+}
+
+build_bridges() {
+	local current=$CURRENT_LINK
+	BRIDGE_ROOTS=()
+	BRIDGE_RELATIVES=()
+	BRIDGE_TARGETS=()
+
+	add_bridge "$CONFIG_HOME" 'btop/themes/current.theme' "$current/.config/btop/themes/current.theme"
+	add_bridge "$CONFIG_HOME" 'ghostty/themes/current' "$current/.config/ghostty/themes/current"
+	add_bridge "$CONFIG_HOME" 'hypr/colors.lua' "$current/.config/hypr/colors.lua"
+	add_bridge "$CONFIG_HOME" 'hypr/colors/everforest-hard.lua' "$current/.config/hypr/colors.lua"
+	add_bridge "$CONFIG_HOME" 'waybar/colors.css' "$current/.config/waybar/theme.css"
+	add_bridge "$CONFIG_HOME" 'opencode/themes/current.json' "$current/.config/opencode/themes/current.json"
+	add_bridge "$CONFIG_HOME" 'opencode/themes/everforest-hard.json' "$current/.config/opencode/themes/current.json"
+	add_bridge "$DATA_HOME" 'brave/themes/current/manifest.json' "$current/.local/share/brave/themes/current/manifest.json"
+	add_bridge "$DATA_HOME" 'brave/themes/everforest-hard/manifest.json' "$current/.local/share/brave/themes/current/manifest.json"
+	add_bridge "$CONFIG_HOME" 'sysc-greet/themes/everforest-hard.toml' "$current/.config/sysc-greet/themes/current.toml"
+	add_bridge "$CONFIG_HOME" 'starship.toml' "$current/.config/starship.toml"
+	if [[ -n $ZEN_PROFILE ]]; then
+		add_bridge "$ZEN_PROFILE" 'chrome/userChrome.css' "$ZEN_USER_CHROME"
+		add_bridge "$ZEN_PROFILE" 'chrome/theme.css' "$current/.config/zen/chrome/theme.css"
+		add_bridge "$ZEN_PROFILE" 'user.js' "$current/.config/zen/user.js"
+	fi
+}
+
+lexical_path() {
+	if command -v realpath >/dev/null 2>&1; then
+		realpath -ms -- "$1"
+	else
+		readlink -m -- "$1"
+	fi
+}
+
+exact_bridge_link() {
+	local destination=$1 target=$2 link_target candidate
+	[[ -L $destination ]] || return 1
+	link_target=$(readlink -- "$destination")
+	if [[ $link_target == /* ]]; then
+		candidate=$link_target
+	else
+		candidate=$(dirname -- "$destination")/$link_target
+	fi
+	[[ $(lexical_path "$candidate") == "$(lexical_path "$target")" ]]
+}
+
+preflight_bridge() {
+	local root=$1 relative=$2 target=$3 parent current part resolved destination
+	local folded_ancestor=0
+	local -a parts=()
+
+	if [[ -e $root || -L $root ]]; then
+		[[ -d $root ]] || die "bridge root is not a directory: $root"
+	fi
+
+	if [[ $relative == */* ]]; then
+		parent=${relative%/*}
+	else
+		parent=
+	fi
+	current=$root
+	IFS=/ read -r -a parts <<<"$parent"
+	for part in "${parts[@]}"; do
+		[[ -n $part ]] || continue
+		current=$current/$part
+		if [[ -L $current ]]; then
+			resolved=$(readlink -f -- "$current" 2>/dev/null || true)
+			[[ -n $resolved && -d $resolved ]] || die "folded ancestor is not a directory: $current"
+			inside_repo "$resolved" || die "refusing foreign folded ancestor: $current -> $resolved"
+			folded_ancestor=1
+		elif [[ -e $current && ! -d $current ]]; then
+			die "bridge ancestor is not a directory: $current"
+		fi
+	done
+
+	destination=$root/$relative
+	if [[ -L $destination ]]; then
+		exact_bridge_link "$destination" "$target" && return
+		resolved=$(readlink -m -- "$destination")
+		inside_repo "$resolved" || die "refusing foreign destination link: $destination -> $resolved"
+	elif [[ -e $destination ]]; then
+		if ((folded_ancestor)) && [[ -f $destination ]]; then
+			resolved=$(readlink -f -- "$destination" 2>/dev/null || true)
+			inside_repo "$resolved" && return
+		fi
+		if [[ -d $destination ]]; then
+			die "refusing unexpected destination directory: $destination"
+		fi
+		die "refusing existing plain destination: $destination"
+	fi
+}
+
+preflight_bridges() {
+	local index
+	for index in "${!BRIDGE_ROOTS[@]}"; do
+		preflight_bridge "${BRIDGE_ROOTS[$index]}" "${BRIDGE_RELATIVES[$index]}" "${BRIDGE_TARGETS[$index]}"
+	done
+}
+
+unfold_repo_ancestor() {
+	local path=$1 target parent base temporary backup entry
+	target=$(readlink -f -- "$path" 2>/dev/null || true)
+	[[ -n $target && -d $target ]] || die "cannot unfold non-directory symlink: $path"
+	inside_repo "$target" || die "refusing to unfold foreign symlink: $path -> $target"
+
+	parent=$(dirname -- "$path")
+	base=$(basename -- "$path")
+	temporary=$parent/.$base.unfold.$$.$RANDOM
+	backup=$parent/.$base.folded.$$.$RANDOM
+	mkdir -- "$temporary"
+	while IFS= read -r -d '' entry; do
+		ln -s -- "$entry" "$temporary/$(basename -- "$entry")"
+	done < <(find "$target" -mindepth 1 -maxdepth 1 -print0)
+
+	mv -T -- "$path" "$backup"
+	if ! mv -T -- "$temporary" "$path"; then
+		mv -T -- "$backup" "$path" || true
+		die "failed to unfold repository symlink: $path"
+	fi
+	rm -f -- "$backup"
+}
+
+ensure_bridge_parent() {
+	local root=$1 relative=$2 parent current part
+	local -a parts=()
+
+	if [[ ! -e $root && ! -L $root ]]; then
+		mkdir -p -- "$root"
+	fi
+	[[ -d $root ]] || die "bridge root is not a directory: $root"
+
+	if [[ $relative == */* ]]; then
+		parent=${relative%/*}
+	else
+		parent=
+	fi
+	current=$root
+	IFS=/ read -r -a parts <<<"$parent"
+	for part in "${parts[@]}"; do
+		[[ -n $part ]] || continue
+		current=$current/$part
+		if [[ -L $current ]]; then
+			unfold_repo_ancestor "$current"
+		elif [[ ! -e $current ]]; then
+			mkdir -- "$current"
+		elif [[ ! -d $current ]]; then
+			die "bridge ancestor is not a directory: $current"
+		fi
+	done
+}
+
+apply_bridge() {
+	local root=$1 relative=$2 target=$3 destination temporary resolved
+	ensure_bridge_parent "$root" "$relative"
+	destination=$root/$relative
+
+	if [[ -L $destination ]]; then
+		exact_bridge_link "$destination" "$target" && return
+		resolved=$(readlink -m -- "$destination")
+		inside_repo "$resolved" || die "refusing changed destination link: $destination -> $resolved"
+	elif [[ -e $destination ]]; then
+		die "refusing changed destination: $destination"
+	fi
+
+	temporary=$(dirname -- "$destination")/.$(basename -- "$destination").link.$$.$RANDOM
+	ln -s -- "$target" "$temporary"
+	mv -Tf -- "$temporary" "$destination"
+}
+
+apply_bridges() {
+	local index
+	for index in "${!BRIDGE_ROOTS[@]}"; do
+		apply_bridge "${BRIDGE_ROOTS[$index]}" "${BRIDGE_RELATIVES[$index]}" "${BRIDGE_TARGETS[$index]}"
+	done
+}
+
+print_bridge_plan() {
+	local index
+	for index in "${!BRIDGE_ROOTS[@]}"; do
+		printf 'would link: %s/%s -> %s\n' \
+			"${BRIDGE_ROOTS[$index]}" \
+			"${BRIDGE_RELATIVES[$index]}" \
+			"${BRIDGE_TARGETS[$index]}"
+	done
+}
+
+collect_stow_packages() {
+	local package
+	STOW_PACKAGES=()
+	for package in theme-tools btop brave ghostty hyprland opencode swaync tmux waybar wlogout; do
+		[[ -d $REPO_ROOT/$package ]] && STOW_PACKAGES+=("$package")
+	done
+	return 0
+}
+
+STOW_ENABLED=0
+STOW_COMMAND=
+STOW_COMMON=()
+
+print_command() {
+	local argument
+	printf 'would run:'
+	for argument in "$@"; do
+		printf ' %q' "$argument"
+	done
+	printf '\n'
+}
+
+preflight_stow() {
+	local stow_command=${DOTFILES_THEME_STOW:-stow}
+	STOW_ENABLED=0
+	collect_stow_packages
+	((${#STOW_PACKAGES[@]} > 0)) || {
+		warn 'no theme-managed Stow packages found; skipping Stow'
+		return
+	}
+	if [[ ${DOTFILES_THEME_SKIP_STOW:-0} == 1 ]]; then
+		warn 'Stow disabled by DOTFILES_THEME_SKIP_STOW'
+		return
+	fi
+	if ! command -v "$stow_command" >/dev/null 2>&1; then
+		warn "$stow_command not found; skipping Stow"
+		return
+	fi
+
+	STOW_COMMAND=$stow_command
+	STOW_COMMON=(--no-folding -R -d "$REPO_ROOT" -t "$HOME")
+	if ((DRY_RUN)); then
+		print_command "$STOW_COMMAND" -n "${STOW_COMMON[@]}" "${STOW_PACKAGES[@]}"
+	fi
+	"$STOW_COMMAND" -n "${STOW_COMMON[@]}" "${STOW_PACKAGES[@]}"
+	STOW_ENABLED=1
+}
+
+apply_stow() {
+	((STOW_ENABLED)) || return 0
+	"$STOW_COMMAND" "${STOW_COMMON[@]}" "${STOW_PACKAGES[@]}"
+}
+
+print_manual_reloads() {
+	local -a extra=("$@")
+	local message='btop, Brave, Ghostty, Neovim, OpenCode, Starship shells, Zen Browser'
+	local item
+	for item in "${extra[@]}"; do
+		message+=", $item"
+	done
+	printf 'manual reloads: %s; run sync-greeter separately for sysc-greet\n' "$message"
+}
+
+attempt_safe_reloads() {
+	local pids= pid waybar_failed=0
+	local -a manual=()
+
+	if ((DRY_RUN)) || [[ ${DOTFILES_THEME_DISABLE_RELOAD:-0} == 1 || ${DOTFILES_THEME_TESTING:-0} == 1 ]]; then
+		printf 'safe reload attempts disabled\n'
+		print_manual_reloads 'Hyprland' 'Waybar' 'SwayNC' 'tmux'
+		return
+	fi
+
+	if [[ -n ${HYPRLAND_INSTANCE_SIGNATURE:-} || ${DOTFILES_THEME_HYPRLAND_ACTIVE:-0} == 1 ]]; then
+		if command -v hyprctl >/dev/null 2>&1; then
+			hyprctl reload config-only >/dev/null 2>&1 || {
+				warn 'Hyprland config reload failed'
+				manual+=('Hyprland')
+			}
+		else
+			warn 'hyprctl not found; Hyprland was not reloaded'
+			manual+=('Hyprland')
+		fi
+	fi
+
+	if [[ -n ${DOTFILES_THEME_WAYBAR_PIDS+x} ]]; then
+		pids=$DOTFILES_THEME_WAYBAR_PIDS
+	elif command -v pgrep >/dev/null 2>&1; then
+		pids=$(pgrep -u "$UID" -x waybar 2>/dev/null || true)
+	else
+		pids=
+		warn 'pgrep not found; Waybar process discovery skipped'
+	fi
+	for pid in $pids; do
+		if [[ ! $pid =~ ^[0-9]+$ ]] || ! kill -s USR2 -- "$pid" 2>/dev/null; then
+			waybar_failed=1
+		fi
+	done
+	if ((waybar_failed)); then
+		warn 'one or more exact Waybar PID reloads failed'
+		manual+=('Waybar')
+	fi
+
+	if command -v swaync-client >/dev/null 2>&1; then
+		swaync-client --reload-css --skip-wait >/dev/null 2>&1 || {
+			warn 'SwayNC CSS reload failed'
+			manual+=('SwayNC')
+		}
+	fi
+
+	if command -v tmux >/dev/null 2>&1 && tmux list-sessions >/dev/null 2>&1; then
+		tmux source-file "$HOME/.tmux.conf" >/dev/null 2>&1 || {
+			warn 'tmux configuration reload failed'
+			manual+=('tmux')
+		}
+	fi
+
+	print_manual_reloads "${manual[@]}"
+}
+
+acquire_lock() {
+	local runtime=${XDG_RUNTIME_DIR:-}
+	((DRY_RUN == 0)) || return 0
+	[[ -n $runtime && -d $runtime && -w $runtime ]] || return 0
+	if ! command -v flock >/dev/null 2>&1; then
+		warn 'flock not found; continuing without a runtime lock'
+		return
+	fi
+	exec {LOCK_FD}>"$runtime/dotfiles-theme.lock"
+	flock "$LOCK_FD" || die 'could not acquire the theme manager lock'
+}
+
+command_install() {
+	discover_zen_profile
+	build_bridges
+	validate_theme_name "$DEFAULT_THEME"
+	validate_repo_sources
+	preflight_manager_paths
+	preflight_bridges
+	preview_bundle "$DEFAULT_THEME"
+	preflight_stow
+
+	if ((DRY_RUN)); then
+		printf 'would activate: %s\n' "$DEFAULT_THEME"
+		printf 'would swap: %s\n' "$CURRENT_LINK"
+		printf 'would record: %s\n' "$ACTIVE_FILE"
+		print_bridge_plan
+		printf 'would install bridges for: %s\n' "$DEFAULT_THEME"
+		attempt_safe_reloads
+		return
+	fi
+
+	activate_theme "$DEFAULT_THEME"
+	apply_bridges
+	printf 'installed theme bridges\n'
+	apply_stow
+	attempt_safe_reloads
+}
+
+command_set() {
+	local theme=$1
+	activate_theme "$theme"
+	attempt_safe_reloads
+}
+
+read_current_theme() {
+	local marker theme
+	CURRENT_BUNDLE=
+	CURRENT_THEME=
+	[[ -L $CURRENT_LINK ]] || return 1
+	CURRENT_BUNDLE=$(readlink -m -- "$CURRENT_LINK")
+	inside_bundles "$CURRENT_BUNDLE" || return 1
+	marker=$CURRENT_BUNDLE/$BUNDLE_MARKER
+	[[ -f $marker && ! -L $marker ]] || return 1
+	theme=$(<"$marker")
+	[[ $theme == "$DEFAULT_THEME" ]] || return 1
+	CURRENT_THEME=$theme
+}
+
+command_list() {
+	if read_current_theme; then
+		printf '%s (active)\n' "$DEFAULT_THEME"
+	else
+		printf '%s\n' "$DEFAULT_THEME"
+	fi
+}
+
+command_status() {
+	local active=none current=missing
+	if [[ -L $CURRENT_LINK ]]; then
+		current=$(readlink -m -- "$CURRENT_LINK")
+		if read_current_theme; then
+			active=$CURRENT_THEME
+		else
+			active=invalid
+		fi
+	elif [[ -e $CURRENT_LINK ]]; then
+		active=invalid
+		current=invalid
+	fi
+	printf 'active: %s\n' "$active"
+	printf 'current: %s\n' "$current"
+}
+
+command_sync_greeter() {
+	local source=$CURRENT_LINK/.config/sysc-greet/themes/current.toml
+	local target=/var/lib/greeter/.config/sysc-greet/themes/current.toml
+	local sudo_command=${DOTFILES_THEME_SUDO:-sudo}
+	local snapshot_fd
+
+	require_file "$source" 'active sysc-greet theme'
+
+	if ((DRY_RUN)); then
+		validate_greeter_schema "$source"
+		validate_toml "$source"
+		printf 'would sync: %s -> %s (sudo -u greeter, mode 0644, atomic rename)\n' "$source" "$target"
+		return
+	fi
+	command -v "$sudo_command" >/dev/null 2>&1 || die "$sudo_command not found; cannot sync the greeter theme"
+	GREETER_SNAPSHOT=$(umask 077; mktemp "${TMPDIR:-/tmp}/dotfiles-theme-greeter.XXXXXX") || \
+		die 'could not create a private greeter theme snapshot'
+	cat -- "$source" >"$GREETER_SNAPSHOT" || die 'could not snapshot the active sysc-greet theme'
+	validate_greeter_schema "$GREETER_SNAPSHOT"
+	validate_toml "$GREETER_SNAPSHOT"
+	exec {snapshot_fd}<"$GREETER_SNAPSHOT" || die 'could not open the validated greeter theme snapshot'
+	rm -f -- "$GREETER_SNAPSHOT"
+	GREETER_SNAPSHOT=
+
+	"$sudo_command" -u greeter sh -c '
+		set -eu
+		target_path=$1
+		target_dir=${target_path%/*}
+		mkdir -p -- "$target_dir"
+		temporary=$(mktemp "$target_dir/.current.toml.tmp.XXXXXX")
+		trap '\''rm -f -- "$temporary"'\'' EXIT HUP INT TERM
+		cat >"$temporary"
+		chmod 0644 "$temporary"
+		mv -fT -- "$temporary" "$target_path"
+		trap - EXIT HUP INT TERM
+	' sh "$target" <&"$snapshot_fd"
+	exec {snapshot_fd}<&-
+	printf 'synced greeter theme: %s\n' "$target"
+}
+
+COMMAND=
+POSITIONAL=()
+while (($# > 0)); do
+	case $1 in
+		--dry-run)
+			DRY_RUN=1
+			shift
+			;;
+		--zen-profile)
+			(($# >= 2)) || usage_error '--zen-profile requires a path'
+			[[ -z $ZEN_PROFILE_OPTION ]] || usage_error '--zen-profile may be specified only once'
+			ZEN_PROFILE_OPTION=$2
+			[[ -n $ZEN_PROFILE_OPTION ]] || usage_error '--zen-profile requires a path'
+			shift 2
+			;;
+		--zen-profile=*)
+			[[ -z $ZEN_PROFILE_OPTION ]] || usage_error '--zen-profile may be specified only once'
+			ZEN_PROFILE_OPTION=${1#*=}
+			[[ -n $ZEN_PROFILE_OPTION ]] || usage_error '--zen-profile requires a path'
+			shift
+			;;
+		--*)
+			usage_error "unknown option: $1"
+			;;
+		*)
+			if [[ -z $COMMAND ]]; then
+				COMMAND=$1
+			else
+				POSITIONAL+=("$1")
+			fi
+			shift
+			;;
+	esac
+done
+
+[[ -n $COMMAND ]] || usage_error 'a command is required'
+if [[ $COMMAND != install && -n $ZEN_PROFILE_OPTION ]]; then
+	usage_error '--zen-profile is valid only with install'
+fi
+
+case $COMMAND in
+	install)
+		((${#POSITIONAL[@]} == 0)) || usage_error 'install takes no positional arguments'
+		acquire_lock
+		command_install
+		;;
+	set)
+		((${#POSITIONAL[@]} == 1)) || usage_error 'set requires exactly one theme name'
+		acquire_lock
+		command_set "${POSITIONAL[0]}"
+		;;
+	list)
+		((${#POSITIONAL[@]} == 0)) || usage_error 'list takes no arguments'
+		command_list
+		;;
+	status)
+		((${#POSITIONAL[@]} == 0)) || usage_error 'status takes no arguments'
+		command_status
+		;;
+	sync-greeter)
+		((${#POSITIONAL[@]} == 0)) || usage_error 'sync-greeter takes no arguments'
+		acquire_lock
+		command_sync_greeter
+		;;
+	*)
+		usage_error "unknown command: $COMMAND"
+		;;
+esac

@@ -1,0 +1,14 @@
+name = "current"
+
+[colors]
+bg_base = "#1E2326"
+bg_active = "#374145"
+primary = "#A7C080"
+secondary = "#83C092"
+accent = "#7FBBB3"
+warning = "#DBBC7F"
+danger = "#E67E80"
+fg_primary = "#D3C6AA"
+fg_secondary = "#9DA9A0"
+fg_muted = "#859289"
+border_focus = "#A7C080"

@@ -1,0 +1,13 @@
+[palettes.everforest_hard]
+color_fg0 = '#D3C6AA'
+color_bg1 = '#2E383C'
+color_bg3 = '#374145'
+color_blue = '#384B55'
+color_aqua = '#3C4841'
+color_green = '#A7C080'
+color_green_dark = '#3C4841'
+color_orange = '#3C4841'
+color_purple = '#463F48'
+color_red = '#493B40'
+color_yellow = '#45443C'
+color_git_fg = '#A7C080'
