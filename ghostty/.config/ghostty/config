@@ -4,7 +4,7 @@ font-family = "FiraCode Nerd Font Mono"
 font-style = Regular
 font-size = 10
 
-theme = Everforest Dark Hard
+theme = current
 background-opacity = 0.85
 background-blur = true
 cursor-style-blink = true

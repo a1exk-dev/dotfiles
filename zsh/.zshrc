@@ -101,6 +101,7 @@ tradingview() {
 }
 
 # Should be last
+export STARSHIP_CONFIG="${XDG_CONFIG_HOME:-$HOME/.config}/starship.toml"
 eval "$(starship init zsh)"
 export PATH=$PATH:$HOME/.local/bin
 

@@ -1,54 +1,10 @@
-/* Everforest Hard theme overrides for Zen Browser UI. */
+@import url("theme.css");
+
+/* Theme-aware overrides for Zen Browser UI. */
 
 @-moz-document url-prefix("chrome://browser/content/browser.xhtml") {
   :root {
-    --ef-fg: #d3c6aa;
-    --ef-red: #e67e80;
-    --ef-yellow: #dbbc7f;
-    --ef-green: #a7c080;
-    --ef-blue: #7fbbb3;
-    --ef-purple: #d699b6;
-    --ef-aqua: #83c092;
-    --ef-orange: #e69875;
-    --ef-grey0: #7a8478;
-    --ef-grey1: #859289;
-    --ef-grey2: #9da9a0;
-    --ef-bg-dim: #1e2326;
-    --ef-bg0: #272e33;
-    --ef-bg1: #2e383c;
-    --ef-bg2: #374145;
-    --ef-bg3: #414b50;
-    --ef-bg4: #495156;
-    --ef-bg5: #4f5b58;
-    --ef-bg-red: #493b40;
-    --ef-bg-yellow: #45443c;
-    --ef-bg-green: #3c4841;
-    --ef-bg-blue: #384b55;
-    --ef-bg-purple: #463f48;
-    --ef-bg-visual: #4c3743;
-
-    --zen-main-browser-background: var(--ef-bg-dim) !important;
-    --zen-primary-color: var(--ef-green) !important;
-    --zen-colors-border: var(--ef-bg2) !important;
-    --zen-colors-secondary: var(--ef-bg1) !important;
-    --zen-colors-tertiary: var(--ef-bg2) !important;
     --zen-border-radius: 10px !important;
-
-    --toolbar-bgcolor: var(--ef-bg0) !important;
-    --toolbar-color: var(--ef-fg) !important;
-    --toolbarbutton-hover-background: var(--ef-bg2) !important;
-    --toolbarbutton-active-background: var(--ef-bg3) !important;
-    --lwt-accent-color: var(--ef-bg-dim) !important;
-    --lwt-text-color: var(--ef-fg) !important;
-    --lwt-toolbar-field-background-color: var(--ef-bg1) !important;
-    --lwt-toolbar-field-color: var(--ef-fg) !important;
-    --lwt-toolbar-field-border-color: var(--ef-bg2) !important;
-    --urlbarView-hover-background: var(--ef-bg2) !important;
-    --urlbarView-highlight-background: var(--ef-bg-green) !important;
-    --urlbarView-highlight-color: var(--ef-fg) !important;
-    --arrowpanel-background: var(--ef-bg0) !important;
-    --arrowpanel-color: var(--ef-fg) !important;
-    --arrowpanel-border-color: var(--ef-bg2) !important;
   }
 
   #navigator-toolbox,
@@ -62,7 +18,7 @@
   }
 
   #urlbar-background {
-    background-color: var(--ef-bg1) !important;
+    background-color: var(--theme-urlbar-background) !important;
   }
 
   #urlbar:is([focused], [open]) {
@@ -70,38 +26,34 @@
   }
 
   #urlbar:is([focused], [open]) > #urlbar-background {
-    background-color: var(--ef-bg0) !important;
+    background-color: var(--theme-urlbar-focused-background) !important;
   }
 
   toolbarbutton:hover,
   .toolbarbutton-1:hover {
-    color: var(--ef-green) !important;
+    color: var(--theme-toolbar-button-hover-foreground) !important;
   }
 
   .tabbrowser-tab[selected] .tab-background,
   .tab-background[selected] {
-    background-color: color-mix(
-      in srgb,
-      var(--zen-primary-color) 20%,
-      var(--ef-bg1)
-    ) !important;
+    background-color: var(--theme-selected-tab-background) !important;
   }
 
   .tabbrowser-tab[selected] .tab-label,
   .tabbrowser-tab:hover .tab-label,
   .zen-current-workspace-indicator {
-    color: var(--ef-fg) !important;
+    color: var(--theme-tab-foreground) !important;
   }
 
   .tabbrowser-tab[pending] .tab-label,
   .tabbrowser-tab[discarded] .tab-label {
-    color: var(--ef-grey1) !important;
+    color: var(--theme-tab-muted-foreground) !important;
   }
 
   menupopup,
   panel {
-    --panel-background: var(--ef-bg0) !important;
-    --panel-color: var(--ef-fg) !important;
-    --panel-border-color: var(--ef-bg2) !important;
+    --panel-background: var(--theme-panel-background) !important;
+    --panel-color: var(--theme-panel-foreground) !important;
+    --panel-border-color: var(--theme-panel-border-color) !important;
   }
 }
