@@ -1,9 +1,9 @@
+@import "../dotfiles-theme/current/.config/wlogout/theme.css";
+
 window {
   font-family: "Terminess Nerd Font Propo", monospace;
   font-size: 12pt;
-  color: #d3c6aa;
-  background-color: rgba(30, 35, 38, 0.9);
-  background-image: linear-gradient(rgba(30, 35, 38, 0.78), rgba(30, 35, 38, 0.78)), url("/home/a1exk/Pictures/wallpapers/everforest-forest-4k.jpg");
+  background-image: linear-gradient(@wlogout_wallpaper_overlay, @wlogout_wallpaper_overlay), url("/home/a1exk/Pictures/wallpapers/everforest-forest-4k.jpg");
   background-position: center;
   background-repeat: no-repeat;
   background-size: cover;
@@ -15,9 +15,6 @@ button {
   background-size: 25%;
   border-style: solid;
   border-width: 0.15rem;
-  background-color: rgba(39, 46, 51, 0.55);
-  border-color: rgba(122, 132, 120, 0.45);
-  color: #d3c6aa;
   margin: 5px;
   border-radius: 1rem;
   font-weight: normal;
@@ -27,35 +24,33 @@ button {
 button:focus,
 button:active,
 button:hover {
-  background-color: rgba(46, 56, 60, 0.78);
   background-size: 30%;
   border-style: dashed;
   border-width: 0.1rem;
-  border-color: #dbbc7f;
   font-weight: bold;
   outline-style: none;
 }
 
 #lock {
-  background-image: image(url("./icons/lock.svg"));
+  background-image: -gtk-recolor(url("./icons/lock-symbolic.svg"));
 }
 
 #logout {
-  background-image: image(url("./icons/logout.svg"));
+  background-image: -gtk-recolor(url("./icons/logout-symbolic.svg"));
 }
 
 #suspend {
-  background-image: image(url("./icons/suspend.svg"));
+  background-image: -gtk-recolor(url("./icons/suspend-symbolic.svg"));
 }
 
 #hibernate {
-  background-image: image(url("./icons/hibernate.svg"));
+  background-image: -gtk-recolor(url("./icons/hibernate-symbolic.svg"));
 }
 
 #reboot {
-  background-image: image(url("./icons/reboot.svg"));
+  background-image: -gtk-recolor(url("./icons/reboot-symbolic.svg"));
 }
 
 #shutdown {
-  background-image: image(url("./icons/shutdown.svg"));
+  background-image: -gtk-recolor(url("./icons/shutdown-symbolic.svg"));
 }

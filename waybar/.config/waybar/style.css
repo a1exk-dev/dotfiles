@@ -1,4 +1,4 @@
-@import "./colors.css";
+@import "../dotfiles-theme/current/.config/waybar/theme.css";
 
 * {
 	all: initial;
@@ -7,15 +7,16 @@
 }
 
 #waybar {
-	background: alpha(@ef_bg_0, 0.9);
-	border-top: 1px solid @ef_bg_2;
-	border-bottom: 1px solid @ef_bg_2;
-	color: @ef_foreground;
+	border-top-style: solid;
+	border-top-width: 1px;
+	border-bottom-style: solid;
+	border-bottom-width: 1px;
 	border-radius: 0.8rem;
 }
 
 #waybar>box {
-	border: 1px dashed @ef_yellow;
+	border-style: dashed;
+	border-width: 1px;
 	border-radius: 0;
 	margin: 0.4rem;
 	padding: 0.4rem 0;
@@ -23,49 +24,29 @@
 }
 
 tooltip {
-	border: none;
+	border-style: none;
 	margin: 0;
 	padding: 0;
-	background: transparent;
 }
 
 tooltip label {
 	margin: 0.4rem 0 0 0;
-	background: alpha(@ef_bg_0, 0.9);
 	padding: 0.8rem;
-	border: 1px dashed @ef_yellow;
-	color: @ef_foreground;
+	border-style: dashed;
+	border-width: 1px;
 }
 
 menu {
-	background: alpha(@ef_bg_0, 0.9);
-	border: 1px dashed @ef_yellow;
+	border-style: dashed;
+	border-width: 1px;
 	padding: 0.4rem;
 }
 
 menu menuitem {
-	background: transparent;
 	padding: 0.4rem 0.8rem;
 }
 
-menu menuitem label {
-	color: @ef_foreground;
-}
-
-menu menuitem:hover {
-	background: @ef_bg_2;
-}
-
-menu menuitem:hover label {
-	color: @ef_yellow;
-}
-
-menu menuitem:disabled label {
-	color: alpha(@ef_grey_0, 0.5);
-}
-
 menu separator {
-	background: @ef_bg_2;
 	margin: 0.3rem 0.5rem;
 	min-height: 1px;
 }
@@ -94,22 +75,24 @@ menu separator {
 #custom-notifications,
 #custom-wlogout,
 #tray {
-	border-right: 1px dashed @ef_yellow;
+	border-right-style: dashed;
+	border-right-width: 1px;
 	margin: 0;
 	padding: 0 0.8rem;
 }
 
 #waybar .modules-left>widget:last-child>* {
-	border-right: none;
+	border-right-style: none;
 }
 
 #waybar .modules-right>widget>* {
-	border-right: none;
-	border-left: 1px dashed @ef_yellow;
+	border-right-style: none;
+	border-left-style: dashed;
+	border-left-width: 1px;
 }
 
 #waybar .modules-right>widget:first-child>* {
-	border-left: none;
+	border-left-style: none;
 }
 
 #custom-battery-icon,
@@ -121,7 +104,7 @@ menu separator {
 
 #group-wireless #network,
 #group-wireless #bluetooth {
-	border-right: none;
+	border-right-style: none;
 	margin: 0;
 	padding: 0;
 }
@@ -139,77 +122,14 @@ menu separator {
 	font-weight: bold;
 }
 
-#wireplumber.mic {
-	color: @ef_foreground;
-}
-
-#wireplumber.mic.muted,
-#wireplumber.mic.source-muted {
-	color: alpha(@ef_grey_0, 0.5);
-}
-
-#network.wifi {
-	color: @ef_foreground;
-}
-
-#network.disconnected {
-	color: alpha(@ef_grey_0, 0.5);
-}
-
-#network.disabled {
-	color: alpha(@ef_grey_0, 0.5);
-}
-
-#bluetooth {
-	color: alpha(@ef_blue, 0.5);
-}
-
-#bluetooth.connected {
-	color: alpha(@ef_blue, 0.7);
-}
-
-#bluetooth.disabled,
-#bluetooth.off {
-	color: alpha(@ef_grey_0, 0.5);
-}
-
 #power-profiles-daemon {}
-
-#power-profiles-daemon.performance {
-	color: alpha(@ef_red, 0.7);
-}
-
-#power-profiles-daemon.balanced {
-	color: alpha(@ef_blue, 0.7);
-}
-
-#power-profiles-daemon.power-saver {
-	color: alpha(@ef_green, 0.7);
-}
-
-@keyframes notification-blink {
-	from {
-		color: alpha(@ef_red, 0.9);
-	}
-
-	to {
-		color: alpha(@ef_red, 0.45);
-	}
-}
 
 #custom-notifications.notifications-enabled {
 	animation: none;
-	color: alpha(@ef_yellow, 0.8);
 }
 
 #custom-notifications.notifications-active {
 	animation: notification-blink 0.7s ease-in-out infinite alternate;
-	color: alpha(@ef_red, 0.9);
-}
-
-#custom-notifications.notifications-disabled,
-#custom-notifications.notifications-unavailable {
-	color: alpha(@ef_grey_0, 0.5);
 }
 
 #custom-brightness,
@@ -218,53 +138,12 @@ menu separator {
 }
 
 #custom-volume {
-	border-right: 1px dashed @ef_yellow;
+	border-right-style: dashed;
+	border-right-width: 1px;
 }
 
 #clock.minutes {
-	border-right: none;
-}
-
-#custom-brightness-icon.brightness-high,
-#custom-brightness.brightness-high {
-	color: alpha(@ef_red, 0.5);
-}
-
-#custom-brightness-icon.brightness-medium,
-#custom-brightness.brightness-medium {
-	color: alpha(@ef_green, 0.5);
-}
-
-#custom-brightness-icon.brightness-low,
-#custom-brightness.brightness-low {
-	color: alpha(@ef_orange, 0.5);
-}
-
-#custom-volume-icon.volume-high,
-#custom-volume.volume-high {
-	color: alpha(@ef_red, 0.5);
-}
-
-#custom-volume-icon.volume-medium-high,
-#custom-volume.volume-medium-high {
-	color: alpha(@ef_orange, 0.5);
-}
-
-#custom-volume-icon.volume-medium,
-#custom-volume.volume-medium {
-	color: alpha(@ef_green, 0.5);
-}
-
-#custom-volume-icon.volume-low,
-#custom-volume.volume-low {
-	color: alpha(@ef_blue, 0.5);
-}
-
-#custom-volume-icon.volume-off,
-#custom-volume.volume-off,
-#custom-volume-icon.volume-muted,
-#custom-volume.volume-muted {
-	color: alpha(@ef_foreground, 0.5);
+	border-right-style: none;
 }
 
 /* #custom-battery-icon { */
@@ -276,41 +155,6 @@ menu separator {
 
 #custom-battery-progress {
 	padding-right: 0.8rem;
-}
-
-#custom-battery-icon.battery-connected,
-#custom-battery-progress.battery-connected {
-	color: alpha(@ef_blue, 0.5);
-}
-
-#custom-battery-icon.battery-disconnected,
-#custom-battery-progress.battery-disconnected {
-	color: alpha(@ef_foreground, 0.5);
-}
-
-#custom-battery-icon.battery-level-4,
-#custom-battery-progress.battery-level-4 {
-	color: alpha(@ef_green, 0.5);
-}
-
-#custom-battery-icon.battery-level-3,
-#custom-battery-progress.battery-level-3 {
-	color: alpha(@ef_aqua, 0.5);
-}
-
-#custom-battery-icon.battery-level-2,
-#custom-battery-progress.battery-level-2 {
-	color: alpha(@ef_yellow, 0.5);
-}
-
-#custom-battery-icon.battery-level-1,
-#custom-battery-progress.battery-level-1 {
-	color: alpha(@ef_red, 0.5);
-}
-
-#custom-battery-icon.battery-full,
-#custom-battery-progress.battery-full {
-	color: alpha(@ef_green, 0.7);
 }
 
 #workspaces>*,
@@ -328,20 +172,13 @@ menu separator {
 }
 
 #workspaces button {
-	background: transparent;
-	border: none;
+	border-style: none;
 	border-radius: 0;
-	color: alpha(@ef_foreground, 0.5);
 	padding: 0 0.15rem;
 }
 
 #workspaces button.active {
-	color: @ef_yellow;
 	font-weight: bold;
-}
-
-#custom-workspaces {
-	color: alpha(@ef_foreground, 0.5);
 }
 
 #tray {
@@ -359,10 +196,6 @@ menu separator {
 	margin-top: 0.1rem;
 	min-height: 0.9rem;
 	min-width: 0.9rem;
-}
-
-#custom-wlogout {
-	color: alpha(@ef_red, 0.7);
 }
 
 #group-brightness>box,

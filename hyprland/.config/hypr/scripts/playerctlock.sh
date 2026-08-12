@@ -74,17 +74,18 @@ convert_position() {
 fallback_thumb() {
     local out
 
+    source "${XDG_CONFIG_HOME:-$HOME/.config}/dotfiles-theme/current/.config/hypr/playerctlock-colors.sh"
     out=$(mktemp "${THUMB}.png.XXXXXX") || return 0
 
     if command -v magick >/dev/null 2>&1; then
-        magick -size 640x640 xc:'#384B55' \
-            -fill '#2E383C' -draw 'roundrectangle 64,64 576,576 60,60' \
-            -fill '#1E2326' -draw 'circle 320,280 320,120' \
-            -fill '#7FBBB3' -draw 'circle 320,280 320,165' \
-            -fill '#384B55' -draw 'circle 320,280 320,230' \
-            -fill '#D3C6AA' -draw 'roundrectangle 260,380 380,415 14,14' \
-            -fill '#A7C080' -draw 'roundrectangle 220,455 420,485 12,12' \
-            -fill '#859289' -draw 'roundrectangle 250,500 390,520 8,8' \
+        magick -size 640x640 xc:"$FALLBACK_CANVAS_COLOR" \
+            -fill "$FALLBACK_CARD_COLOR" -draw 'roundrectangle 64,64 576,576 60,60' \
+            -fill "$FALLBACK_DISC_OUTER_COLOR" -draw 'circle 320,280 320,120' \
+            -fill "$FALLBACK_DISC_ACCENT_COLOR" -draw 'circle 320,280 320,165' \
+            -fill "$FALLBACK_DISC_CENTER_COLOR" -draw 'circle 320,280 320,230' \
+            -fill "$FALLBACK_FOREGROUND_COLOR" -draw 'roundrectangle 260,380 380,415 14,14' \
+            -fill "$FALLBACK_PRIMARY_COLOR" -draw 'roundrectangle 220,455 420,485 12,12' \
+            -fill "$FALLBACK_MUTED_COLOR" -draw 'roundrectangle 250,500 390,520 8,8' \
             "$out" 2>/dev/null || return 0
     else
         return 0

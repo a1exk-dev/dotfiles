@@ -1,4 +1,5 @@
 {
+	"include": "../dotfiles-theme/current/.config/waybar/theme.json",
 	"layer": "top",
 	"position": "top",
 	"exclusive": true,
@@ -83,8 +84,6 @@
 
 	"hyprland/language": {
 		"format": "{}",
-		"format-en": "<span foreground=\"#7fbbb3\">[</span>🇺🇸<span foreground=\"#7fbbb3\">]</span>",
-		"format-ru": "<span foreground=\"#e67e80\">[</span>🇷🇺<span foreground=\"#e67e80\">]</span>",
 		"keyboard-name": "at-translated-set-2-keyboard",
 		"on-click": "hyprctl switchxkblayout all next",
 		"tooltip": true,

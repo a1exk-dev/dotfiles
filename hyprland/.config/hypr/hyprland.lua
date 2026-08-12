@@ -11,7 +11,11 @@
 -----------------
 ---- IMPORTS ----
 -----------------
-_G.colors = require("colors")
+local configHome = os.getenv("XDG_CONFIG_HOME")
+if not configHome or configHome == "" then
+	configHome = assert(os.getenv("HOME"), "HOME is not set") .. "/.config"
+end
+_G.colors = dofile(configHome .. "/dotfiles-theme/current/.config/hypr/colors.lua")
 require("modules.monitors")
 require("modules.programs")
 require("modules.autostart")
@@ -32,8 +36,8 @@ hl.config({
 		border_size = 1,
 
 		col = {
-			active_border = "rgba(" .. colors.primary:sub(2) .. "ee)",
-			inactive_border = "rgba(" .. colors.grey_0:sub(2) .. "aa)",
+			active_border = colors.active_border,
+			inactive_border = colors.inactive_border,
 		},
 
 		-- Set to true to enable resizing windows by clicking and dragging on borders and gaps

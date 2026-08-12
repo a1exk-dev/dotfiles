@@ -2,8 +2,15 @@
 
 set -u
 
-ACTIVE_COLOR="${WAYBAR_WORKSPACE_ACTIVE_COLOR:-#dbbc7f}"
+ACTIVE_COLOR_OVERRIDE="${WAYBAR_WORKSPACE_ACTIVE_COLOR:-}"
+source "${XDG_CONFIG_HOME:-$HOME/.config}/dotfiles-theme/current/.config/waybar/theme.sh"
+DEFAULT_ACTIVE_COLOR="$WAYBAR_WORKSPACE_ACTIVE_COLOR"
+ACTIVE_COLOR="${ACTIVE_COLOR_OVERRIDE:-$DEFAULT_ACTIVE_COLOR}"
 RELEVANT_EVENTS='^(workspace|workspacev2|focusedmon|focusedmonv2|createworkspace|createworkspacev2|destroyworkspace|destroyworkspacev2|moveworkspace|moveworkspacev2|renameworkspace)$'
+
+normalize_color() {
+	[[ $ACTIVE_COLOR =~ ^#[0-9a-fA-F]{6}([0-9a-fA-F]{2})?$ ]] || ACTIVE_COLOR=$DEFAULT_ACTIVE_COLOR
+}
 
 run_hyprctl_json() {
 	local command=$1
@@ -197,6 +204,8 @@ watch_events() {
 		print_workspaces
 	done
 }
+
+normalize_color
 
 if [[ ${1:-} == "--watch" ]]; then
 	watch_events

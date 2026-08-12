@@ -1,46 +1,37 @@
-@define-color ef_foreground #d3c6aa;
-@define-color ef_yellow #dbbc7f;
-@define-color ef_red #e67e80;
-@define-color ef_green #a7c080;
-@define-color ef_blue #7fbbb3;
-@define-color ef_grey_0 #7a8478;
-@define-color ef_grey_1 #859289;
-@define-color ef_bg_0 #272e33;
-@define-color ef_bg_1 #2e383c;
-@define-color ef_bg_2 #374145;
+@import "../dotfiles-theme/current/.config/swaync/theme.css";
 
 * {
 	font-family: "Terminess Nerd Font Propo", monospace;
 }
 
 notificationwindow {
-	background: transparent;
+	background: @swaync_transparent;
 	padding-top: 4px;
 }
 
 blankwindow {
-	background: transparent;
+	background: @swaync_transparent;
 }
 
 .control-center {
-	background: alpha(@ef_bg_0, 0.9);
+	background: @swaync_surface;
 	border-radius: 0.8rem;
 	box-shadow: none;
-	color: @ef_foreground;
-	outline: 1px dashed @ef_yellow;
+	color: @swaync_text;
+	outline: 1px dashed @swaync_accent;
 	outline-offset: -0.4rem;
 	padding: 0.8rem;
 }
 
 .control-center .control-center-list {
-	background: transparent;
+	background: @swaync_transparent;
 	border-radius: 0.4rem;
 	margin: 0.4rem;
 	padding: 0.4rem;
 }
 
 .control-center .control-center-list-placeholder {
-	color: alpha(@ef_grey_1, 0.7);
+	color: @swaync_placeholder_text;
 	opacity: 1;
 }
 
@@ -49,56 +40,56 @@ blankwindow {
 }
 
 .notification-row {
-	background: transparent;
+	background: @swaync_transparent;
 	outline: none;
 }
 
 .notification-row:focus {
-	background: transparent;
+	background: @swaync_transparent;
 }
 
 .notification-row .notification-background {
-	background: alpha(@ef_bg_0, 0.9);
-	border-bottom: 1px solid @ef_bg_2;
+	background: @swaync_surface;
+	border-bottom: 1px solid @swaync_border;
 	border-radius: 0.8rem;
-	border-top: 1px solid @ef_bg_2;
+	border-top: 1px solid @swaync_border;
 	margin: 0 4px 0.4rem 0.8rem;
 	padding: 0.4rem;
 }
 
 .notification-row .notification-background .notification {
-	background: transparent;
-	border: 1px dashed @ef_bg_2;
+	background: @swaync_transparent;
+	border: 1px dashed @swaync_border;
 	border-radius: 0.4rem;
 	box-shadow: none;
-	color: @ef_foreground;
+	color: @swaync_text;
 	padding: 0;
 }
 
 .notification-row .notification-background .notification.critical {
-	border-color: @ef_red;
+	border-color: @swaync_critical;
 }
 
 .notification-row .notification-background .notification .notification-default-action {
-	background: transparent;
+	background: @swaync_transparent;
 	border: none;
 	border-radius: 0.4rem;
 	box-shadow: none;
-	color: @ef_foreground;
+	color: @swaync_text;
 	padding: 0.8rem;
 	transition: background 180ms ease-in-out;
 }
 
 .notification-row .notification-background .notification .notification-default-action:hover {
-	background: alpha(@ef_bg_1, 0.9);
+	background: @swaync_surface_hover;
 }
 
 .notification-row .notification-background .notification .notification-default-action:active {
-	background: alpha(@ef_bg_2, 0.9);
+	background: @swaync_surface_active;
 }
 
 .notification-row .notification-background .notification .notification-default-action .notification-content {
-	background: transparent;
+	background: @swaync_transparent;
 	border-radius: 0.4rem;
 	padding: 0;
 }
@@ -114,33 +105,33 @@ blankwindow {
 }
 
 .notification-row .notification-background .notification .notification-content .summary {
-	background: transparent;
-	color: @ef_foreground;
+	background: @swaync_transparent;
+	color: @swaync_text;
 	font-weight: bold;
 	text-shadow: none;
 }
 
 .notification-row .notification-background .notification .notification-content .time {
-	background: transparent;
-	color: @ef_grey_1;
+	background: @swaync_transparent;
+	color: @swaync_secondary_text;
 	font-weight: normal;
 	margin-right: 1.6rem;
 	text-shadow: none;
 }
 
 .notification-row .notification-background .notification .notification-content .body {
-	background: transparent;
-	color: alpha(@ef_foreground, 0.8);
+	background: @swaync_transparent;
+	color: @swaync_body_text;
 	font-weight: normal;
 	text-shadow: none;
 }
 
 .close-button {
-	background: transparent;
+	background: @swaync_transparent;
 	border: none;
 	border-radius: 0;
 	box-shadow: none;
-	color: alpha(@ef_grey_0, 0.7);
+	color: @swaync_close_button;
 	margin-right: 0.8rem;
 	margin-top: 0.8rem;
 	min-height: 1.2rem;
@@ -149,39 +140,39 @@ blankwindow {
 }
 
 .close-button:hover {
-	background: transparent;
+	background: @swaync_transparent;
 	border: none;
 	box-shadow: none;
-	color: @ef_red;
+	color: @swaync_critical;
 }
 
 .notification-group {
-	background: transparent;
+	background: @swaync_transparent;
 	outline: none;
 }
 
 .notification-group:focus {
-	background: transparent;
+	background: @swaync_transparent;
 }
 
 .notification-group .notification-group-headers {
-	background: alpha(@ef_bg_0, 0.9);
-	border-bottom: 1px solid @ef_bg_2;
+	background: @swaync_surface;
+	border-bottom: 1px solid @swaync_border;
 	border-radius: 0.8rem;
-	border-top: 1px solid @ef_bg_2;
-	color: @ef_foreground;
+	border-top: 1px solid @swaync_border;
+	color: @swaync_text;
 	margin: 0 0 0.4rem 0.8rem;
 	padding: 0.4rem 0.6rem;
 }
 
 .notification-group .notification-group-headers .notification-group-icon {
 	-gtk-icon-size: 1.1rem;
-	color: alpha(@ef_blue, 0.75);
+	color: @swaync_group_icon;
 	margin-right: 0.4rem;
 }
 
 .notification-group .notification-group-headers .notification-group-header {
-	color: @ef_foreground;
+	color: @swaync_text;
 	font-size: 1rem;
 	font-weight: bold;
 	text-shadow: none;
@@ -194,11 +185,11 @@ blankwindow {
 .notification-group .notification-group-buttons>button,
 .notification-group .notification-group-close-button .close-button {
 	-gtk-icon-size: 1rem;
-	background: alpha(@ef_blue, 0.25);
+	background: @swaync_action_background;
 	border: none;
 	border-radius: 0.4rem;
 	box-shadow: none;
-	color: @ef_foreground;
+	color: @swaync_text;
 	margin: 0;
 	min-height: 1.8rem;
 	min-width: 1.8rem;
@@ -207,41 +198,41 @@ blankwindow {
 }
 
 .notification-group .notification-group-collapse-button:hover {
-	background: alpha(@ef_blue, 0.55);
+	background: @swaync_action_hover;
 }
 
 .notification-group .notification-group-collapse-button:active {
-	background: alpha(@ef_blue, 0.75);
+	background: @swaync_action_active;
 }
 
 .notification-group .notification-group-close-all-button:hover,
 .notification-group .notification-group-close-button .close-button:hover {
-	background: alpha(@ef_red, 0.55);
-	color: @ef_foreground;
+	background: @swaync_destructive_hover;
+	color: @swaync_text;
 }
 
 .notification-group .notification-group-close-all-button:active,
 .notification-group .notification-group-close-button .close-button:active {
-	background: alpha(@ef_red, 0.75);
+	background: @swaync_destructive_active;
 }
 
 .notification-action>button,
 .inline-reply-button,
 .inline-reply-entry {
-	background: transparent;
+	background: @swaync_transparent;
 	border: none;
 	border-radius: 0.4rem;
-	color: @ef_foreground;
+	color: @swaync_text;
 }
 
 .notification-action>button:hover,
 .inline-reply-button:hover {
-	background: alpha(@ef_bg_1, 0.9);
+	background: @swaync_surface_hover;
 }
 
 .notification-action>button:active,
 .inline-reply-button:active {
-	background: alpha(@ef_bg_2, 0.9);
+	background: @swaync_surface_active;
 }
 
 progressbar,
@@ -251,83 +242,83 @@ trough {
 }
 
 progressbar trough {
-	background: alpha(@ef_bg_2, 0.8);
+	background: @swaync_progress_trough;
 }
 
 progressbar progress {
-	background: alpha(@ef_green, 0.8);
+	background: @swaync_progress;
 }
 
 .widget {
-	background: transparent;
+	background: @swaync_transparent;
 	border-radius: 0.4rem;
-	color: @ef_foreground;
+	color: @swaync_text;
 	margin: 0.4rem;
 	padding: 0.8rem;
 }
 
 .widget-title>label {
-	color: @ef_foreground;
+	color: @swaync_text;
 	font-size: 1rem;
 }
 
 .widget-title>button {
-	background-color: alpha(@ef_blue, 0.25);
+	background-color: @swaync_action_background;
 	border: none;
 	border-radius: 0.35rem;
 	box-shadow: none;
-	color: @ef_foreground;
+	color: @swaync_text;
 	min-height: 2.4rem;
 	padding: 0 0.8rem;
 	transition: background 180ms ease-in-out;
 }
 
 .widget-dnd {
-	background: linear-gradient(to right, alpha(@ef_bg_0, 0.9), alpha(@ef_bg_1, 0.9));
+	background: linear-gradient(to right, @swaync_surface, @swaync_surface_hover);
 	border-radius: 10px;
-	box-shadow: inset 0 0 8px alpha(@ef_bg_0, 0.45);
-	color: @ef_foreground;
+	box-shadow: inset 0 0 8px @swaync_dnd_shadow;
+	color: @swaync_text;
 	font-size: 1rem;
 	margin: 5px;
 	padding: 3px 6px;
 }
 
 .widget-dnd>switch {
-	background: linear-gradient(to right, alpha(@ef_green, 0.3), alpha(@ef_green, 0.6));
-	border: 1px solid alpha(@ef_green, 0.7);
+	background: linear-gradient(to right, @swaync_dnd_off_start, @swaync_dnd_off_end);
+	border: 1px solid @swaync_dnd_off_border;
 	border-radius: 0.35rem;
 	transition: background 180ms ease-in-out, border 180ms ease-in-out, box-shadow 180ms ease-in-out;
 }
 
 .widget-dnd>switch:hover {
-	border-color: @ef_green;
-	box-shadow: 0 0 0 2px alpha(@ef_green, 0.15);
+	border-color: @swaync_dnd_off_hover_border;
+	box-shadow: 0 0 0 2px @swaync_dnd_off_hover_ring;
 }
 
 .widget-dnd>switch:checked {
-	background: linear-gradient(to right, alpha(@ef_red, 0.6), alpha(@ef_red, 0.9));
-	border: 1px solid alpha(@ef_red, 0.8);
+	background: linear-gradient(to right, @swaync_dnd_on_start, @swaync_dnd_on_end);
+	border: 1px solid @swaync_dnd_on_border;
 }
 
 .widget-dnd>switch:checked:hover {
-	border-color: @ef_red;
-	box-shadow: 0 0 0 2px alpha(@ef_red, 0.15);
+	border-color: @swaync_dnd_on_hover_border;
+	box-shadow: 0 0 0 2px @swaync_dnd_on_hover_ring;
 }
 
 .widget-dnd>switch slider {
-	background: @ef_bg_0;
+	background: @swaync_dnd_slider;
 	border: none;
 	border-radius: 0.25rem;
-	box-shadow: 0 1px 3px alpha(@ef_bg_0, 0.6);
+	box-shadow: 0 1px 3px @swaync_dnd_slider_shadow;
 }
 
 .widget-dnd>switch:checked slider {
-	background: @ef_bg_0;
+	background: @swaync_dnd_slider;
 	border-radius: 0.25rem;
 }
 
 .widget-dnd label {
-	color: @ef_foreground;
+	color: @swaync_text;
 }
 
 .widget-buttons-grid {
@@ -339,11 +330,11 @@ progressbar progress {
 }
 
 .widget-buttons-grid flowboxchild>button {
-	background-color: alpha(@ef_blue, 0.25);
+	background-color: @swaync_action_background;
 	border: none;
 	border-radius: 0.35rem;
 	box-shadow: none;
-	color: @ef_foreground;
+	color: @swaync_text;
 	font-size: 1.35rem;
 	min-height: 2.4rem;
 	min-width: 2.4rem;
@@ -352,24 +343,24 @@ progressbar progress {
 }
 
 .widget-title>button.control-center-clear-all:hover {
-	background: alpha(@ef_red, 0.55);
+	background: @swaync_destructive_hover;
 }
 
 .widget-title>button.control-center-clear-all:active {
-	background: alpha(@ef_red, 0.75);
+	background: @swaync_destructive_active;
 }
 
 .widget-buttons-grid flowboxchild>button:hover {
-	background: alpha(@ef_blue, 0.55);
+	background: @swaync_action_hover;
 }
 
 .widget-buttons-grid flowboxchild>button:active {
-	background: alpha(@ef_blue, 0.75);
+	background: @swaync_action_active;
 }
 
 .widget-title>button.control-center-clear-all:disabled {
-	background: alpha(@ef_grey_0, 0.15);
-	color: alpha(@ef_grey_1, 0.45);
+	background: @swaync_disabled_action;
+	color: @swaync_disabled_text;
 }
 
 .widget-mpris {
@@ -377,7 +368,7 @@ progressbar progress {
 }
 
 .widget-mpris .widget-mpris-player {
-	background: alpha(@ef_bg_0, 0.9);
+	background: @swaync_surface;
 	border-radius: 0.4rem;
 	box-shadow: none;
 	margin: 0;
@@ -388,8 +379,8 @@ progressbar progress {
 }
 
 .widget-mpris .widget-mpris-player .mpris-overlay {
-	background: alpha(@ef_bg_0, 0.75);
-	color: @ef_foreground;
+	background: @swaync_mpris_overlay;
+	color: @swaync_text;
 	padding: 0.8rem;
 }
 
@@ -399,34 +390,34 @@ progressbar progress {
 }
 
 .widget-mpris .widget-mpris-player .mpris-overlay .widget-mpris-title {
-	color: @ef_foreground;
+	color: @swaync_text;
 	font-weight: bold;
 }
 
 .widget-mpris .widget-mpris-player .mpris-overlay .widget-mpris-subtitle {
-	color: alpha(@ef_foreground, 0.75);
+	color: @swaync_mpris_subtitle;
 }
 
 .widget-mpris .widget-mpris-player .mpris-overlay button,
 .widget-mpris>box>button {
-	background: transparent;
+	background: @swaync_transparent;
 	border: none;
 	border-radius: 0.4rem;
 	box-shadow: none;
-	color: @ef_foreground;
+	color: @swaync_text;
 	transition: background 180ms ease-in-out;
 }
 
 .widget-mpris .widget-mpris-player .mpris-overlay button:hover,
 .widget-mpris>box>button:hover {
-	background: alpha(@ef_bg_1, 0.9);
+	background: @swaync_surface_hover;
 }
 
 .widget-mpris .widget-mpris-player .mpris-overlay button:active,
 .widget-mpris>box>button:active {
-	background: alpha(@ef_bg_2, 0.9);
+	background: @swaync_surface_active;
 }
 
 .widget-mpris>box>button:disabled {
-	color: alpha(@ef_grey_0, 0.5);
+	color: @swaync_mpris_disabled;
 }
