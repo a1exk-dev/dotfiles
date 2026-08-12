@@ -11,8 +11,11 @@ sudo pacman -S --needed waybar jq socat swaync noto-fonts-emoji pipewire geoclue
 ## Link config
 
 ```sh
-stow --adopt -t "$HOME" waybar
+stow --no-folding -t "$HOME" theme-tools
+dotfiles-theme install
 ```
+
+The manager restows Waybar, supplies its CSS, JSON, and widget color environment from the active bundle, and keeps the old `colors.css` path bridged. `dotfiles-theme set everforest-hard` sends `SIGUSR2` only to exact current-user Waybar PIDs. See [Theme management](21-theme.md).
 
 ## Custom widgets
 

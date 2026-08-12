@@ -18,7 +18,8 @@ starts.
 
 - `tmux/.tmux.conf` - Main configuration
 - `tmux/.local/bin/tmux-session` - Interactive session picker
-- Stow: `stow --adopt -t "$HOME" tmux`
+- Active palette: `${XDG_CONFIG_HOME:-$HOME/.config}/dotfiles-theme/current/.config/tmux/theme.conf`
+- Deployment: [`dotfiles-theme install`](21-theme.md)
 
 ## Session Picker Installation
 
@@ -26,13 +27,14 @@ Install `tmux`, `fzf`, `zsh`, and GNU Stow with the system package manager.
 Then run these commands from the repository root:
 
 ```sh
-stow --adopt -t "$HOME" tmux
 stow --adopt -t "$HOME" zsh
+stow --no-folding -t "$HOME" theme-tools
+dotfiles-theme install
 source ~/.zshrc
 ```
 
-The first Stow command links the picker to `~/.local/bin/tmux-session`. The
-second installs the Zsh wrapper that sends a bare `tmux` command to the picker.
+The theme install restows tmux and links the picker to `~/.local/bin/tmux-session`.
+The Zsh package installs the wrapper that sends a bare `tmux` command to the picker.
 Verify the installation with:
 
 ```sh
@@ -54,7 +56,7 @@ Commands with arguments, such as `tmux ls`, continue to call tmux normally.
 - Save session state manually with `prefix + Ctrl+s`.
 - Restore session state manually with `prefix + Ctrl+r`.
 - Continuum automatically saves every 15 minutes and restores on tmux startup.
-- Status bar uses Everforest palette values from root `ReadMe.md`.
+- Status bar variables come from the active theme bundle.
 - Session shortcuts:
   - `prefix + S` - Create new named session (prompt)
   - `prefix + X` - Kill current session (confirm)

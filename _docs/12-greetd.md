@@ -31,13 +31,17 @@ sudo mkdir -p /etc/greetd
 sudo ln -sf ~/Projects/dotfiles/greetd/config.toml /etc/greetd/config.toml
 ```
 
-Link Everforest theme:
+Link the ASCII layout and install the shared theme manager:
 
 ```sh
-mkdir -p ~/.config/sysc-greet/themes ~/.config/sysc-greet/ascii_configs
-ln -sf ~/Projects/dotfiles/sysc-greet/themes/everforest-hard.toml ~/.config/sysc-greet/themes/everforest-hard.toml
+mkdir -p ~/.config/sysc-greet/ascii_configs
 ln -sf ~/Projects/dotfiles/sysc-greet/ascii_configs/hyprland.conf ~/.config/sysc-greet/ascii_configs/hyprland.conf
+stow --no-folding -t "$HOME" theme-tools
+dotfiles-theme install
+dotfiles-theme sync-greeter
 ```
+
+In the greeter's theme menu, select the custom theme named `current` once. Use `sysc-greet --test` to preview the configuration. Later `sync-greeter` runs use `sudo -u greeter` to atomically update the selected file without root destination writes, preference or cache edits, or a greetd restart. See [Theme management](21-theme.md).
 
 ## Enable greetd
 

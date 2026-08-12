@@ -8,21 +8,22 @@ Brave is Chromium-based, so it supports Chrome Web Store extensions and Chromium
 yay -S brave-bin
 ```
 
-## Stow
+## Theme Deployment
 
-The repository is the source and `HOME` is the target. From the repository root, preview the operation first:
-
-```sh
-stow -n -v --no-folding -t "$HOME" brave
-```
-
-The dry run should plan only the custom theme directories and the `manifest.json` link. Apply it with:
+Install the shared theme manager from the repository root:
 
 ```sh
-stow --no-folding -t "$HOME" brave
+stow --no-folding -t "$HOME" theme-tools
+dotfiles-theme --dry-run install
+dotfiles-theme install
 ```
 
-The deployed `$HOME/.local/share/brave/themes/everforest-hard` is a real directory, and only its `manifest.json` is symlinked to `brave/.local/share/brave/themes/everforest-hard/manifest.json` in this repository. `--no-folding` keeps Brave's generated `Cached Theme.pak` in `HOME` and out of source control. No live Brave profile files are linked. Never use `--adopt` for browser data.
+The manager restows the Brave package with `--no-folding -R` and never uses `--adopt`. It creates both extension roots as real directories:
+
+- `${XDG_DATA_HOME:-$HOME/.local/share}/brave/themes/current`
+- `${XDG_DATA_HOME:-$HOME/.local/share}/brave/themes/everforest-hard`
+
+In each directory, only `manifest.json` is bridged to the active bundle. Keeping both parents real lets Brave create `Cached Theme.pak` beside either manifest without writing cache data into this repository. No live Brave profile files are linked. See [Theme management](21-theme.md).
 
 ## Managed Policy
 
@@ -61,17 +62,17 @@ Restart Brave again after removal.
 
 ## Theme
 
-Brave supports themes from the Chrome Web Store. Chromium defines themes as special extensions that change browser appearance without JavaScript or HTML code. This repository's no-code, no-permission Manifest V3 theme applies the canonical Everforest Hard palette to browser chrome and supported New Tab colors; it does not style website content.
+Brave supports themes from the Chrome Web Store. Chromium defines themes as special extensions that change browser appearance without JavaScript or HTML code. This repository's no-code, no-permission Manifest V3 theme applies the active palette to browser chrome and supported New Tab colors; it does not style website content.
 Brave has no explicit theme hover key, so this theme uses Everforest Background 4 as the toolbar endpoint, placing Brave's derived toolbar-button and inactive-tab hover states near Background 2 and Background 1, respectively.
 
-Activate the Stowed theme once:
+Activate the managed theme once:
 
 1. Open `brave://extensions`.
 2. Enable **Developer mode**.
 3. Select **Load unpacked**.
-4. Choose `$HOME/.local/share/brave/themes/everforest-hard`.
+4. Choose `${XDG_DATA_HOME:-$HOME/.local/share}/brave/themes/current`.
 
-Theme activation is stored in Brave's profile and is intentionally not Stowed. Reset the theme or remove the unpacked theme through Brave's UI.
+Existing installations loaded from the legacy `everforest-hard` directory continue to work through its compatibility bridge. Theme activation is stored in Brave's profile and is intentionally not Stowed. Reset the theme or remove the unpacked theme through Brave's UI.
 
 The currently enabled branded New Tab backgrounds can obscure the theme's solid New Tab background. Disable branded backgrounds manually to see that color.
 
@@ -149,7 +150,7 @@ Never commit or symlink Brave user-data or profile files. Excluded data includes
 
 Safe path references:
 
-- Stowed theme target: `$HOME/.local/share/brave/themes/everforest-hard/manifest.json`
+- Managed theme targets: `${XDG_DATA_HOME:-$HOME/.local/share}/brave/themes/current/manifest.json` and `${XDG_DATA_HOME:-$HOME/.local/share}/brave/themes/everforest-hard/manifest.json`
 - Stable profile root: `$XDG_CONFIG_HOME/BraveSoftware/Brave-Browser/`, or `$HOME/.config/BraveSoftware/Brave-Browser/` when `XDG_CONFIG_HOME` is unset
 - Managed Linux policy path: `/etc/brave/policies/managed/dotfiles.json`
 

@@ -7,8 +7,11 @@ OpenCode console configuration and desktop notifications.
 From the repository root:
 
 ```sh
-stow --adopt -t "$HOME" opencode
+stow --no-folding -t "$HOME" theme-tools
+dotfiles-theme install
 ```
+
+The manager restows OpenCode without adopting files and maintains both `themes/current.json` and the legacy `themes/everforest-hard.json` bridge. Restart OpenCode manually after changing the active theme. See [Theme management](21-theme.md).
 
 ## Notifications
 

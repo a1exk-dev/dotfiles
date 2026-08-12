@@ -6,16 +6,18 @@ Window manager configuration.
 
 ```sh
 sudo pacman -S --needed hyprland hypridle hyprlock
-```
 yay -S wlogout
+```
 
 ## Link config
 
 ```sh
-stow -t "$HOME" hyprland
-stow -t "$HOME" hypridle 
-stow -t "$HOME" wlogout 
+stow -t "$HOME" hypridle
+stow --no-folding -t "$HOME" theme-tools
+dotfiles-theme install
 ```
+
+The theme install restows Hyprland and Wlogout and connects their runtime color includes to the active bundle. Theme changes use a safe Hyprland config-only reload; see [Theme management](21-theme.md).
 
 systemctl --user enable --now hypridle.service
 

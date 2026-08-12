@@ -13,8 +13,12 @@ sudo pacman -S --needed zsh git stow fzf zoxide tmux starship ghostty thefuck
 From the dotfiles repo root, run:
 
 ```sh
-stow --adopt -t "$HOME" zsh starship tmux ghostty opencode
+stow --adopt -t "$HOME" zsh
+stow --no-folding -t "$HOME" theme-tools
+dotfiles-theme install
 ```
+
+The theme install safely restows the managed tmux, Ghostty, and OpenCode packages and generates Starship's active config. Do not separately Stow the old Starship theme file. See [Theme management](21-theme.md).
 
 ## Features
 

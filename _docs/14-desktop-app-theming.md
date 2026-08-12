@@ -2,6 +2,8 @@
 
 Tools and commands for theming GTK, Qt5, and Qt6 applications on a Wayland desktop.
 
+The repository's shared Everforest application palette is managed separately by [`dotfiles-theme`](21-theme.md). This page covers toolkit-wide GTK and Qt themes; do not copy the app palette into these settings.
+
 ## Tool Map
 
 - `nwg-look` - GTK settings editor for wlroots compositors such as Hyprland.
