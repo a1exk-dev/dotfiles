@@ -1,0 +1,6 @@
+tabbar tabbox,
+tabbar tabbox > tabboxchild > tab {
+  min-height: 24px;
+  padding-top: 0;
+  padding-bottom: 0;
+}

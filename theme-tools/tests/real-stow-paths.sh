@@ -185,6 +185,7 @@ run_case() {
 	HYPRLAND_CONFIG=$CONFIG_HOME/hypr/hyprland.lua
 	HYPRLOCK_CONFIG=$CONFIG_HOME/hypr/hyprlock.conf
 	GHOSTTY_CONFIG=$CONFIG_HOME/ghostty/config
+	GHOSTTY_TAB_BAR_CSS=$CONFIG_HOME/ghostty/tab-bar.css
 	CURRENT=$CONFIG_HOME/dotfiles-theme/current
 	GHOSTTY_SELECTOR=$CURRENT/.config/ghostty/themes/current
 	GHOSTTY_BRIDGE=$CONFIG_HOME/ghostty/themes/current
@@ -194,6 +195,7 @@ run_case() {
 	assert_deployed_link "$HYPRLAND_CONFIG" "$REPO_ROOT/hyprland/.config/hypr/hyprland.lua"
 	assert_deployed_link "$HYPRLOCK_CONFIG" "$REPO_ROOT/hyprland/.config/hypr/hyprlock.conf"
 	assert_deployed_link "$GHOSTTY_CONFIG" "$REPO_ROOT/ghostty/.config/ghostty/config"
+	assert_deployed_link "$GHOSTTY_TAB_BAR_CSS" "$REPO_ROOT/ghostty/.config/ghostty/tab-bar.css"
 	[[ -f $CURRENT/.config/hypr/colors.lua ]] || fail "active Hyprland bundle path is unresolved ($CASE_NAME)"
 	[[ -f $CURRENT/.config/hypr/hyprlock-colors.conf ]] || fail "active Hyprlock bundle path is unresolved ($CASE_NAME)"
 	[[ -L $GHOSTTY_SELECTOR ]] || fail "active Ghostty selector is missing ($CASE_NAME)"
@@ -215,6 +217,8 @@ run_case() {
 		fail 'Ghostty app config does not select the native current theme'
 	grep -Eq '^[[:space:]]*background-opacity[[:space:]]*=' "$GHOSTTY_CONFIG" || \
 		fail 'Ghostty app config lost its standalone opacity setting'
+	grep -Eq '^[[:space:]]*gtk-custom-css[[:space:]]*=[[:space:]]*tab-bar\.css[[:space:]]*$' "$GHOSTTY_CONFIG" || \
+		fail 'Ghostty app config does not load the compact tab bar CSS'
 
 	validate_deployment
 	printf 'ok - real GNU Stow paths passed (%s)\n' "$CASE_NAME"

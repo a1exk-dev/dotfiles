@@ -47,7 +47,7 @@ Compatibility bridges keep the previous Hyprland, Waybar, OpenCode, Brave, sysc-
 ## App Selectors
 
 - **btop:** `.config/btop/themes/current.theme` points to the packaged native `everforest-dark-hard.theme`, preferring `/usr/share/btop/themes/everforest-dark-hard.theme`. A missing native resource warns but does not block activation.
-- **Ghostty:** the app config uses `theme = current`, and the bundle provides `.config/ghostty/themes/current` as a symlink to the packaged native `Everforest Dark Hard` theme. A missing native resource warns but does not block activation. Ghostty keeps its standalone opacity setting in the app config.
+- **Ghostty:** the app config uses `theme = current`, and the bundle provides `.config/ghostty/themes/current` as a symlink to the packaged native `Everforest Dark Hard` theme. A missing native resource warns but does not block activation. Ghostty keeps its standalone opacity setting and uses app-specific GTK CSS to reduce only the tab bar's vertical height and padding.
 - **Neovim:** the bundle generates `.config/nvim/theme.lua` with the Everforest colorscheme and hard background. The manager does not Stow Neovim files.
 - **Starship:** `.config/starship.toml` is generated from the root palette selection, `starship/.config/starship/base.toml`, and the active palette. `${XDG_CONFIG_HOME:-$HOME/.config}/starship.toml` bridges to it so shells using Starship's default path continue working.
 

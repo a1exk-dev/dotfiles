@@ -8,6 +8,7 @@ theme = current
 background-opacity = 0.85
 background-blur = true
 cursor-style-blink = true
+gtk-custom-css = tab-bar.css
 
 # Override theme cursor
 cursor-style = block
