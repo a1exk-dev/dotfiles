@@ -18,4 +18,4 @@ The root `packages.json` file containing package descriptions, prerequisites, de
 
 ## Skill manifest
 
-The pinned source revisions and installation requirements for global agent skills placed under `~/.agents/skills/`.
+The root `skills.json` file containing exact source revisions, each repository's official installation method, expected collection sizes, and installation requirements for global agent skills placed under `~/.agents/skills/`.

@@ -164,7 +164,7 @@ Reason: The wizard should not reproduce Omarchy's package-management or privileg
 
 Applies when: Running the wizard's agent-skill action or `make skills`.
 
-Guidance: Install both complete collections at pinned revisions from `https://github.com/blader/humanizer` and `https://github.com/mattpocock/skills` under `~/.agents/skills/`. When an installed skill differs, stop and show the difference before replacement. After approval, back it up under XDG state before installing the pinned copy. Use `make skills-update` to preview upstream changes and update pins deliberately.
+Guidance: Install every skill exposed by the official installers at pinned revisions from `https://github.com/blader/humanizer` and `https://github.com/mattpocock/skills` under `~/.agents/skills/`. Delegate draft exclusion, skill discovery, and supporting-file installation to each repository's documented installer; this repository adds only version pinning, difference preview, confirmation, and backup. When an installed skill differs, stop and show the difference before replacement. After approval, back it up under XDG state before installing the pinned copy. `make skills-update` previews upstream and installed-skill differences, then updates `skills.json` and global skills together after one approval. A failed update restores both the old manifest and global skill backups.
 
 Reason: Future agents need reproducible repository skills without silently overwriting global customizations.
 
@@ -178,7 +178,7 @@ Reason: The human must see version, prerequisite, and dependency effects before 
 
 ## Separate current behavior from planned design
 
-Applies when: Writing `README.md` or `docs/stow.md` before the wizard and Stow packages are implemented.
+Applies when: Writing `README.md`, `docs/stow.md`, or `docs/agent-setup.md` before the described tooling is implemented.
 
 Guidance: Present working commands only as current quick-start steps and label the wizard, package catalog, and package workflow as planned. List global agent skills as development requirements rather than end-user runtime requirements.
 
