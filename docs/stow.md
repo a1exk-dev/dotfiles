@@ -1,91 +1,87 @@
 # Stow workflow
 
-This guide describes the planned Stow package model and setup wizard. The repository does not contain Stow packages or an implemented wizard yet.
+A Stow package manages one application or a tightly coupled configuration concern. Packages use lowercase names and live under `config/<name>/`. Their directory trees mirror target paths below the user's home directory.
 
-A Stow package manages one application or tightly coupled configuration concern. Packages use lowercase names and live under `config/<name>/`. Their directory trees mirror target paths below the user's home directory.
+Tracked files stay in this repository. GNU Stow links them into the home directory instead of copying them. The package catalog is currently empty.
 
-Tracked files are edited inside this repository. GNU Stow links them into the home directory instead of copying them.
+## Commands
+
+```bash
+make
+./bin/dotfiles status
+./bin/dotfiles check
+./bin/dotfiles prerequisites --yes
+./bin/dotfiles apply <package> --yes
+./bin/dotfiles migrate <package> <home-relative-path> --yes --inspection-approved
+./bin/dotfiles remove <package> --yes
+```
+
+`status` and `check` do not require GNU Stow. `check` validates the package catalog, package directories, documentation links, dependency graph, skill manifest, and required external commands.
+
+Use `--allow-omarchy-mismatch` only after reviewing compatibility. Add `--install-stow` to approve installation through `omarchy-pkg-add stow`. After GNU Stow is verified, rerun the apply command so it can simulate and show the complete package plan.
 
 ## Ownership
 
-Prefer Omarchy-supported user overrides. Track a complete configuration only when an override cannot express the required behavior and the human has reviewed the replacement scope.
+Prefer Omarchy-supported user overrides. Track a complete configuration only when an override cannot express the required behavior and a human has reviewed the replacement scope.
 
-Packages target the user's home directory by default. Any system target or other location requires a separate decision.
+Packages target the user's home directory. A system target or another location requires a separate decision.
 
-When a package introduces machine-specific values, generated files, or sensitive data, stop and agree how to handle that concrete case before adding it.
+Stop before adding machine-specific values, generated files, or sensitive data. Decide how to handle the concrete case first.
 
 ## Package catalog
 
-The root `packages.json` file is the source of package metadata. Each package entry records:
+The root `packages.json` file stores each package's:
 
 - Name and description
 - Path below `config/`
 - Prerequisites
 - Package dependencies
 - Validation commands
-- Documentation link
+- Optional documentation link
 - Cleanup notes
 
-The wizard reads the catalog with `jq`.
+Dependencies are applied before dependents. Removal stops when a linked package depends on the selected package and names each dependent.
 
-When an applied package depends on another package, the wizard includes or blocks that dependency visibly. It blocks removal when another linked package still depends on the selected package and names every dependent.
+## Safety
 
-## Wizard flow
+Before a package mutation, the command engine:
 
-Run `make` to open the planned interactive wizard. Gum renders the interface when available; plain Bash prompts provide the fallback.
-
-No package is selected by default. Before changing files, the wizard:
-
-1. Checks the detected Omarchy version against the supported version.
-2. Checks required tools and selected-package prerequisites.
-3. Resolves dependencies and reports conflicts.
+1. Validates the catalog and inspects the Omarchy version.
+2. Checks required tools and package prerequisites.
+3. Resolves dependencies and simulates the Stow operation.
 4. Shows the complete plan.
-5. Asks for confirmation.
+5. Requests confirmation.
+6. Applies the change and verifies the result.
 
-A version mismatch produces a warning and requires confirmation. When GNU Stow is missing, the wizard explains the requirement and offers the Omarchy-supported installation command.
+A version mismatch produces a warning and requires separate confirmation. Existing normal files are reported as conflicts and are not replaced. The engine never uses `stow --adopt`.
 
-The shared `bin/dotfiles` engine provides `status`, `apply`, `remove`, `skills`, and `check` commands for agents and scripts.
+A failed package stops the batch. Packages verified earlier in the batch remain applied, and the command prints recovery steps.
 
-If a package operation fails, the wizard stops, preserves earlier successful operations, and reports recovery steps.
+## Migration
 
-## Conflicts and migration
+Inspect the candidate for sensitive or machine-specific content before passing `--inspection-approved`.
 
-Run a Stow dry run before applying a package. If a normal file already exists at a target path, stop and show the conflict without changing it.
+Migration:
 
-After the human approves migration:
+1. Reports the existing file and its package destination.
+2. Simulates the package's existing tracked files and stops if another target conflicts.
+3. Stores a timestamped backup below `${XDG_STATE_HOME:-$HOME/.local/state}/dotfiles/backups/<package>/`.
+4. Moves the approved file into the Stow package without replacing existing package content.
+5. Repeats the Stow simulation.
+6. Applies the package and verifies its links and validators.
 
-1. Save a timestamped backup below `${XDG_STATE_HOME:-$HOME/.local/state}/dotfiles/backups/`.
-2. Inspect the existing file for machine-specific or sensitive content.
-3. Move the approved content into its Stow package.
-4. Run the Stow dry run again.
-5. Create the links.
-6. Verify that every expected target points into the repository.
+## Verification and recovery
 
-The migration flow does not use `stow --adopt`.
+Successful apply or migration means every expected target resolves to its repository source and every declared validator passes.
 
-## Verification and removal
+Removal simulates the unlink operation, removes tracked links, and verifies that managed targets are gone. It reports cleanup notes but does not delete generated files, application state, or backups.
 
-A package is ready only after:
+Follow the recovery command printed after a failure. Migration backups remain in the XDG state directory. For partial links, use the printed `stow --delete` command before restoring a backup or retrying.
 
-- Its Stow dry run succeeds.
-- Its expected links point into the package.
-- Application-specific syntax, reload, or status checks pass when available.
-- A removal dry run succeeds.
+If the repository moves, remove or repair links created from the old location and apply the packages again.
 
-Removing a package unlinks its tracked files with Stow. The wizard reports generated files, application state, or backups that remain; it does not delete them automatically.
+## Package-specific installers
 
-If the repository clone moves, remove or repair the old links and apply the packages again from the new path.
-
-## Prerequisites and installers
-
-Each package lists its required software in `packages.json` and its topic guide when one exists. Use an Omarchy-supported installation command when available.
-
-A package may include a Bash installer when setup needs more than a documented command. The installer must:
-
-- Resolve the repository without assuming a clone path.
-- Preview its actions.
-- Ask for confirmation.
-- Run safely more than once.
-- Verify the result.
+A package may include a Bash installer when setup needs more than a documented command. The installer must resolve the repository without assuming a clone path, preview its actions, request confirmation, tolerate repeated execution, and verify the result.
 
 When elevated privileges are required, call the supported Omarchy command and let Omarchy manage the prompt.

@@ -1,59 +1,61 @@
 # Dotfiles
 
-This repository is for portable Omarchy Linux dotfiles. It targets Omarchy version 4 and will use GNU Stow to link tracked files into a user's home directory.
-
-The setup wizard and Stow packages are planned but are not implemented yet.
+Portable dotfiles for Omarchy version 4. GNU Stow links tracked configuration into the user's home directory. The Dotfiles wizard manages Stow packages, prerequisites, and pinned global agent skills.
 
 ## Requirements
 
-The planned dotfile tooling requires:
+Status, checks, and package management require:
 
 - Omarchy Linux version 4
 - Bash and GNU command-line tools
 - Git
-- GNU Stow
-- make
 - jq
+- make
 
-Gum provides the interactive interface. The wizard will fall back to plain Bash prompts when Gum is unavailable.
+The structural check also requires npx because it validates the global skill tooling.
 
-Agent-assisted development also requires:
+GNU Stow is required when applying, migrating, or removing packages. The wizard can install it with `omarchy-pkg-add stow` after confirmation.
+
+Gum is optional. The wizard uses plain Bash prompts when Gum is unavailable.
+
+Global agent-skill installation also requires:
 
 - Node.js 22.20.0 or newer
 - npm and npx
 - Network access to GitHub and the npm registry
 - Write access to `~/.agents/skills/`
 - A writable absolute `XDG_STATE_HOME`, or `~/.local/state`
-- Enough temporary storage for source checkouts, comparisons, and backups
-
-Restart the agent or reload its skills after installing or updating global skills.
+- Temporary storage for source checkouts, previews, and backups
 
 ## Quick start
-
-Clone the repository:
 
 ```bash
 git clone https://github.com/a1exk-dev/dotfiles.git
 cd dotfiles
+./bin/dotfiles status
+./bin/dotfiles check
+make
 ```
 
-The repository does not yet contain installable Stow packages or the setup wizard. There is currently no command that changes your Omarchy configuration.
+The package catalog is currently empty, so there are no configuration packages to apply. Status, structural checks, prerequisite setup, and global skill management are available. Running `make` opens the interactive wizard with no action or package selected.
 
-## Planned workflow
+Before a mutation, the command engine checks the Omarchy version and required tools, calculates dependencies and conflicts, shows the plan, and requests confirmation. An Omarchy version mismatch requires separate approval.
 
-The planned `make` command will open an interactive wizard. The wizard will show package status, apply or remove selected Stow packages, and install approved prerequisites.
+## Repository layout
 
-Before a change, it will check the Omarchy version and required tools, resolve package dependencies, report conflicts, show the complete plan, and ask for confirmation. No package will be selected by default.
+`bin/dotfiles` is the command interface. It loads internal modules from `lib/dotfiles/` for shared behavior, package operations, global skills, and the interactive wizard.
 
-Stow packages will live under `config/<name>/`. Package metadata will live in `packages.json`.
+Integration tests are grouped by behavior under `tests/` and share one isolated fixture harness. Run the full suite with:
 
-The wizard will also install the repository's pinned global agent skills. `make skills-update` will preview upstream differences, ask for approval, then update the manifest and installed skills as one recoverable operation.
+```bash
+make test
+```
 
-See [Stow workflow](docs/stow.md) for the full design.
+Running the integration tests requires Bubblewrap (`bwrap`).
 
 ## Documentation
 
-- [Stow workflow](docs/stow.md): package layout, safety, migration, verification, removal, and wizard behavior
-- [Agent setup](docs/agent-setup.md): pinned skill sources, official installers, version comparison, backup, recovery, and updates
+- [Stow workflow](docs/stow.md): package layout, commands, safety, migration, verification, and removal
+- [Agent setup](docs/agent-setup.md): pinned skill sources, preview, backup, recovery, and updates
 
-Package-specific guides will be added under `docs/` only when a package needs more detail.
+Package-specific guides belong under `docs/` only when a package needs more detail.

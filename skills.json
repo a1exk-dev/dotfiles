@@ -1,0 +1,23 @@
+{
+	"installer": {
+		"package": "skills",
+		"version": "1.5.22"
+	},
+	"target": "~/.agents/skills",
+	"sources": [
+		{
+			"name": "humanizer",
+			"url": "https://github.com/blader/humanizer",
+			"revision": "523374dee72d67c7b2b5f858ea0094ffda49c3ac",
+			"method": "skills-cli",
+			"expectedSkills": 1
+		},
+		{
+			"name": "matt-pocock-skills",
+			"url": "https://github.com/mattpocock/skills",
+			"revision": "068b6e0c62393147daf03530149cdce209c93da8",
+			"method": "skills-cli",
+			"expectedSkills": 35
+		}
+	]
+}

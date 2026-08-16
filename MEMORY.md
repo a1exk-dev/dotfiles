@@ -44,7 +44,7 @@ Reason: The repository has no current machine-specific requirement to design aro
 
 Applies when: Adding, applying, editing, verifying, or removing a Stow package.
 
-Guidance: Edit tracked files inside the repository. Run a Stow dry run, stop and show any existing-file conflict, verify the expected links, and verify clean removal. Target the user's home directory by default; decide any other target with the human when a concrete need appears.
+Guidance: Edit tracked files inside the repository. Run a Stow dry run, stop and show any existing-file conflict, verify the expected links, and verify clean removal. Target the user's home directory by default; decide any other target with the human when a concrete need appears. Before migration, resolve symlinks and prove both the existing target and repository destination remain inside their canonical ownership roots.
 
 Reason: Repository-owned symlinks must remain predictable and must not replace user files without a decision.
 
@@ -132,7 +132,7 @@ Reason: Migration backups are local recovery data, not repository content.
 
 Applies when: The wizard finds that GNU Stow is missing.
 
-Guidance: Explain the missing prerequisite and offer the Omarchy-supported installation command after human confirmation.
+Guidance: Explain the missing prerequisite and offer the Omarchy-supported installation command after human confirmation. After installation succeeds, stop and rerun the package operation so conflict simulation and the complete package plan precede package approval.
 
 Reason: GNU Stow is required for package deployment but is not present by default on the current Omarchy 4 system.
 
@@ -164,7 +164,7 @@ Reason: The wizard should not reproduce Omarchy's package-management or privileg
 
 Applies when: Running the wizard's agent-skill action or `make skills`.
 
-Guidance: Install every skill exposed by the official installers at pinned revisions from `https://github.com/blader/humanizer` and `https://github.com/mattpocock/skills` under `~/.agents/skills/`. Delegate draft exclusion, skill discovery, and supporting-file installation to each repository's documented installer; this repository adds only version pinning, difference preview, confirmation, and backup. When an installed skill differs, stop and show the difference before replacement. After approval, back it up under XDG state before installing the pinned copy. `make skills-update` previews upstream and installed-skill differences, then updates `skills.json` and global skills together after one approval. A failed update restores both the old manifest and global skill backups.
+Guidance: Install every skill exposed by the official installers at pinned revisions from `https://github.com/blader/humanizer` and `https://github.com/mattpocock/skills` under `~/.agents/skills/`. Delegate draft exclusion, skill discovery, and supporting-file installation to each repository's documented installer; this repository adds only version pinning, difference preview, confirmation, and backup. Show recursive differences before approval. Before a mutating source installer runs, back up every existing skill it can rewrite, including currently unchanged skills, then verify its output against the approved preview. `make skills-update` previews upstream and installed-skill differences, then updates `skills.json` and global skills together after one approval. A failed update restores both the old manifest and global skill backups.
 
 Reason: Future agents need reproducible repository skills without silently overwriting global customizations.
 
@@ -176,10 +176,18 @@ Guidance: Check the Omarchy version, check required tools, calculate package dep
 
 Reason: The human must see version, prerequisite, and dependency effects before the first mutation.
 
-## Separate current behavior from planned design
+## Document current behavior
 
-Applies when: Writing `README.md`, `docs/stow.md`, or `docs/agent-setup.md` before the described tooling is implemented.
+Applies when: Writing `README.md`, `docs/stow.md`, or `docs/agent-setup.md`.
 
-Guidance: Present working commands only as current quick-start steps and label the wizard, package catalog, and package workflow as planned. List global agent skills as development requirements rather than end-user runtime requirements.
+Guidance: Present only working commands as current behavior. Keep README as the purpose, complete requirements, and quick start; keep package operation details in `docs/stow.md` and global skill details in `docs/agent-setup.md`. Distinguish package requirements from the additional requirements for global agent-skill operations.
 
-Reason: Human documentation must describe the repository honestly while preserving the agreed target design.
+Reason: Human documentation must match the implemented command engine without duplicating topic-guide detail.
+
+## Keep the command engine modular
+
+Applies when: Extending or testing the Dotfiles wizard.
+
+Guidance: Keep `bin/dotfiles` as the single public command interface. Place shared behavior, package operations, global skill operations, and interactive UI in cohesive modules under `lib/dotfiles/`. Group command-level integration tests by behavior under `tests/` and keep fixture isolation in one shared harness.
+
+Reason: Future functionality should remain local to its domain instead of expanding one command or test file indefinitely.

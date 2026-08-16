@@ -10,7 +10,7 @@ A lowercase-named deployment unit under `config/<name>/` for one application or 
 
 ## Dotfiles wizard
 
-The primary human interface for showing package status, applying or removing Stow packages, installing approved prerequisites, and installing required agent skills. `make` launches its interactive mode through `bin/dotfiles`, while agents and scripts use the `status`, `apply`, `remove`, `skills`, and `check` subcommands on the same engine.
+The primary human interface for package status, application, migration, removal, prerequisite setup, structural checks, and pinned global agent-skill installation and updates. `make` launches its interactive mode through `bin/dotfiles`, while agents and scripts use noninteractive subcommands on the same engine.
 
 ## Package catalog
 
