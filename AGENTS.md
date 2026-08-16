@@ -1,0 +1,9 @@
+## Agent skills
+
+- **Tickets:** Before creating, locating, changing, reviewing, blocking, or completing local specs, maps, and tickets, read `docs/agents/issue-tracker.md`.
+- **Triage:** When a skill names a canonical triage role, translate it through `docs/agents/triage-labels.md`.
+- **Development:** For architecture or implementation work, use the 5.6 Sol model at maximum effort to make architecture decisions and divide implementation into at most three non-overlapping scopes. Delegate each scope to a Luna developer subagent at maximum effort, then wait for every developer to report completion. After all reports arrive, use 5.6 Sol at maximum effort to review the integrated work; return required fixes to Luna and repeat until verification passes and Sol approves.
+- **Omarchy:** Before changing Omarchy-managed or user configuration, use the `omarchy` skill. Keep packaged files under `/usr/share/omarchy/` read-only and place customizations in user configuration.
+- **Human docs:** When work changes setup, usage, or repository structure, update root `README.md`. Before every README edit, use `wait-what` and then `humanizer`. Keep README as the purpose and quick start with a complete requirements section, keep shared Stow guidance in `docs/stow.md`, and add topic guides under `docs/` only when a package needs more detail.
+- **Knowledge:** Before exploring or changing the repo, read `CONTEXT.md` for canonical concepts and `MEMORY.md` for applicable durable guidance.
+- **Preservation:** Before defining or editing `AGENTS.md`, `CONTEXT.md`, or `MEMORY.md`, and at task completion, follow `docs/agents/domain.md`.
