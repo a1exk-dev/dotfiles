@@ -1,5 +1,17 @@
 {
 	"packages": [{
+		"name": "bash",
+		"path": "config/bash",
+		"description": "Omarchy Bash user configuration",
+		"dependencies": [],
+		"prerequisites": [],
+		"validators": [
+			"bash -n \"$HOME/.bashrc\"",
+			"bash --noprofile --norc -c 'unset OMARCHY_PATH; source \"$HOME/.bashrc\"; [[ ${OMARCHY_PATH:-} == /usr/share/omarchy ]]'"
+		],
+		"documentation": "docs/bash.md",
+		"cleanup": ["Removing this package leaves ~/.bashrc absent; migration backups remain under the Dotfiles XDG state backup tree"]
+	}, {
 		"name": "ghostty",
 		"path": "config/ghostty",
 		"description": "Omarchy-integrated Ghostty configuration",
