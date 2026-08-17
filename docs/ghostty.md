@@ -1,6 +1,6 @@
 # Ghostty
 
-The `ghostty` Stow package owns one file: `~/.config/ghostty/config`. GNU Stow links it to `config/ghostty/.config/ghostty/config` in this repository. The tracked file replaces Omarchy's main Ghostty config because Omarchy has no separate user override for persistent opacity. See [Stow workflow](stow.md) for behavior shared by all packages.
+The `ghostty` Stow package owns `~/.config/ghostty/config` and `~/.config/ghostty/tab-bar.css`. GNU Stow links them to the matching paths under `config/ghostty/` in this repository. The tracked main config replaces Omarchy's main Ghostty config because Omarchy has no separate user override for persistent opacity. See [Stow workflow](stow.md) for behavior shared by all packages.
 
 The package does not track:
 
@@ -32,6 +32,17 @@ background-opacity-cells = false
 The optional include loads the palette generated for the current Omarchy theme. Omarchy can regenerate that untracked file when the theme changes, so Ghostty follows the active colors without adding the palette to Git.
 
 The base background is 92% opaque. Cells with an explicit background color remain fully opaque.
+
+## Cursor and tabs
+
+The main config enables cursor blinking and loads the tracked tab stylesheet:
+
+```ini
+cursor-style-blink = true
+gtk-custom-css = tab-bar.css
+```
+
+`tab-bar.css` keeps tabs at least 24 pixels high and removes their top and bottom padding.
 
 ## Apply and validate
 
@@ -67,9 +78,9 @@ If migration fails after it creates the backup, keep the backup and follow the r
 
 ## Remove and reapply
 
-From `make`, choose `Remove Stow package` and select `ghostty`. Removal unlinks only `~/.config/ghostty/config`. The Omarchy palette, Ghostty state and caches, and migration backups remain untouched.
+From `make`, choose `Remove Stow package` and select `ghostty`. Removal unlinks both tracked files. The Omarchy palette, Ghostty state and caches, and migration backups remain untouched.
 
-To restore the tracked config, choose `Apply Stow packages` and select `ghostty` again. Reapplication repeats the Stow simulation, link verification, and Ghostty validation.
+To restore both tracked files, choose `Apply Stow packages` and select `ghostty` again. Reapplication repeats the Stow simulation, link verification, and Ghostty validation.
 
 ## Omarchy updates
 
@@ -78,7 +89,7 @@ Because the live config is a symlink, `omarchy update` can write through it and 
 1. Inspect the diff for `config/ghostty/.config/ghostty/config`.
 2. Compare it with `/usr/share/omarchy/config/ghostty/config`. Use the packaged file only for comparison.
 3. Decide which changes to keep.
-4. Restore the optional palette include and opacity settings if needed.
+4. Restore the optional palette include, opacity settings, cursor blinking, and stylesheet load if needed.
 5. Run `ghostty +validate-config --config-file="$HOME/.config/ghostty/config"`.
 
 Treat `omarchy refresh config ghostty/config` as an intentional replacement of the tracked source, not a local reset. Through the Stow symlink, it can overwrite the repository file with Omarchy's packaged default. Run it only when that replacement is intended. Then review the Git diff, restore the required settings, and validate Ghostty.

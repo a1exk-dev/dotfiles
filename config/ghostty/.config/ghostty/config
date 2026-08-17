@@ -9,6 +9,7 @@ font-size = 9
 # Window
 background-opacity = 0.92
 background-opacity-cells = false
+gtk-custom-css = tab-bar.css
 window-theme = ghostty
 window-padding-x = 14
 window-padding-y = 14
@@ -18,7 +19,7 @@ gtk-toolbar-style = flat
 
 # Cursor styling
 cursor-style = "block"
-cursor-style-blink = false
+cursor-style-blink = true
 
 # Cursor styling + SSH session terminfo
 # (all shell integration options must be passed together)
