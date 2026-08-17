@@ -1,0 +1,21 @@
+{
+	"packages": [
+		"chromium",
+		"moonlight-qt"
+	],
+	"web_apps": [
+		"Basecamp",
+		"Discord",
+		"Figma",
+		"Fizzy",
+		"GitHub",
+		"Google Contacts",
+		"Google Messages",
+		"Google Photos",
+		"HEY",
+		"X",
+		"YouTube",
+		"Zoom"
+	],
+	"tuis": []
+}

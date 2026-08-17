@@ -57,6 +57,8 @@ check() {
 
 	inspect_environment
 	printf 'Package catalog: valid (%s packages)\n' "$(jq '.packages | length' "$PACKAGE_CATALOG")"
+	validate_cleanup_manifest
+	printf 'Cleanup manifest: valid (%s defaults)\n' "$(jq '[.packages[], .web_apps[], .tuis[]] | length' "$CLEANUP_MANIFEST")"
 	validate_skill_manifest
 	printf 'Skill manifest: valid (%s sources)\n' "$(jq '.sources | length' "$SKILL_MANIFEST")"
 

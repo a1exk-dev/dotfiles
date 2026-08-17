@@ -66,6 +66,7 @@ wizard() {
 		'Set up prerequisites'
 		'Set up global skills'
 		'Update global skills'
+		'Clean up Omarchy applications'
 		'Run structural checks'
 	)
 	if ! action=$(wizard_choose 'Choose an action (none selected by default)' "${actions[@]}"); then
@@ -96,6 +97,7 @@ wizard() {
 		'Set up prerequisites') setup_prerequisites --interactive ;;
 		'Set up global skills') install_skills --interactive ;;
 		'Update global skills') update_skills --interactive ;;
+		'Clean up Omarchy applications') cleanup_applications ;;
 		'Run structural checks') check ;;
 		*)
 			printf 'No action selected.\n'

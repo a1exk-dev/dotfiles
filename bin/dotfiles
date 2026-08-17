@@ -10,6 +10,8 @@ source "$DOTFILES_ENTRY_ROOT/lib/dotfiles/core.sh"
 source "$DOTFILES_ENTRY_ROOT/lib/dotfiles/packages.sh"
 # shellcheck source=../lib/dotfiles/skills.sh
 source "$DOTFILES_ENTRY_ROOT/lib/dotfiles/skills.sh"
+# shellcheck source=../lib/dotfiles/cleanup.sh
+source "$DOTFILES_ENTRY_ROOT/lib/dotfiles/cleanup.sh"
 # shellcheck source=../lib/dotfiles/wizard.sh
 source "$DOTFILES_ENTRY_ROOT/lib/dotfiles/wizard.sh"
 

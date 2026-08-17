@@ -7,6 +7,7 @@ readonly SUITES=(
 	inspection_test.sh
 	packages_test.sh
 	skills_test.sh
+	cleanup_test.sh
 	wizard_test.sh
 )
 

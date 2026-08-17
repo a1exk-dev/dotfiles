@@ -68,6 +68,7 @@ new_fixture() {
 	cp "$SOURCE_REPO/bin/dotfiles" "$FIXTURE_REPO/bin/dotfiles"
 	cp "$SOURCE_REPO/lib/dotfiles/"*.sh "$FIXTURE_REPO/lib/dotfiles/"
 	cp "$SOURCE_REPO/packages.json" "$FIXTURE_REPO/packages.json"
+	cp "$SOURCE_REPO/cleanup.json" "$FIXTURE_REPO/cleanup.json"
 	if [[ -f $SOURCE_REPO/skills.json ]]; then
 		cp "$SOURCE_REPO/skills.json" "$FIXTURE_REPO/skills.json"
 	fi
@@ -162,6 +163,56 @@ if [[ ${1-} == confirm ]]; then exit 0; fi
 exit 64'
 }
 
+configure_cleanup_fakes() {
+	local installed=$FIXTURE_ROOT/installed-packages
+	local explicit=$FIXTURE_ROOT/explicit-packages
+	printf '%s\n' base bash chromium jq moonlight-qt optional-app yay omarchy >"$installed"
+	printf '%s\n' base bash chromium jq moonlight-qt optional-app yay omarchy >"$explicit"
+	make_fake yay 'printf "yay %s\n" "$*" >>"$DOTFILES_TEST_CALL_LOG"
+if [[ $* == -Qqe ]]; then cat "$DOTFILES_TEST_EXPLICIT_PACKAGES"; exit 0; fi
+exit 64'
+	make_fake pacman 'printf "pacman %s\n" "$*" >>"$DOTFILES_TEST_CALL_LOG"
+case ${1-} in
+	-Qqo)
+		case ${2##*/} in
+			bash) printf "bash\n" ;;
+			jq) printf "jq\n" ;;
+			find) printf "findutils\n" ;;
+			grep) printf "grep\n" ;;
+			sort|basename|mktemp|rm) printf "coreutils\n" ;;
+			pacman) printf "pacman\n" ;;
+			yay) printf "yay\n" ;;
+			omarchy) printf "omarchy\n" ;;
+			gum) printf "gum\n" ;;
+		esac
+		;;
+	-Qq)
+		if (( $# == 1 )) && [[ $DOTFILES_TEST_PACMAN_VERIFY_FAILURE == true ]]; then exit 74
+		elif (( $# == 1 )); then cat "$DOTFILES_TEST_INSTALLED_PACKAGES"
+		elif grep -Fxq -- "$2" "$DOTFILES_TEST_INSTALLED_PACKAGES"; then printf "%s\n" "$2"
+		else exit 1
+		fi
+		;;
+	*) exit 64 ;;
+esac'
+	make_fake omarchy 'printf "%s|HOME=%s|XDG_CONFIG_HOME=%s|XDG_STATE_HOME=%s|XDG_CACHE_HOME=%s\n" "$*" "$HOME" "$XDG_CONFIG_HOME" "$XDG_STATE_HOME" "$XDG_CACHE_HOME" >>"$DOTFILES_TEST_CALL_LOG"
+if [[ ${1-} == version ]]; then printf "%s\n" "${DOTFILES_TEST_OMARCHY_VERSION:-4.0.0-1}"; exit 0; fi
+if [[ ${1-} == webapp && ${2-} == remove ]]; then rm -f "$HOME/.local/share/applications/${*:3}.desktop"; exit 0; fi
+if [[ ${1-} == tui && ${2-} == remove ]]; then rm -f "$HOME/.local/share/applications/${*:3}.desktop"; exit 0; fi
+if [[ ${1-} == pkg && ${2-} == drop ]]; then
+	for package in "${@:3}"; do grep -Fvx -- "$package" "$DOTFILES_TEST_INSTALLED_PACKAGES" >"$DOTFILES_TEST_INSTALLED_PACKAGES.next" || true; mv "$DOTFILES_TEST_INSTALLED_PACKAGES.next" "$DOTFILES_TEST_INSTALLED_PACKAGES"; done
+	exit 0
+fi
+exit 64'
+}
+
+add_cleanup_launcher() {
+	local name=$1
+	local exec_line=$2
+	mkdir -p "$FIXTURE_HOME/.local/share/applications"
+	printf '[Desktop Entry]\nName=%s\nExec=%s\n' "$name" "$exec_line" >"$FIXTURE_HOME/.local/share/applications/$name.desktop"
+}
+
 run_in_sandbox() {
 	local working_directory=$1
 	local command_path=$2
@@ -175,6 +226,7 @@ run_in_sandbox() {
 			printf '%b' "${DOTFILES_TEST_INPUT-}" |
 			env -i \
 				HOME="$FIXTURE_HOME" \
+				XDG_DATA_HOME="${DOTFILES_TEST_XDG_DATA_HOME-}" \
 				XDG_CONFIG_HOME="$FIXTURE_CONFIG" \
 				XDG_STATE_HOME="$FIXTURE_STATE" \
 				XDG_CACHE_HOME="$FIXTURE_CACHE" \
@@ -193,6 +245,11 @@ run_in_sandbox() {
 				DOTFILES_TEST_SKILL_UPDATE_COLLISION="${DOTFILES_TEST_SKILL_UPDATE_COLLISION:-false}" \
 				DOTFILES_TEST_SKILL_UNRELATED_FAILURE="${DOTFILES_TEST_SKILL_UNRELATED_FAILURE:-none}" \
 				DOTFILES_TEST_GUM_RESPONSES="${DOTFILES_TEST_GUM_RESPONSES-}" \
+				DOTFILES_TEST_XDG_DATA_HOME="${DOTFILES_TEST_XDG_DATA_HOME-}" \
+				DOTFILES_TEST_INSTALLED_PACKAGES="$FIXTURE_ROOT/installed-packages" \
+				DOTFILES_TEST_EXPLICIT_PACKAGES="$FIXTURE_ROOT/explicit-packages" \
+				DOTFILES_TEST_FIND_COUNT="${DOTFILES_TEST_FIND_COUNT-}" \
+				DOTFILES_TEST_PACMAN_VERIFY_FAILURE="${DOTFILES_TEST_PACMAN_VERIFY_FAILURE:-false}" \
 				DOTFILES_UI="${DOTFILES_UI:-bash}" \
 				"$BWRAP" \
 					--ro-bind / / \
