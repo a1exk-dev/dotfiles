@@ -51,6 +51,12 @@ ghostty +validate-config --config-file="$HOME/.config/ghostty/config"
 
 Ghostty reads the linked main config and its current optional Omarchy palette.
 
+To apply config changes to current Ghostty windows, run:
+
+```bash
+omarchy restart terminal
+```
+
 ## Migration and recovery
 
 Ordinary apply does not overwrite an existing regular config. `Migrate existing target` can import it only while the package destination is empty. From `make`, choose that action, select `ghostty`, and enter `.config/ghostty/config`.
