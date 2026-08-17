@@ -96,6 +96,14 @@ Guidance: Compare full replacements with the new packaged defaults, update them 
 
 Reason: Full replacements and directly managed paths can become stale when Omarchy changes.
 
+## Review Omarchy writes through Stow links
+
+Applies when: An Omarchy update, migration, or refresh command can write to a path owned through a Stow symlink.
+
+Guidance: Treat the resulting repository-source edit as a proposed Git change. Compare it with the packaged default, keep or reject it deliberately, restore required customizations, and run package validation. Treat `omarchy refresh config` as a tracked replacement rather than a local reset when its target is linked.
+
+Reason: Omarchy file operations can follow the symlink and modify the repository-owned source instead of isolated live state.
+
 ## Write safe Bash installers
 
 Applies when: A package-specific installer is approved.
