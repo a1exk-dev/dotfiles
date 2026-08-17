@@ -53,6 +53,74 @@ test_fallback_cleanup_selects_each_discovered_type_for_one_run() {
 	fi
 }
 
+test_fallback_package_selector_shows_metadata_table_and_defaults() {
+	new_fixture
+	configure_cleanup_fakes
+
+	DOTFILES_TEST_INPUT='8\n0\n' run_dotfiles "$FIXTURE_ROOT"
+
+	assert_eq 0 "$COMMAND_STATUS" 'fallback package table should permit an empty selection' || return 1
+	assert_contains "$COMMAND_OUTPUT" 'Check | Title' 'fallback package selector should print a table header' || return 1
+	assert_contains "$COMMAND_OUTPUT" 'Description' 'fallback package selector header should name the description column' || return 1
+	assert_contains "$COMMAND_OUTPUT" '[x] | chromium' 'fallback package selector should mark an installed profile default' || return 1
+	assert_contains "$COMMAND_OUTPUT" 'Chromium / web browser' 'fallback package selector should normalize package metadata descriptions' || return 1
+	assert_contains "$COMMAND_OUTPUT" '[ ] | optional-app' 'fallback package selector should leave non-default packages unchecked' || return 1
+	assert_contains "$COMMAND_OUTPUT" 'Optional desktop application' 'fallback package selector should describe non-default packages'
+}
+
+test_package_selector_uses_missing_description_fallback() {
+	new_fixture
+	configure_cleanup_fakes
+	printf '%s\n' optional-app >"$FIXTURE_ROOT/explicit-packages"
+	printf '%s\n' optional-app >"$FIXTURE_ROOT/installed-packages"
+	printf '%s\n' 'Name            : optional-app' 'Version         : 1.0-1' >"$FIXTURE_ROOT/package-metadata"
+
+	DOTFILES_TEST_INPUT='8\n0\n' run_dotfiles "$FIXTURE_ROOT"
+
+	assert_eq 0 "$COMMAND_STATUS" 'package without a Description field should remain selectable' || return 1
+	assert_contains "$COMMAND_OUTPUT" '[ ] | optional-app' 'missing-description package should appear in the table' || return 1
+	assert_contains "$COMMAND_OUTPUT" 'No description available' 'missing Description field should use an explicit fallback'
+}
+
+test_cleanup_continues_when_package_metadata_query_fails() {
+	new_fixture
+	configure_cleanup_fakes
+	add_cleanup_launcher 'Extra App' 'omarchy-webapp-handler https://example.test'
+	add_cleanup_launcher LazyGit 'xdg-terminal-exec --app-id=TUI.lazygit -e lazygit'
+
+	DOTFILES_TEST_YAY_METADATA_FAILURE=true DOTFILES_TEST_INPUT='8\n3\n1\n1\nn\n' run_dotfiles "$FIXTURE_ROOT"
+
+	assert_eq 0 "$COMMAND_STATUS" 'failed package metadata query should degrade to fallback descriptions' || return 1
+	assert_contains "$COMMAND_OUTPUT" 'Warning: could not query installed package metadata with yay -Qi; descriptions unavailable.' 'cleanup should warn about metadata enrichment failure' || return 1
+	assert_eq 1 "$(awk '/^yay -Qi$/ { count++ } END { print count + 0 }' "$CALL_LOG")" 'cleanup should issue one package metadata query' || return 1
+	assert_contains "$COMMAND_OUTPUT" 'No description available' 'metadata failure should use the explicit description fallback' || return 1
+	assert_contains "$COMMAND_OUTPUT" $'  Web apps:\n    Extra App' 'web app selection should remain available after metadata failure' || return 1
+	assert_contains "$COMMAND_OUTPUT" $'  TUIs:\n    LazyGit' 'TUI selection should remain available after metadata failure' || return 1
+	assert_contains "$COMMAND_OUTPUT" $'  Packages:\n    optional-app' 'package selection should remain available after metadata failure' || return 1
+	assert_contains "$COMMAND_OUTPUT" 'No changes made.' 'declining the complete plan should remain non-mutating' || return 1
+	if [[ $(<"$CALL_LOG") == *'webapp remove '* || $(<"$CALL_LOG") == *'tui remove '* || $(<"$CALL_LOG") == *'pkg drop '* ]]; then
+		printf '  cleanup must not mutate before plan confirmation\n' >&2
+		return 1
+	fi
+}
+
+test_package_selector_normalizes_and_truncates_descriptions() {
+	new_fixture
+	configure_cleanup_fakes
+	printf '%s\n' optional-app >"$FIXTURE_ROOT/explicit-packages"
+	printf '%s\n' optional-app >"$FIXTURE_ROOT/installed-packages"
+	printf 'Name            : optional-app\nDescription     :   Useful\t| description that is deliberately much longer than the fixed display width and SHOULD_NOT_APPEAR   \n' >"$FIXTURE_ROOT/package-metadata"
+
+	DOTFILES_TEST_INPUT='8\n0\n' run_dotfiles "$FIXTURE_ROOT"
+
+	assert_eq 0 "$COMMAND_STATUS" 'package description formatting should preserve selection' || return 1
+	assert_contains "$COMMAND_OUTPUT" 'Useful / description that is deliberately much longer than the fixed ...' 'description should normalize separators and truncate to the fixed width' || return 1
+	if [[ $COMMAND_OUTPUT == *'SHOULD_NOT_APPEAR'* ]]; then
+		printf '  overlong package description was not truncated\n' >&2
+		return 1
+	fi
+}
+
 test_cleanup_uses_home_local_launcher_directory_when_xdg_data_home_differs() {
 	new_fixture
 	configure_cleanup_fakes
@@ -100,7 +168,7 @@ test_cleanup_hides_critical_packages() {
 	DOTFILES_TEST_INPUT='8\n0\n' run_dotfiles "$FIXTURE_ROOT"
 
 	assert_eq 0 "$COMMAND_STATUS" 'cleanup with protected package fixtures should succeed' || return 1
-	assert_contains "$COMMAND_OUTPUT" '1. [ ] optional-app' 'an ordinary explicit package should remain selectable' || return 1
+	assert_contains "$COMMAND_OUTPUT" '1. [ ] | optional-app' 'an ordinary explicit package should remain selectable' || return 1
 	local protected
 	for protected in base base-devel filesystem glibc amd-ucode intel-ucode linux linux-firmware linux-hardened linux-lts linux-zen networkmanager systemd sudo bash pacman omarchy yay; do
 		if [[ $COMMAND_OUTPUT == *'] '"$protected"* ]]; then
@@ -118,7 +186,7 @@ test_cleanup_hides_runtime_provider_packages() {
 	DOTFILES_TEST_INPUT='8\n0\n' run_dotfiles "$FIXTURE_ROOT"
 
 	assert_eq 0 "$COMMAND_STATUS" 'cleanup with runtime provider fixtures should succeed' || return 1
-	assert_contains "$COMMAND_OUTPUT" '1. [ ] optional-app' 'an ordinary package should remain selectable beside runtime providers' || return 1
+	assert_contains "$COMMAND_OUTPUT" '1. [ ] | optional-app' 'an ordinary package should remain selectable beside runtime providers' || return 1
 	local protected
 	for protected in coreutils findutils grep jq gum; do
 		if [[ $COMMAND_OUTPUT == *'] '"$protected"* ]]; then
@@ -326,14 +394,15 @@ test_cleanup_rerun_with_absent_defaults_is_a_no_op() {
 	local profile_before
 	profile_before=$(sha256sum "$FIXTURE_REPO/cleanup.json")
 
-	DOTFILES_TEST_INPUT='8\n' run_dotfiles "$FIXTURE_ROOT"
+	DOTFILES_TEST_YAY_METADATA_FAILURE=true DOTFILES_TEST_INPUT='8\n' run_dotfiles "$FIXTURE_ROOT"
 	assert_eq 0 "$COMMAND_STATUS" 'first cleanup with absent defaults should succeed' || return 1
 	assert_contains "$COMMAND_OUTPUT" 'Unavailable cleanup defaults:' 'first cleanup should report absent defaults' || return 1
 	assert_contains "$COMMAND_OUTPUT" 'No cleanup items selected; no changes made.' 'first cleanup should be a no-op' || return 1
-	DOTFILES_TEST_INPUT='8\n' run_dotfiles "$FIXTURE_ROOT"
+	DOTFILES_TEST_YAY_METADATA_FAILURE=true DOTFILES_TEST_INPUT='8\n' run_dotfiles "$FIXTURE_ROOT"
 	assert_eq 0 "$COMMAND_STATUS" 'repeated cleanup with absent defaults should succeed' || return 1
 	assert_contains "$COMMAND_OUTPUT" 'Unavailable cleanup defaults:' 'repeated cleanup should continue reporting absent defaults' || return 1
 	assert_contains "$COMMAND_OUTPUT" 'No cleanup items selected; no changes made.' 'repeated cleanup should remain a no-op' || return 1
+	assert_eq 0 "$(awk '/^yay -Qi$/ { count++ } END { print count + 0 }' "$CALL_LOG")" 'cleanup should skip metadata queries when no package candidates exist' || return 1
 	assert_eq "$profile_before" "$(sha256sum "$FIXTURE_REPO/cleanup.json")" 'rerun should not rewrite or suppress profile defaults' || return 1
 	if [[ $(<"$CALL_LOG") == *'webapp remove '* || $(<"$CALL_LOG") == *'tui remove '* || $(<"$CALL_LOG") == *'pkg drop '* ]]; then
 		printf '  absent defaults must not be restored or passed to mutation commands\n' >&2
@@ -371,9 +440,13 @@ test_gum_cleanup_preselects_installed_defaults_and_allows_overrides() {
 	assert_eq 0 "$COMMAND_STATUS" 'Gum cleanup should succeed' || return 1
 	local calls
 	calls=$(<"$CALL_LOG")
-	assert_contains "$calls" '--selected=chromium,moonlight-qt' 'Gum should preselect both installed package defaults' || return 1
+	assert_contains "$calls" '--selected=chromium     | Chromium / web browser,moonlight-qt | GameStream client; desktop' 'Gum should preselect installed defaults by comma-safe displayed labels' || return 1
+	assert_contains "$calls" '--label-delimiter=' 'Gum package selector should separate labels from package values' || return 1
+	assert_contains "$calls" $'Packages to remove\nCheck | Title' 'Gum package selector should show the table header' || return 1
+	assert_contains "$calls" $'chromium     | Chromium / web browser\tchromium' 'Gum package option should use a normalized label and package-only value' || return 1
+	assert_eq 1 "$(awk '/^yay -Qi$/ { count++ } END { print count + 0 }' "$CALL_LOG")" 'Gum cleanup should issue one package metadata query' || return 1
 	assert_contains "$calls" '--selected=Discord' 'Gum should preselect the installed web app default' || return 1
-	assert_contains "$calls" 'pkg drop optional-app|' 'Gum selection should permit a one-run package override'
+	assert_contains "$calls" 'pkg drop optional-app|' 'Gum selected output should remain only the package name'
 }
 
 test_cleanup_stops_on_first_failure_and_reports_recovery() {
@@ -427,6 +500,10 @@ set -e
 run_test test_cleanup_manifest_has_agreed_defaults 'cleanup manifest has agreed defaults'
 run_test test_check_rejects_invalid_cleanup_profiles 'check rejects invalid cleanup profiles'
 run_test test_fallback_cleanup_selects_each_discovered_type_for_one_run 'fallback cleanup discovers, overrides, delegates, and verifies'
+run_test test_fallback_package_selector_shows_metadata_table_and_defaults 'fallback package selector shows metadata table and defaults'
+run_test test_package_selector_uses_missing_description_fallback 'package selector uses missing-description fallback'
+run_test test_cleanup_continues_when_package_metadata_query_fails 'cleanup continues when package metadata query fails'
+run_test test_package_selector_normalizes_and_truncates_descriptions 'package selector normalizes and truncates descriptions'
 run_test test_cleanup_uses_home_local_launcher_directory_when_xdg_data_home_differs 'cleanup uses HOME-local launcher directory despite XDG_DATA_HOME'
 run_test test_cleanup_empty_selection_is_a_no_op 'cleanup empty selection is a no-op'
 run_test test_cleanup_hides_critical_packages 'cleanup hides critical packages'

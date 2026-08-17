@@ -1,5 +1,6 @@
 readonly CLEANUP_MANIFEST="$REPOSITORY_ROOT/cleanup.json"
 readonly CLEANUP_APPLICATION_DIR="$HOME/.local/share/applications"
+readonly CLEANUP_PACKAGE_DESCRIPTION_MAX=72
 readonly CLEANUP_PROTECTED_PACKAGES=(
 	base
 	base-devel
@@ -28,6 +29,7 @@ readonly CLEANUP_PROTECTED_PACKAGES=(
 
 declare -a CLEANUP_SELECTION=()
 declare -a CLEANUP_PROTECTED_ACTIVE=()
+declare -A CLEANUP_PACKAGE_DESCRIPTIONS=()
 
 cleanup_package_is_protected() {
 	local package=$1 protected
@@ -106,6 +108,44 @@ cleanup_discover_packages() {
 	done <<<"$explicit_packages" | LC_ALL=C sort -u
 }
 
+cleanup_load_package_descriptions() {
+	local metadata line package='' description
+	CLEANUP_PACKAGE_DESCRIPTIONS=()
+	if ! metadata=$(LC_ALL=C yay -Qi); then
+		printf 'Warning: could not query installed package metadata with yay -Qi; descriptions unavailable.\n' >&2
+		return 0
+	fi
+
+	local LC_ALL=C
+	while IFS= read -r line || [[ -n $line ]]; do
+		if [[ $line =~ ^Name[[:space:]]*:[[:space:]]*(.*)$ ]]; then
+			package=${BASH_REMATCH[1]}
+		elif [[ -n $package && $line =~ ^Description[[:space:]]*:[[:space:]]*(.*)$ ]]; then
+			description=${BASH_REMATCH[1]}
+			if [[ $package =~ ^[a-z0-9][a-z0-9@._+-]*$ ]]; then
+				CLEANUP_PACKAGE_DESCRIPTIONS["$package"]=$description
+			fi
+		fi
+	done <<<"$metadata"
+}
+
+cleanup_format_package_description() {
+	local description=${1-} control
+	[[ -n $description ]] || description='No description available'
+	while [[ $description =~ [[:cntrl:]] ]]; do
+		control=${BASH_REMATCH[0]}
+		description=${description//"$control"/ }
+	done
+	description=${description//|//}
+	description=${description#"${description%%[![:space:]]*}"}
+	description=${description%"${description##*[![:space:]]}"}
+	[[ -n $description ]] || description='No description available'
+	if ((${#description} > CLEANUP_PACKAGE_DESCRIPTION_MAX)); then
+		description=${description:0:$((CLEANUP_PACKAGE_DESCRIPTION_MAX - 3))}...
+	fi
+	printf '%s\n' "$description"
+}
+
 cleanup_launcher_matches() {
 	local type=$1 file=$2
 	case $type in
@@ -146,7 +186,7 @@ cleanup_discover_launchers() {
 }
 
 cleanup_select_many() {
-	local prompt=$1 candidates_name=$2 defaults_name=$3
+	local prompt=$1 candidates_name=$2 defaults_name=$3 descriptions_name=${4-}
 	local -n candidates_ref=$candidates_name
 	local -n defaults_ref=$defaults_name
 	CLEANUP_SELECTION=()
@@ -163,11 +203,36 @@ cleanup_select_many() {
 	done
 	if wizard_uses_gum; then
 		local selected_csv='' gum_output gum_status
-		if ((${#selected_args[@]} > 0)); then
-			local IFS=,
-			selected_csv=${selected_args[*]}
+		local -a gum_options=("${candidates_ref[@]}")
+		local -a gum_selected_args=("${selected_args[@]}")
+		local -a gum_table_args=()
+		local gum_header=$prompt
+		if [[ -n $descriptions_name ]]; then
+			local -n descriptions_ref=$descriptions_name
+			local title_width=${#candidates_ref[0]} description label
+			for candidate in "${candidates_ref[@]}"; do
+				((${#candidate} <= title_width)) || title_width=${#candidate}
+			done
+			((title_width >= 5)) || title_width=5
+			gum_header=$(printf '%s\nCheck | %-*s | Description' "$prompt" "$title_width" 'Title')
+			gum_options=()
+			gum_selected_args=()
+			for candidate in "${candidates_ref[@]}"; do
+				description=$(cleanup_format_package_description "${descriptions_ref[$candidate]-}")
+				description=${description//,/;}
+				printf -v label '%-*s | %s' "$title_width" "$candidate" "$description"
+				gum_options+=("$label"$'\t'"$candidate")
+				for default in "${defaults_ref[@]}"; do
+					[[ $candidate != "$default" ]] || gum_selected_args+=("$label")
+				done
+			done
+			gum_table_args+=(--label-delimiter=$'\t')
 		fi
-		if gum_output=$(gum choose --no-limit --header "$prompt" --selected="$selected_csv" "${candidates_ref[@]}"); then
+		if ((${#gum_selected_args[@]} > 0)); then
+			local IFS=,
+			selected_csv=${gum_selected_args[*]}
+		fi
+		if gum_output=$(gum choose --no-limit --header "$gum_header" --selected="$selected_csv" "${gum_table_args[@]}" "${gum_options[@]}"); then
 			[[ -z $gum_output ]] || mapfile -t CLEANUP_SELECTION <<<"$gum_output"
 			return 0
 		else
@@ -177,12 +242,26 @@ cleanup_select_many() {
 	fi
 
 	local index=1 marker
+	if [[ -n $descriptions_name ]]; then
+		local -n descriptions_ref=$descriptions_name
+		local title_width=${#candidates_ref[0]} description
+		for candidate in "${candidates_ref[@]}"; do
+			((${#candidate} <= title_width)) || title_width=${#candidate}
+		done
+		((title_width >= 5)) || title_width=5
+		printf '     Check | %-*s | Description\n' "$title_width" 'Title'
+	fi
 	for candidate in "${candidates_ref[@]}"; do
 		marker=' '
 		for default in "${defaults_ref[@]}"; do
 			[[ $candidate != "$default" ]] || marker=x
 		done
-		printf '  %d. [%s] %s\n' "$index" "$marker" "$candidate"
+		if [[ -n $descriptions_name ]]; then
+			description=$(cleanup_format_package_description "${descriptions_ref[$candidate]-}")
+			printf '  %d. [%s] | %-*s | %s\n' "$index" "$marker" "$title_width" "$candidate" "$description"
+		else
+			printf '  %d. [%s] %s\n' "$index" "$marker" "$candidate"
+		fi
 		index=$((index + 1))
 	done
 	printf 'Choose final selections by number (comma-separated, Enter keeps defaults, 0 selects none): '
@@ -306,6 +385,8 @@ cleanup_applications() {
 		return 1
 	fi
 	[[ -z $discovered ]] || mapfile -t package_candidates <<<"$discovered"
+	CLEANUP_PACKAGE_DESCRIPTIONS=()
+	((${#package_candidates[@]} == 0)) || cleanup_load_package_descriptions
 	if ! discovered=$(cleanup_discover_launchers web_app); then
 		printf 'Error: could not discover Omarchy web app launchers.\n' >&2
 		return 1
@@ -329,7 +410,7 @@ cleanup_applications() {
 
 	local -a selected_packages=() selected_web_apps=() selected_tuis=()
 	local selection_status
-	if cleanup_select_many 'Packages to remove' package_candidates package_defaults; then
+	if cleanup_select_many 'Packages to remove' package_candidates package_defaults CLEANUP_PACKAGE_DESCRIPTIONS; then
 		:
 	else
 		selection_status=$?

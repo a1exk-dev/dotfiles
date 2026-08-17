@@ -109,7 +109,7 @@ if [[ $* == "install dev-env node" ]]; then
 	exit 0
 fi
 exit 64'
-	DOTFILES_TEST_INPUT='7\ny\n' run_dotfiles "$FIXTURE_ROOT"
+	DOTFILES_TEST_PATH=$(restricted_path_without_stow) DOTFILES_TEST_INPUT='7\ny\n' run_dotfiles "$FIXTURE_ROOT"
 
 	assert_eq 0 "$COMMAND_STATUS" 'confirmed prerequisite preparation should succeed' || return 1
 	assert_contains "$COMMAND_OUTPUT" 'omarchy pkg add stow' 'the Stow plan should name the supported Omarchy flow' || return 1
@@ -201,7 +201,7 @@ test_guided_setup_stops_on_operational_failure_with_action_recovery() {
 	make_fake omarchy 'if [[ ${1-} == version ]]; then printf "4.0.0-1\n"; exit 0; fi
 if [[ $* == "pkg add stow" ]]; then exit 73; fi
 exit 64'
-	DOTFILES_TEST_INPUT='1\ny\n' run_dotfiles "$FIXTURE_ROOT"
+	DOTFILES_TEST_PATH=$(restricted_path_without_stow) DOTFILES_TEST_INPUT='1\ny\n' run_dotfiles "$FIXTURE_ROOT"
 
 	assert_eq 1 "$COMMAND_STATUS" 'a prerequisite operation failure should stop guided setup' || return 1
 	assert_contains "$COMMAND_OUTPUT" 'GNU Stow installation failed.' 'the operational failure should be visible' || return 1
@@ -215,7 +215,7 @@ exit 64'
 test_guided_setup_stops_when_prerequisites_are_declined() {
 	new_fixture
 	rm "$FIXTURE_BIN/stow"
-	DOTFILES_TEST_INPUT='1\nn\n' run_dotfiles "$FIXTURE_ROOT"
+	DOTFILES_TEST_PATH=$(restricted_path_without_stow) DOTFILES_TEST_INPUT='1\nn\n' run_dotfiles "$FIXTURE_ROOT"
 
 	assert_eq 1 "$COMMAND_STATUS" 'declining required prerequisites should stop guided setup' || return 1
 	assert_contains "$COMMAND_OUTPUT" 'required prerequisites remain unsatisfied' 'guided setup should distinguish decline from success' || return 1

@@ -90,6 +90,16 @@ exit 64'
 	make_fake npm 'exit 0'
 }
 
+restricted_path_without_stow() {
+	local restricted_bin=$FIXTURE_ROOT/restricted-bin command command_path
+	mkdir -p "$restricted_bin"
+	for command in bash basename cp date diff dirname env find grep head jq ln mktemp mv readlink rm sha256sum sort; do
+		command_path=$(command -v "$command") || return 1
+		ln -s "$command_path" "$restricted_bin/$command"
+	done
+	printf '%s:%s\n' "$FIXTURE_BIN" "$restricted_bin"
+}
+
 add_package() {
 	local name=${1-demo}
 	mkdir -p "$FIXTURE_REPO/config/$name/.config/$name"
@@ -155,11 +165,27 @@ make_fake() {
 make_gum_responder() {
 	make_fake gum 'printf "gum %s\n" "$*" >>"$DOTFILES_TEST_CALL_LOG"
 if [[ ${1-} == choose ]]; then
+	shift
+	delimiter=
+	options=()
+	while (( $# > 0 )); do
+		case $1 in
+			--header) shift 2 ;;
+			--label-delimiter=*) delimiter=${1#*=}; shift ;;
+			--*) shift ;;
+			*) options+=("$1"); shift ;;
+		esac
+	done
 	response=$(sed -n "1p" "$DOTFILES_TEST_GUM_RESPONSES")
 	sed "1d" "$DOTFILES_TEST_GUM_RESPONSES" >"$DOTFILES_TEST_GUM_RESPONSES.next"
 	mv "$DOTFILES_TEST_GUM_RESPONSES.next" "$DOTFILES_TEST_GUM_RESPONSES"
-	printf "%s\n" "$response"
-	exit 0
+	[[ -n $response ]] || exit 0
+	for option in "${options[@]}"; do
+		value=$option
+		if [[ -n $delimiter && $option == *"$delimiter"* ]]; then value=${option##*"$delimiter"}; fi
+		if [[ $response == "$value" ]]; then printf "%s\n" "$value"; exit 0; fi
+	done
+	exit 65
 fi
 if [[ ${1-} == confirm ]]; then exit 0; fi
 exit 64'
@@ -168,10 +194,26 @@ exit 64'
 configure_cleanup_fakes() {
 	local installed=$FIXTURE_ROOT/installed-packages
 	local explicit=$FIXTURE_ROOT/explicit-packages
+	local metadata=$FIXTURE_ROOT/package-metadata
 	printf '%s\n' base bash chromium jq moonlight-qt optional-app yay omarchy >"$installed"
 	printf '%s\n' base bash chromium jq moonlight-qt optional-app yay omarchy >"$explicit"
+	printf '%s\n' \
+		'Name            : chromium' \
+		$'Description     : Chromium\t| web browser' \
+		'' \
+		'Name            : moonlight-qt' \
+		'Description     : GameStream client, desktop' \
+		'' \
+		'Name            : optional-app' \
+		'Description     : Optional desktop application' >"$metadata"
 	make_fake yay 'printf "yay %s\n" "$*" >>"$DOTFILES_TEST_CALL_LOG"
 if [[ $* == -Qqe ]]; then cat "$DOTFILES_TEST_EXPLICIT_PACKAGES"; exit 0; fi
+if [[ $* == -Qi ]]; then
+	[[ $DOTFILES_TEST_YAY_METADATA_FAILURE == false ]] || exit 72
+	[[ ${LC_ALL-} == C ]] || exit 66
+	cat "$DOTFILES_TEST_PACKAGE_METADATA"
+	exit 0
+fi
 exit 64'
 	make_fake pacman 'printf "pacman %s\n" "$*" >>"$DOTFILES_TEST_CALL_LOG"
 case ${1-} in
@@ -250,8 +292,10 @@ run_in_sandbox() {
 				DOTFILES_TEST_XDG_DATA_HOME="${DOTFILES_TEST_XDG_DATA_HOME-}" \
 				DOTFILES_TEST_INSTALLED_PACKAGES="$FIXTURE_ROOT/installed-packages" \
 				DOTFILES_TEST_EXPLICIT_PACKAGES="$FIXTURE_ROOT/explicit-packages" \
+				DOTFILES_TEST_PACKAGE_METADATA="$FIXTURE_ROOT/package-metadata" \
 				DOTFILES_TEST_FIND_COUNT="${DOTFILES_TEST_FIND_COUNT-}" \
 				DOTFILES_TEST_PACMAN_VERIFY_FAILURE="${DOTFILES_TEST_PACMAN_VERIFY_FAILURE:-false}" \
+				DOTFILES_TEST_YAY_METADATA_FAILURE="${DOTFILES_TEST_YAY_METADATA_FAILURE:-false}" \
 				DOTFILES_UI="${DOTFILES_UI:-bash}" \
 				"$BWRAP" \
 					--ro-bind / / \

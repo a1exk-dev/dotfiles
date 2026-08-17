@@ -5,7 +5,7 @@ source "$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)/support/test_helper.
 test_status_inspects_empty_relocated_clone() {
 	new_fixture
 	rm "$FIXTURE_BIN/stow"
-	run_operation "$FIXTURE_ROOT" status
+	DOTFILES_TEST_PATH=$(restricted_path_without_stow) run_operation "$FIXTURE_ROOT" status
 
 	assert_eq 0 "$COMMAND_STATUS" 'status should succeed' || return 1
 	assert_contains "$COMMAND_OUTPUT" 'Supported Omarchy: 4' 'status should report the supported major version' || return 1
@@ -21,7 +21,7 @@ test_status_inspects_empty_relocated_clone() {
 test_check_accepts_empty_catalog() {
 	new_fixture
 	rm "$FIXTURE_BIN/stow"
-	run_operation "$FIXTURE_HOME" check
+	DOTFILES_TEST_PATH=$(restricted_path_without_stow) run_operation "$FIXTURE_HOME" check
 
 	assert_eq 0 "$COMMAND_STATUS" 'check should succeed' || return 1
 	assert_contains "$COMMAND_OUTPUT" 'Supported Omarchy: 4' 'check should report the supported major version' || return 1

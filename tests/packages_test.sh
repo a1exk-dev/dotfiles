@@ -98,7 +98,7 @@ test_missing_stow_routes_to_prerequisite_action() {
 	new_fixture
 	add_package
 	rm "$FIXTURE_BIN/stow"
-	DOTFILES_TEST_INPUT='y\n' run_operation "$FIXTURE_ROOT" apply_packages demo
+	DOTFILES_TEST_PATH=$(restricted_path_without_stow) DOTFILES_TEST_INPUT='y\n' run_operation "$FIXTURE_ROOT" apply_packages demo
 
 	assert_eq 1 "$COMMAND_STATUS" 'missing Stow should stop package application' || return 1
 	assert_contains "$COMMAND_OUTPUT" 'Error: GNU Stow is required.' \
