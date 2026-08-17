@@ -116,7 +116,7 @@ Reason: A package must remain recoverable across its full lifecycle, not only du
 
 Applies when: Designing or running the dotfiles wizard.
 
-Guidance: Support package status, apply, removal, and confirmed prerequisite installation. Launch interactive mode through `make`, use Gum with a Bash fallback, select no changes by default, and expose the same engine through noninteractive commands. Stop on the first failed package, preserve earlier successes, and report recovery steps.
+Guidance: Use `make` and guided setup as the intended human workflow. Keep every operation available as a standalone wizard action. Run prerequisite preparation, pinned global skill installation, application cleanup, and Stow package application in that order. Use Gum with a Bash fallback. Start Stow package selection with no package selected. Continue after a skipped nonessential phase. Stop after an operational failure and name the related standalone action for recovery. Preserve public action preselection and noninteractive operation functions for Make targets, agents, scripts, and tests, but keep them out of normal human instructions.
 
 Reason: The wizard is the normal user interface and must make each system change visible and recoverable.
 
@@ -128,13 +128,13 @@ Guidance: Write timestamped backups below the user's XDG state directory, outsid
 
 Reason: Migration backups are local recovery data, not repository content.
 
-## Offer confirmed Stow installation
+## Prepare wizard prerequisites through Omarchy
 
-Applies when: The wizard finds that GNU Stow is missing.
+Applies when: Prerequisite preparation finds GNU Stow missing or finds Node.js, npm, or npx missing or below the supported version.
 
-Guidance: Explain the missing prerequisite and offer the Omarchy-supported installation command after human confirmation. After installation succeeds, stop and rerun the package operation so conflict simulation and the complete package plan precede package approval.
+Guidance: Show one complete prerequisite plan and ask for confirmation. Use `omarchy pkg add stow` to install GNU Stow. Use `omarchy install dev-env node` to install the Node.js toolchain. Let Omarchy manage privilege prompts. Verify GNU Stow, Node.js 22.20.0 or newer, npm, and npx in the same run. In guided setup, stop before later phases if the user declines required prerequisites or if installation or verification fails.
 
-Reason: GNU Stow is required for package deployment but is not present by default on the current Omarchy 4 system.
+Reason: Guided setup must establish and verify its required tools without implementing Omarchy package management or privilege handling.
 
 ## Keep package dependencies explicit
 
@@ -152,14 +152,6 @@ Guidance: Show both versions and ask the human whether to continue before changi
 
 Reason: Compatibility outside the current target is not guaranteed, but inspection and an explicit human decision remain useful.
 
-## Delegate privilege to Omarchy
-
-Applies when: An approved prerequisite installation requires elevated privileges.
-
-Guidance: Call the supported Omarchy command and let it manage privilege prompts.
-
-Reason: The wizard should not reproduce Omarchy's package-management or privilege behavior.
-
 ## Install global agent skills conservatively
 
 Applies when: Running the wizard's agent-skill action or `make skills`.
@@ -172,15 +164,15 @@ Reason: Future agents need reproducible repository skills without silently overw
 
 Applies when: The wizard prepares any package change.
 
-Guidance: Check the Omarchy version, check required tools, calculate package dependencies and conflicts, show the complete plan, and then request confirmation. Block removal when another linked package depends on the selected package and name each dependent.
+Guidance: Before mutation, inspect the Omarchy version, determine dependencies and conflicts, check core and package-specific tools at the points when their package set is known, show the complete plan, and request confirmation. Block removal when another linked package depends on the selected package and name each dependent.
 
 Reason: The human must see version, prerequisite, and dependency effects before the first mutation.
 
 ## Document current behavior
 
-Applies when: Writing `README.md`, `docs/stow.md`, or `docs/agent-setup.md`.
+Applies when: Writing `README.md`, `docs/stow.md`, `docs/cleanup.md`, or `docs/agent-setup.md`.
 
-Guidance: Present only working commands as current behavior. Keep README as the purpose, complete requirements, and quick start; keep package operation details in `docs/stow.md` and global skill details in `docs/agent-setup.md`. Distinguish package requirements from the additional requirements for global agent-skill operations.
+Guidance: Present working wizard actions and Make targets as human usage. Keep README as the purpose, complete requirements, quick start, and documentation index. Keep Stow package operations in `docs/stow.md`, application cleanup in `docs/cleanup.md`, and global skill operations in `docs/agent-setup.md`. State separate requirements for core wizard use, application cleanup, Stow operations, global skills, and tests.
 
 Reason: Human documentation must match the implemented command engine without duplicating topic-guide detail.
 
@@ -188,6 +180,22 @@ Reason: Human documentation must match the implemented command engine without du
 
 Applies when: Extending or testing the Dotfiles wizard.
 
-Guidance: Keep `bin/dotfiles` as the single public command interface. Place shared behavior, package operations, global skill operations, and interactive UI in cohesive modules under `lib/dotfiles/`. Group command-level integration tests by behavior under `tests/` and keep fixture isolation in one shared harness.
+Guidance: Keep `bin/dotfiles` as the single public command interface. Keep shared behavior, Stow package operations, global skill operations, application cleanup, and interactive orchestration in separate modules under `lib/dotfiles/`. Keep operation logic callable without top-level menu selection. Group command-level integration tests by behavior under `tests/` and keep fixture isolation in one shared harness.
 
 Reason: Future functionality should remain local to its domain instead of expanding one command or test file indefinitely.
+
+## Keep application cleanup selection temporary
+
+Applies when: Changing the application cleanup profile, discovery, or selection behavior.
+
+Guidance: Keep separate package, web app, and TUI default arrays in `cleanup.json`. Validate its shape, names, unique entries, and protected package exclusions. Select only available defaults at the start of a run. Report unavailable defaults. Permit additions and deselections for the current run, and do not write those choices to the profile. Exclude protected system packages and the installed providers of active cleanup runtime commands from selection.
+
+Reason: The application cleanup profile supplies repeatable defaults without becoming machine state or allowing cleanup to remove a command that it needs.
+
+## Verify delegated application cleanup
+
+Applies when: Changing or running an application cleanup mutation.
+
+Guidance: Show one complete plan grouped by web apps, TUIs, and packages before mutation. Delegate each item through `omarchy webapp remove <name>`, `omarchy tui remove <name>`, or `omarchy pkg drop <name>`. Verify that each item is absent before continuing. Stop on the first removal or verification failure, preserve earlier verified removals, report incomplete items, and direct recovery to `Clean up Omarchy applications`. Treat unavailable defaults and an empty selection as successful no-ops.
+
+Reason: Omarchy owns application removal. Per-item verification and bounded failure make a partial cleanup visible and safe to rerun.

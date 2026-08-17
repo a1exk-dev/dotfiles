@@ -1,10 +1,10 @@
 # Dotfiles
 
-Portable dotfiles for Omarchy version 4. GNU Stow links tracked configuration into the user's home directory. The Dotfiles wizard manages Stow packages, prerequisites, and pinned global agent skills.
+Portable dotfiles for Omarchy version 4. GNU Stow links tracked configuration into the user's home directory. The Dotfiles wizard manages prerequisites, application cleanup, Stow packages, and pinned global agent skills.
 
 ## Requirements
 
-Status, checks, and package management require:
+The core wizard requires:
 
 - Omarchy Linux version 4
 - Bash and GNU command-line tools
@@ -12,50 +12,57 @@ Status, checks, and package management require:
 - jq
 - make
 
-The structural check also requires npx because it validates the global skill tooling.
+Application cleanup also requires `pacman`, `yay`, `find`, `grep`, `sort`, `basename`, `mktemp`, `rm`, and `omarchy`.
 
-GNU Stow is required when applying, migrating, or removing packages. The wizard can install it with `omarchy-pkg-add stow` after confirmation.
+Stow package application, migration, and removal require GNU Stow. The wizard can install it through Omarchy after confirmation. Migration also requires a writable absolute `XDG_STATE_HOME`, or the default `~/.local/state`, for backups.
 
-Gum is optional. The wizard uses plain Bash prompts when Gum is unavailable.
-
-Global agent-skill installation also requires:
+Pinned global skill installation and updates also require:
 
 - Node.js 22.20.0 or newer
 - npm and npx
 - Network access to GitHub and the npm registry
 - Write access to `~/.agents/skills/`
-- A writable absolute `XDG_STATE_HOME`, or `~/.local/state`
+- A writable absolute `XDG_STATE_HOME`, or the default `~/.local/state`
 - Temporary storage for source checkouts, previews, and backups
+
+Skill updates also require write access to `skills.json`.
+
+The wizard can install the Node.js toolchain through Omarchy after confirmation.
+
+Gum is optional. The wizard uses Bash prompts when Gum is not available.
+
+The integration tests require Bubblewrap (`bwrap`).
 
 ## Quick start
 
 ```bash
 git clone https://github.com/a1exk-dev/dotfiles.git
 cd dotfiles
-./bin/dotfiles status
-./bin/dotfiles check
 make
 ```
 
-The package catalog is currently empty, so there are no configuration packages to apply. Status, structural checks, prerequisite setup, and global skill management are available. Running `make` opens the interactive wizard with no action or package selected.
-
-Before a mutation, the command engine checks the Omarchy version and required tools, calculates dependencies and conflicts, shows the plan, and requests confirmation. An Omarchy version mismatch requires separate approval.
+Choose `Guided setup` to prepare prerequisites, install pinned global skills, clean up selected Omarchy applications, and apply selected Stow packages.
 
 ## Repository layout
 
-`bin/dotfiles` is the command interface. It loads internal modules from `lib/dotfiles/` for shared behavior, package operations, global skills, and the interactive wizard.
+- `bin/dotfiles`: Dotfiles wizard entry point
+- `lib/dotfiles/`: wizard operation modules
+- `config/`: Stow packages
+- `packages.json`: package catalog
+- `cleanup.json`: application cleanup profile
+- `skills.json`: pinned global skill sources
+- `tests/`: integration tests
 
-Integration tests are grouped by behavior under `tests/` and share one isolated fixture harness. Run the full suite with:
+Run the test suite with:
 
 ```bash
 make test
 ```
 
-Running the integration tests requires Bubblewrap (`bwrap`).
-
 ## Documentation
 
-- [Stow workflow](docs/stow.md): package layout, commands, safety, migration, verification, and removal
-- [Agent setup](docs/agent-setup.md): pinned skill sources, preview, backup, recovery, and updates
+- [Stow workflow](docs/stow.md)
+- [Application cleanup](docs/cleanup.md)
+- [Agent setup](docs/agent-setup.md)
 
 Package-specific guides belong under `docs/` only when a package needs more detail.

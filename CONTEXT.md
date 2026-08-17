@@ -10,7 +10,11 @@ A lowercase-named deployment unit under `config/<name>/` for one application or 
 
 ## Dotfiles wizard
 
-The primary human interface for package status, application, migration, removal, prerequisite setup, structural checks, and pinned global agent-skill installation and updates. `make` launches its interactive mode through `bin/dotfiles`, while agents and scripts use noninteractive subcommands on the same engine.
+The intended human interface for repository setup and operations. Guided setup runs prerequisite preparation, pinned global agent-skill installation, application cleanup, and Stow package application. Standalone actions provide each operation separately. Public routes provide the same operations to Make targets, agents, scripts, and tests.
+
+## Application cleanup profile
+
+The root `cleanup.json` file that contains saved selection defaults for removable Arch packages, Omarchy web apps, and Omarchy TUI launchers. Available defaults start selected during application cleanup. A selection change applies only to the current run. The profile does not record installed state and does not continuously suppress applications.
 
 ## Package catalog
 
