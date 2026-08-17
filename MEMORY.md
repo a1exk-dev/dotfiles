@@ -32,6 +32,14 @@ Guidance: Maintain one explicit current target and change it only through a deli
 
 Reason: Multi-version compatibility is outside the current repository promise.
 
+## Keep archived shell migration on Bash
+
+Applies when: Planning or implementing shell configuration from the archived Zsh files.
+
+Guidance: Keep Bash as the target shell. Preserve `.bashrc`'s source of Omarchy's packaged Bash defaults and add archived behaviors after it only when each behavior is explicitly approved. Keep Starship configuration and Omarchy theme state outside the Bash package.
+
+Reason: Omarchy 4 supplies and updates Bash-specific defaults through the user extension seam in `~/.bashrc`; retaining that seam preserves current behavior and avoids a user-owned Zsh compatibility layer that can drift from Omarchy updates.
+
 ## Defer machine-specific mechanisms
 
 Applies when: A configuration first requires a monitor name, device path, username, or other machine-specific value.
@@ -98,9 +106,9 @@ Reason: Full replacements and directly managed paths can become stale when Omarc
 
 ## Review Omarchy writes through Stow links
 
-Applies when: An Omarchy update, migration, or refresh command can write to a path owned through a Stow symlink.
+Applies when: An Omarchy update, migration, refresh, reinstall, installer, or hook can write to a path owned through a Stow symlink.
 
-Guidance: Treat the resulting repository-source edit as a proposed Git change. Compare it with the packaged default, keep or reject it deliberately, restore required customizations, and run package validation. Treat `omarchy refresh config` as a tracked replacement rather than a local reset when its target is linked.
+Guidance: Treat the resulting repository-source edit as a proposed Git change. Compare it with the packaged default, keep or reject it deliberately, restore required customizations, and run package validation. Treat `omarchy refresh config` as a tracked replacement rather than a local reset when its target is linked. Before `omarchy reinstall configs`, unlink affected packages or explicitly accept that it will overwrite their repository sources.
 
 Reason: Omarchy file operations can follow the symlink and modify the repository-owned source instead of isolated live state.
 
