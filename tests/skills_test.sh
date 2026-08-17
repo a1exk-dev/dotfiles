@@ -15,7 +15,7 @@ test_skills_manifest_records_and_validates_approved_contract() {
 	original=$(<"$FIXTURE_REPO/skills.json")
 	while IFS='|' read -r filter expected; do
 		jq "$filter" <<<"$original" >"$FIXTURE_REPO/skills.json"
-		run_dotfiles "$FIXTURE_ROOT" skills
+		run_operation "$FIXTURE_ROOT" install_skills
 		if [[ $COMMAND_STATUS -eq 0 || $COMMAND_OUTPUT != *"$expected"* ]]; then
 			printf '  invalid skill manifest was accepted: %s\n  output: %s\n' "$filter" "$COMMAND_OUTPUT" >&2
 			return 1
@@ -41,7 +41,7 @@ test_skills_preview_is_isolated_and_reports_every_comparison_state() {
 	ln -s /tmp/unexpected "$FIXTURE_HOME/.agents/skills/matt-skill-02"
 	printf 'unrelated\n' >"$FIXTURE_HOME/.agents/skills/private-skill"
 
-	run_dotfiles "$FIXTURE_ROOT" skills
+	run_operation "$FIXTURE_ROOT" install_skills
 
 	assert_eq 2 "$COMMAND_STATUS" 'preview should stop for an explicit decision when changes or conflicts exist' || return 1
 	assert_contains "$COMMAND_OUTPUT" 'UNCHANGED humanizer' 'matching official payload should be classified unchanged' || return 1
@@ -49,7 +49,7 @@ test_skills_preview_is_isolated_and_reports_every_comparison_state() {
 	assert_contains "$COMMAND_OUTPUT" 'assets/example.txt' 'recursive differences should include supporting files' || return 1
 	assert_contains "$COMMAND_OUTPUT" 'CONFLICT matt-skill-02: symbolic link -> /tmp/unexpected' 'unexpected links should report type and target' || return 1
 	assert_contains "$COMMAND_OUTPUT" 'ADD matt-skill-03' 'absent official payload should be classified add' || return 1
-	assert_contains "$COMMAND_OUTPUT" 'rerun with --yes' 'preview should identify the explicit approval mechanism' || return 1
+	assert_contains "$COMMAND_OUTPUT" 'choose Install pinned global skills in the Dotfiles wizard' 'preview should identify the wizard recovery action' || return 1
 	assert_eq 'unrelated' "$(<"$FIXTURE_HOME/.agents/skills/private-skill")" 'preview should leave unrelated skills untouched' || return 1
 	assert_eq 'locally changed' "$(<"$FIXTURE_HOME/.agents/skills/matt-skill-01/SKILL.md")" 'preview should not change the real global target' || return 1
 	local calls
@@ -63,9 +63,9 @@ test_skills_preview_is_isolated_and_reports_every_comparison_state() {
 
 	rm "$FIXTURE_HOME/.agents/skills/matt-skill-02"
 	: >"$CALL_LOG"
-	run_dotfiles "$FIXTURE_ROOT" skills
-	assert_eq 2 "$COMMAND_STATUS" 'a conflict-free mutation plan should still require explicit approval' || return 1
-	assert_contains "$COMMAND_OUTPUT" 'Decision required: review the plan and rerun with --yes' 'the approval boundary should be actionable' || return 1
+	run_operation "$FIXTURE_ROOT" install_skills
+	assert_eq 2 "$COMMAND_STATUS" 'an operation-level mutation plan should require explicit approval' || return 1
+	assert_contains "$COMMAND_OUTPUT" 'Decision required: review and approve the plan' 'the approval boundary should be actionable' || return 1
 	if [[ $(global_skill_installer_calls) -ne 0 ]]; then
 		printf '  a conflict-free unapproved plan must not invoke a global installer\n' >&2
 		return 1
@@ -79,7 +79,7 @@ test_skills_approved_install_backs_up_replaces_and_verifies() {
 	printf 'local humanizer\n' >"$FIXTURE_HOME/.agents/skills/humanizer/SKILL.md"
 	printf 'unrelated\n' >"$FIXTURE_HOME/.agents/skills/private-skill"
 
-	run_dotfiles "$FIXTURE_ROOT" skills --yes
+	run_operation "$FIXTURE_ROOT" install_skills --yes
 
 	assert_eq 0 "$COMMAND_STATUS" 'approved pinned skill installation should succeed' || return 1
 	assert_contains "$COMMAND_OUTPUT" 'Backup created:' 'a changed skill should expose its XDG-state backup path' || return 1
@@ -97,7 +97,7 @@ test_skills_approved_install_backs_up_replaces_and_verifies() {
 test_skills_expected_count_drift_stops_before_global_install() {
 	new_fixture
 	configure_skill_fakes
-	DOTFILES_TEST_SKILL_COUNT_DRIFT=true run_dotfiles "$FIXTURE_ROOT" skills --yes
+	DOTFILES_TEST_SKILL_COUNT_DRIFT=true run_operation "$FIXTURE_ROOT" install_skills --yes
 
 	assert_eq 1 "$COMMAND_STATUS" 'official discovery count drift should fail before approval is applied' || return 1
 	assert_contains "$COMMAND_OUTPUT" 'expected 35 installable skills, discovered 34' 'count drift should identify expected and actual discovery' || return 1
@@ -113,7 +113,7 @@ test_skills_failed_replacement_restores_and_preserves_earlier_success() {
 	mkdir -p "$FIXTURE_HOME/.agents/skills/matt-skill-01/assets"
 	printf 'local matt\n' >"$FIXTURE_HOME/.agents/skills/matt-skill-01/SKILL.md"
 	printf 'local payload\n' >"$FIXTURE_HOME/.agents/skills/matt-skill-01/assets/example.txt"
-	DOTFILES_TEST_SKILL_VERIFY_FAILURE=true run_dotfiles "$FIXTURE_ROOT" skills --yes
+	DOTFILES_TEST_SKILL_VERIFY_FAILURE=true run_operation "$FIXTURE_ROOT" install_skills --yes
 
 	assert_eq 1 "$COMMAND_STATUS" 'verification mismatch should fail the skill batch' || return 1
 	assert_contains "$COMMAND_OUTPUT" 'Verified: humanizer:' 'earlier collection success should be retained and reported' || return 1
@@ -140,7 +140,7 @@ test_skills_installer_failure_restores_unchanged_and_changed_source_skills() {
 	unchanged_before=$(sha256sum "$FIXTURE_HOME/.agents/skills/matt-skill-01/SKILL.md" "$FIXTURE_HOME/.agents/skills/matt-skill-01/assets/example.txt")
 	changed_before=$(sha256sum "$FIXTURE_HOME/.agents/skills/matt-skill-02/SKILL.md" "$FIXTURE_HOME/.agents/skills/matt-skill-02/assets/example.txt")
 
-	DOTFILES_TEST_SKILL_INSTALL_FAILURE=true run_dotfiles "$FIXTURE_ROOT" skills --yes
+	DOTFILES_TEST_SKILL_INSTALL_FAILURE=true run_operation "$FIXTURE_ROOT" install_skills --yes
 
 	assert_eq 1 "$COMMAND_STATUS" 'official installer failure should fail the current source' || return 1
 	assert_contains "$COMMAND_OUTPUT" 'Backup created:'" $FIXTURE_STATE" 'every potentially rewritten existing skill should expose backup evidence' || return 1
@@ -165,19 +165,19 @@ test_skills_requires_distinct_omarchy_mismatch_approval_before_mutation() {
 	local before
 	before=$(sha256sum "$FIXTURE_HOME/.agents/skills/humanizer/SKILL.md")
 
-	DOTFILES_TEST_OMARCHY_VERSION=5.1.0 run_dotfiles "$FIXTURE_ROOT" skills --yes
+	DOTFILES_TEST_OMARCHY_VERSION=5.1.0 run_operation "$FIXTURE_ROOT" install_skills --yes
 
 	assert_eq 1 "$COMMAND_STATUS" 'Omarchy mismatch should reject skill mutation without distinct approval' || return 1
 	assert_contains "$COMMAND_OUTPUT" 'Supported Omarchy: 4' 'skill planning should report the supported Omarchy version' || return 1
 	assert_contains "$COMMAND_OUTPUT" 'Detected Omarchy: 5.1.0' 'skill planning should report the detected Omarchy version' || return 1
-	assert_contains "$COMMAND_OUTPUT" 'skills --yes --allow-omarchy-mismatch' 'mismatch rejection should provide the distinct approval command' || return 1
+	assert_contains "$COMMAND_OUTPUT" 'choose Install pinned global skills' 'mismatch rejection should provide the distinct wizard action' || return 1
 	assert_eq "$before" "$(sha256sum "$FIXTURE_HOME/.agents/skills/humanizer/SKILL.md")" 'mismatch rejection should preserve global skill content' || return 1
 	if [[ -d $FIXTURE_STATE/dotfiles/skill-backups || $(global_skill_installer_calls) -ne 0 ]]; then
 		printf '  mismatch rejection must happen before backup and global installer mutation\n' >&2
 		return 1
 	fi
 
-	DOTFILES_TEST_OMARCHY_VERSION=5.1.0 run_dotfiles "$FIXTURE_ROOT" skills --yes --allow-omarchy-mismatch
+	DOTFILES_TEST_OMARCHY_VERSION=5.1.0 run_operation "$FIXTURE_ROOT" install_skills --yes --allow-omarchy-mismatch
 	assert_eq 0 "$COMMAND_STATUS" 'distinct mismatch approval should permit verified skill installation' || return 1
 	assert_contains "$COMMAND_OUTPUT" 'Approval: Omarchy mismatch accepted by --allow-omarchy-mismatch' 'approved mismatch should be explicit before mutation' || return 1
 	assert_eq 'approved humanizer' "$(<"$FIXTURE_HOME/.agents/skills/humanizer/SKILL.md")" 'approved mismatch should complete official installation' || return 1
@@ -193,7 +193,7 @@ test_skills_skips_unchanged_only_source_when_another_source_mutates() {
 	local before
 	before=$(stat -c '%n|%s|%Y|%a' "$FIXTURE_HOME/.agents/skills/humanizer/SKILL.md" "$FIXTURE_HOME/.agents/skills/humanizer/references/style.md")
 
-	run_dotfiles "$FIXTURE_ROOT" skills --yes
+	run_operation "$FIXTURE_ROOT" install_skills --yes
 
 	assert_eq 0 "$COMMAND_STATUS" 'a later mutating source should install successfully' || return 1
 	assert_contains "$COMMAND_OUTPUT" 'Source unchanged: humanizer (official global installer skipped)' 'plan execution should report the skipped unchanged-only source' || return 1
@@ -215,7 +215,7 @@ test_skills_restores_unrelated_installer_damage() {
 		mkdir -p "$FIXTURE_HOME/.agents/skills"
 		printf 'private original\n' >"$FIXTURE_HOME/.agents/skills/private-skill"
 
-		DOTFILES_TEST_SKILL_UNRELATED_FAILURE=$failure run_dotfiles "$FIXTURE_ROOT" skills --yes
+		DOTFILES_TEST_SKILL_UNRELATED_FAILURE=$failure run_operation "$FIXTURE_ROOT" install_skills --yes
 
 		assert_eq 1 "$COMMAND_STATUS" "$failure of an unrelated skill should fail initial installation" || return 1
 		assert_contains "$COMMAND_OUTPUT" 'Safety verification failed:' "$failure should identify the unrelated safety violation" || return 1
@@ -236,7 +236,7 @@ test_skills_protects_other_manifest_source_during_install() {
 	printf 'approved humanizer\n' >"$FIXTURE_HOME/.agents/skills/humanizer/SKILL.md"
 	printf 'support file\n' >"$FIXTURE_HOME/.agents/skills/humanizer/references/style.md"
 
-	DOTFILES_TEST_SKILL_UNRELATED_FAILURE=other-source run_dotfiles "$FIXTURE_ROOT" skills --yes
+	DOTFILES_TEST_SKILL_UNRELATED_FAILURE=other-source run_operation "$FIXTURE_ROOT" install_skills --yes
 
 	assert_eq 1 "$COMMAND_STATUS" 'a source installer changing another manifest source should fail' || return 1
 	assert_contains "$COMMAND_OUTPUT" 'Safety verification failed:' 'cross-source damage should fail the unrelated safety boundary' || return 1
@@ -255,7 +255,7 @@ test_skills_update_no_change_is_read_only() {
 	manifest_before=$(<"$FIXTURE_REPO/skills.json")
 	cp -a "$FIXTURE_HOME/.agents/skills" "$FIXTURE_ROOT/skills-before"
 
-	DOTFILES_TEST_SKILL_UPDATE_NO_CHANGE=true run_dotfiles "$FIXTURE_ROOT" skills-update
+	DOTFILES_TEST_SKILL_UPDATE_NO_CHANGE=true run_operation "$FIXTURE_ROOT" update_skills
 
 	assert_eq 0 "$COMMAND_STATUS" 'an update with no upstream revision changes should succeed' || return 1
 	assert_contains "$COMMAND_OUTPUT" 'No upstream skill updates are available.' 'no-change output should be explicit' || return 1
@@ -279,9 +279,9 @@ test_skills_update_preview_reports_complete_plan_without_mutation() {
 	manifest_before=$(<"$FIXTURE_REPO/skills.json")
 	cp -a "$FIXTURE_HOME/.agents/skills" "$FIXTURE_ROOT/skills-before"
 
-	run_dotfiles "$FIXTURE_ROOT" skills-update
+	run_operation "$FIXTURE_ROOT" update_skills
 
-	assert_eq 2 "$COMMAND_STATUS" 'an update plan should require explicit approval' || return 1
+	assert_eq 2 "$COMMAND_STATUS" 'an operation-level update plan should require explicit approval' || return 1
 	assert_contains "$COMMAND_OUTPUT" 'Source update: matt-pocock-skills' 'preview should name the changed source' || return 1
 	assert_contains "$COMMAND_OUTPUT" 'fffffff Add and revise official skills' 'preview should include upstream commit summaries' || return 1
 	assert_contains "$COMMAND_OUTPUT" '+upstream source change' 'preview should include the source diff' || return 1
@@ -290,7 +290,7 @@ test_skills_update_preview_reports_complete_plan_without_mutation() {
 	assert_contains "$COMMAND_OUTPUT" 'CANDIDATE ADD matt-skill-36' 'preview should classify added installer output' || return 1
 	assert_contains "$COMMAND_OUTPUT" 'INSTALLED CHANGE matt-skill-01' 'preview should compare proposed output with installed skills' || return 1
 	assert_contains "$COMMAND_OUTPUT" 'INSTALLED REMOVE matt-skill-35' 'preview should show installed skills removed by the update' || return 1
-	assert_contains "$COMMAND_OUTPUT" 'Decision required: review the complete update plan and rerun with --yes' 'preview should expose one approval for the complete plan' || return 1
+	assert_contains "$COMMAND_OUTPUT" 'Decision required: review and approve the complete plan' 'preview should expose the approval boundary' || return 1
 	assert_eq "$manifest_before" "$(<"$FIXTURE_REPO/skills.json")" 'declined update should preserve the exact manifest' || return 1
 	diff -r "$FIXTURE_ROOT/skills-before" "$FIXTURE_HOME/.agents/skills" >/dev/null || {
 		printf '  declined update should preserve every global skill\n' >&2
@@ -310,7 +310,7 @@ test_skills_update_rejects_ownership_collision_with_unchanged_source() {
 	manifest_before=$(<"$FIXTURE_REPO/skills.json")
 	cp -a "$FIXTURE_HOME/.agents/skills" "$FIXTURE_ROOT/skills-before"
 
-	DOTFILES_TEST_SKILL_UPDATE_COLLISION=true run_dotfiles "$FIXTURE_ROOT" skills-update --yes
+	DOTFILES_TEST_SKILL_UPDATE_COLLISION=true run_operation "$FIXTURE_ROOT" update_skills --yes
 
 	assert_eq 1 "$COMMAND_STATUS" 'a proposed name owned by an unchanged source should reject the update' || return 1
 	assert_contains "$COMMAND_OUTPUT" 'proposed official skill name is owned by multiple sources: humanizer' 'collision output should identify the contested skill' || return 1
@@ -332,7 +332,7 @@ test_skills_update_applies_membership_and_count_atomically() {
 	seed_current_global_skills
 	printf 'unrelated\n' >"$FIXTURE_HOME/.agents/skills/private-skill"
 
-	run_dotfiles "$FIXTURE_ROOT" skills-update --yes
+	run_operation "$FIXTURE_ROOT" update_skills --yes
 
 	assert_eq 0 "$COMMAND_STATUS" 'an approved update should succeed' || return 1
 	assert_eq 'ffffffffffffffffffffffffffffffffffffffff' "$(jq -r '.sources[1].revision' "$FIXTURE_REPO/skills.json")" 'approved revision should be stored' || return 1
@@ -361,10 +361,10 @@ test_skills_update_requires_distinct_omarchy_mismatch_approval() {
 	manifest_before=$(<"$FIXTURE_REPO/skills.json")
 	cp -a "$FIXTURE_HOME/.agents/skills" "$FIXTURE_ROOT/skills-before"
 
-	DOTFILES_TEST_OMARCHY_VERSION=5.1.0 run_dotfiles "$FIXTURE_ROOT" skills-update --yes
+	DOTFILES_TEST_OMARCHY_VERSION=5.1.0 run_operation "$FIXTURE_ROOT" update_skills --yes
 
 	assert_eq 1 "$COMMAND_STATUS" 'approved update plan should still require mismatch approval' || return 1
-	assert_contains "$COMMAND_OUTPUT" 'skills-update --yes --allow-omarchy-mismatch' 'mismatch output should identify the distinct approval' || return 1
+	assert_contains "$COMMAND_OUTPUT" 'choose Update pinned global skills' 'mismatch output should identify the distinct wizard action' || return 1
 	assert_eq "$manifest_before" "$(<"$FIXTURE_REPO/skills.json")" 'mismatch rejection should preserve the manifest' || return 1
 	diff -r "$FIXTURE_ROOT/skills-before" "$FIXTURE_HOME/.agents/skills" >/dev/null || return 1
 	if [[ -d $FIXTURE_STATE/dotfiles/skill-update-backups || $(global_skill_installer_calls) -ne 0 ]]; then
@@ -372,7 +372,7 @@ test_skills_update_requires_distinct_omarchy_mismatch_approval() {
 		return 1
 	fi
 
-	DOTFILES_TEST_OMARCHY_VERSION=5.1.0 run_dotfiles "$FIXTURE_ROOT" skills-update --yes --allow-omarchy-mismatch
+	DOTFILES_TEST_OMARCHY_VERSION=5.1.0 run_operation "$FIXTURE_ROOT" update_skills --yes --allow-omarchy-mismatch
 	assert_eq 0 "$COMMAND_STATUS" 'distinct mismatch approval should permit the complete update' || return 1
 }
 
@@ -394,7 +394,7 @@ test_skills_update_install_failure_rolls_back_complete_transaction() {
 	MANIFEST_BEFORE=$(<"$FIXTURE_REPO/skills.json")
 	cp -a "$FIXTURE_HOME/.agents/skills" "$FIXTURE_ROOT/skills-before"
 
-	DOTFILES_TEST_SKILL_INSTALL_FAILURE=true run_dotfiles "$FIXTURE_ROOT" skills-update --yes
+	DOTFILES_TEST_SKILL_INSTALL_FAILURE=true run_operation "$FIXTURE_ROOT" update_skills --yes
 
 	assert_contains "$COMMAND_OUTPUT" 'official global installer failed' 'installer failure should identify its cause' || return 1
 	assert_failed_skills_update_rolls_back_completely 'installer failure'
@@ -407,7 +407,7 @@ test_skills_update_verification_failure_rolls_back_complete_transaction() {
 	MANIFEST_BEFORE=$(<"$FIXTURE_REPO/skills.json")
 	cp -a "$FIXTURE_HOME/.agents/skills" "$FIXTURE_ROOT/skills-before"
 
-	DOTFILES_TEST_SKILL_VERIFY_FAILURE=true run_dotfiles "$FIXTURE_ROOT" skills-update --yes
+	DOTFILES_TEST_SKILL_VERIFY_FAILURE=true run_operation "$FIXTURE_ROOT" update_skills --yes
 
 	assert_contains "$COMMAND_OUTPUT" 'Verification failed: matt-skill-01' 'verification failure should identify the mismatched skill' || return 1
 	assert_failed_skills_update_rolls_back_completely 'verification failure'
@@ -423,7 +423,7 @@ test_skills_update_restores_unrelated_installer_damage() {
 		MANIFEST_BEFORE=$(<"$FIXTURE_REPO/skills.json")
 		cp -a "$FIXTURE_HOME/.agents/skills" "$FIXTURE_ROOT/skills-before"
 
-		DOTFILES_TEST_SKILL_UNRELATED_FAILURE=$failure run_dotfiles "$FIXTURE_ROOT" skills-update --yes
+		DOTFILES_TEST_SKILL_UNRELATED_FAILURE=$failure run_operation "$FIXTURE_ROOT" update_skills --yes
 
 		assert_contains "$COMMAND_OUTPUT" 'Safety verification failed:' "$failure should identify the unrelated update safety violation" || return 1
 		assert_contains "$COMMAND_OUTPUT" 'Restored unrelated global skills from' "$failure should report unrelated update recovery evidence" || return 1

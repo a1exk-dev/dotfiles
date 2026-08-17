@@ -1,4 +1,5 @@
 readonly SUPPORTED_OMARCHY_VERSION=4
+readonly MINIMUM_NODE_VERSION=22.20.0
 readonly REPOSITORY_ROOT=$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")/../.." && pwd)
 readonly PACKAGE_CATALOG="$REPOSITORY_ROOT/packages.json"
 readonly SKILL_MANIFEST="$REPOSITORY_ROOT/skills.json"
@@ -34,6 +35,11 @@ wizard_confirm() {
 	printf '%s [y/N] ' "$prompt"
 	read -r answer || answer=''
 	[[ $answer == [yY] || $answer == [yY][eE][sS] ]]
+}
+
+version_at_least() {
+	local actual=$1 required=$2
+	[[ $(printf '%s\n%s\n' "$required" "$actual" | sort -V | head -n 1) == "$required" ]]
 }
 
 visit_dependency() {

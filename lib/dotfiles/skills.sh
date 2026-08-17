@@ -310,7 +310,7 @@ install_skills() {
 
 	inspect_omarchy stderr
 	if [[ $has_conflict == true ]]; then
-		printf 'Error: resolve each CONFLICT, review the plan, then rerun with --yes; no global changes were made.\n' >&2
+		printf 'Error: resolve each CONFLICT, then choose Install pinned global skills in the Dotfiles wizard; no global changes were made.\n' >&2
 		return 2
 	fi
 	if [[ $has_mutation != true ]]; then
@@ -323,7 +323,7 @@ install_skills() {
 		return 0
 	fi
 	if [[ $approved != true && $interactive != true ]]; then
-		printf 'Decision required: review the plan and rerun with --yes to approve these global changes.\n' >&2
+		printf 'Decision required: review and approve the plan in Install pinned global skills in the Dotfiles wizard.\n' >&2
 		return 2
 	fi
 	if [[ $interactive == true ]]; then
@@ -338,7 +338,7 @@ install_skills() {
 			fi
 		fi
 		if [[ $allow_mismatch != true ]]; then
-			printf 'Confirmation required: review compatibility, then rerun: bin/dotfiles skills --yes --allow-omarchy-mismatch\n' >&2
+			printf 'Recovery: review compatibility, then rerun the Dotfiles wizard and choose Install pinned global skills.\n' >&2
 			return 1
 		fi
 		printf 'Approval: Omarchy mismatch accepted by --allow-omarchy-mismatch\n'
@@ -705,7 +705,7 @@ update_skills() {
 		return 0
 	fi
 	if [[ $approved != true && $interactive != true ]]; then
-		printf 'Decision required: review the complete update plan and rerun with --yes.\n' >&2
+		printf 'Decision required: review and approve the complete plan in Update pinned global skills in the Dotfiles wizard.\n' >&2
 		return 2
 	fi
 	if [[ $interactive == true ]]; then
@@ -720,7 +720,7 @@ update_skills() {
 			fi
 		fi
 		if [[ $allow_mismatch != true ]]; then
-			printf 'Confirmation required: review compatibility, then rerun: bin/dotfiles skills-update --yes --allow-omarchy-mismatch\n' >&2
+			printf 'Recovery: review compatibility, then rerun the Dotfiles wizard and choose Update pinned global skills.\n' >&2
 			return 1
 		fi
 		printf 'Approval: Omarchy mismatch accepted by --allow-omarchy-mismatch\n'

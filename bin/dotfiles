@@ -15,42 +15,11 @@ source "$DOTFILES_ENTRY_ROOT/lib/dotfiles/cleanup.sh"
 # shellcheck source=../lib/dotfiles/wizard.sh
 source "$DOTFILES_ENTRY_ROOT/lib/dotfiles/wizard.sh"
 
-case ${1-wizard} in
-	wizard)
-		wizard
-		;;
-	status)
-		status
-		;;
-	check)
-		check
-		;;
-	apply)
-		shift
-		apply_package "$@"
-		;;
-	remove)
-		shift
-		remove_package "$@"
-		;;
-	migrate)
-		shift
-		migrate_target "$@"
-		;;
-	prerequisites)
-		shift
-		setup_prerequisites "$@"
-		;;
-	skills)
-		shift
-		install_skills "$@"
-		;;
-	skills-update)
-		shift
-		update_skills "$@"
-		;;
-	*)
-		printf 'Unknown command: %s\n' "$1" >&2
-		exit 2
-		;;
-esac
+if (($# == 0)); then
+	wizard
+elif (($# == 2)) && [[ $1 == --action ]]; then
+	wizard_run_action "$2"
+else
+	printf 'Usage: bin/dotfiles [--action <guided|status|check|apply|migrate|remove|prerequisites|cleanup|skills|skills-update>]\n' >&2
+	exit 2
+fi

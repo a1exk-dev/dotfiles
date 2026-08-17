@@ -6,21 +6,16 @@ test_apply_requires_explicit_package_and_approval() {
 	new_fixture
 	add_package
 	run_dotfiles "$FIXTURE_ROOT" apply
-	assert_eq 2 "$COMMAND_STATUS" 'apply without a package should be rejected' || return 1
-	assert_contains "$COMMAND_OUTPUT" 'Usage: dotfiles apply <package> --yes' 'usage should identify both requirements' || return 1
-
-	run_dotfiles "$FIXTURE_ROOT" apply demo
-	assert_eq 2 "$COMMAND_STATUS" 'apply without approval should be rejected' || return 1
-	assert_contains "$COMMAND_OUTPUT" 'Error: apply requires explicit approval with --yes' \
-		'noninteractive approval should be explicit' || return 1
-	assert_eq '' "$(<"$CALL_LOG")" 'declined approval should run no external commands'
+	assert_eq 2 "$COMMAND_STATUS" 'the removed apply route should be rejected' || return 1
+	assert_contains "$COMMAND_OUTPUT" 'Usage: bin/dotfiles [--action' 'removed legacy apply route should point to the supported interface' || return 1
+	assert_eq '' "$(<"$CALL_LOG")" 'invalid entry use should run no external commands'
 }
 
 test_apply_plans_simulates_links_and_validates_package() {
 	new_fixture
 	add_package
 	make_applying_stow
-	run_dotfiles "$FIXTURE_ROOT" apply demo --yes
+	DOTFILES_TEST_INPUT='y\n' run_operation "$FIXTURE_ROOT" apply_packages demo
 
 	assert_eq 0 "$COMMAND_STATUS" 'safe package apply should succeed' || return 1
 	assert_contains "$COMMAND_OUTPUT" 'Plan: apply demo from config/demo to' 'plan should identify source and target' || return 1
@@ -43,21 +38,21 @@ test_apply_requires_separate_omarchy_mismatch_confirmation() {
 	new_fixture
 	add_package
 	make_applying_stow
-	DOTFILES_TEST_OMARCHY_VERSION=5.1.0 run_dotfiles "$FIXTURE_ROOT" apply demo --yes
+	DOTFILES_TEST_OMARCHY_VERSION=5.1.0 DOTFILES_TEST_INPUT='y\nn\n' run_operation "$FIXTURE_ROOT" apply_packages demo
 
 	if [[ $COMMAND_STATUS -eq 0 ]]; then
 		printf '  mismatched Omarchy should require separate confirmation\n' >&2
 		return 1
 	fi
 	assert_contains "$COMMAND_OUTPUT" 'Phase: confirm' 'mismatch rejection should identify the confirmation phase' || return 1
-	assert_contains "$COMMAND_OUTPUT" 'bin/dotfiles apply demo --yes --allow-omarchy-mismatch' \
-		'recovery should give the exact compatibility approval command' || return 1
+	assert_contains "$COMMAND_OUTPUT" 'choose Apply Stow packages in the Dotfiles wizard' \
+		'recovery should name the compatibility action' || return 1
 	if [[ -e $FIXTURE_HOME/.config/demo/config ]]; then
 		printf '  mismatch rejection must happen before filesystem mutation\n' >&2
 		return 1
 	fi
 
-	DOTFILES_TEST_OMARCHY_VERSION=5.1.0 run_dotfiles "$FIXTURE_ROOT" apply demo --yes --allow-omarchy-mismatch
+	DOTFILES_TEST_OMARCHY_VERSION=5.1.0 DOTFILES_TEST_INPUT='y\ny\n' run_operation "$FIXTURE_ROOT" apply_packages demo
 	assert_eq 0 "$COMMAND_STATUS" 'explicit mismatch confirmation should permit the planned apply' || return 1
 }
 
@@ -65,7 +60,7 @@ test_apply_reports_missing_package_prerequisite_before_stow() {
 	new_fixture
 	add_package
 	rm "$FIXTURE_BIN/test-validator"
-	run_dotfiles "$FIXTURE_ROOT" apply demo --yes
+	DOTFILES_TEST_INPUT='y\n' run_operation "$FIXTURE_ROOT" apply_packages demo
 
 	if [[ $COMMAND_STATUS -eq 0 ]]; then
 		printf '  missing package prerequisite should fail apply\n' >&2
@@ -86,7 +81,7 @@ test_apply_rejects_missing_validator_executable_before_simulation() {
 	add_package
 	jq '.packages[0].validators = ["missing-validator --check"]' "$FIXTURE_REPO/packages.json" >"$FIXTURE_REPO/packages.updated"
 	mv "$FIXTURE_REPO/packages.updated" "$FIXTURE_REPO/packages.json"
-	run_dotfiles "$FIXTURE_ROOT" apply demo --yes
+	DOTFILES_TEST_INPUT='y\n' run_operation "$FIXTURE_ROOT" apply_packages demo
 
 	assert_eq 1 "$COMMAND_STATUS" 'apply should fail planning when a validator executable is unavailable' || return 1
 	assert_contains "$COMMAND_OUTPUT" 'Missing validator executable for demo: missing-validator --check' \
@@ -99,52 +94,18 @@ test_apply_rejects_missing_validator_executable_before_simulation() {
 	fi
 }
 
-test_missing_stow_requires_confirmation_and_delegates_installation() {
+test_missing_stow_routes_to_prerequisite_action() {
 	new_fixture
 	add_package
-	mv "$FIXTURE_BIN/stow" "$FIXTURE_BIN/installed-stow"
-	make_fake installed-stow 'printf "stow %s\n" "$*" >>"$DOTFILES_TEST_CALL_LOG"
-if [[ " $* " != *" --simulate "* ]]; then
-	package=${!#}
-	mkdir -p "$HOME/.config"
-	ln -s "$DOTFILES_TEST_REPO/config/$package/.config/$package" "$HOME/.config/$package"
-fi'
-	run_dotfiles "$FIXTURE_ROOT" apply demo --yes
+	rm "$FIXTURE_BIN/stow"
+	DOTFILES_TEST_INPUT='y\n' run_operation "$FIXTURE_ROOT" apply_packages demo
 
-	if [[ $COMMAND_STATUS -eq 0 ]]; then
-		printf '  missing Stow should stop without installation approval\n' >&2
-		return 1
-	fi
-	assert_contains "$COMMAND_OUTPUT" 'Missing prerequisite: GNU Stow is required to apply packages.' \
+	assert_eq 1 "$COMMAND_STATUS" 'missing Stow should stop package application' || return 1
+	assert_contains "$COMMAND_OUTPUT" 'Error: GNU Stow is required.' \
 		'missing Stow should be explained' || return 1
-	assert_contains "$COMMAND_OUTPUT" 'Omarchy-supported install: omarchy-pkg-add stow' \
-		'the supported install command should be visible' || return 1
-	assert_contains "$COMMAND_OUTPUT" 'bin/dotfiles apply demo --yes --install-stow' \
-		'recovery should require explicit installation approval' || return 1
-	if [[ $(<"$CALL_LOG") == *'omarchy-pkg-add'* ]]; then
-		printf '  declined Stow installation must not call Omarchy\n' >&2
-		return 1
-	fi
-
-	make_fake omarchy-pkg-add 'printf "omarchy-pkg-add %s\n" "$*" >>"$DOTFILES_TEST_CALL_LOG"
-mv "$DOTFILES_TEST_FAKE_BIN/installed-stow" "$DOTFILES_TEST_FAKE_BIN/stow"'
-	run_dotfiles "$FIXTURE_ROOT" apply demo --yes --install-stow
-	assert_eq 0 "$COMMAND_STATUS" 'confirmed delegated Stow installation should complete prerequisite setup' || return 1
-	assert_contains "$(<"$CALL_LOG")" 'omarchy-pkg-add stow' \
-		'confirmed installation should delegate to the Omarchy-supported command' || return 1
-	assert_contains "$COMMAND_OUTPUT" 'Prerequisite setup complete; rerun: bin/dotfiles apply demo --yes' \
-		'prerequisite setup should require a fresh complete package plan' || return 1
-	assert_eq 0 "$(awk '/^stow / { count++ } END { print count + 0 }' "$CALL_LOG")" \
-		'prerequisite setup should stop before package simulation or mutation' || return 1
-	if [[ -e $FIXTURE_HOME/.config/demo/config ]]; then
-		printf '  prerequisite setup must not apply the selected package\n' >&2
-		return 1
-	fi
-
-	: >"$CALL_LOG"
-	run_dotfiles "$FIXTURE_ROOT" apply demo --yes
-	assert_eq 0 "$COMMAND_STATUS" 'rerun should plan, apply, and verify with Stow available' || return 1
-	assert_contains "$COMMAND_OUTPUT" 'Applied and verified package: demo' 'rerun should complete the package operation' || return 1
+	assert_contains "$COMMAND_OUTPUT" 'Recovery: choose Prepare prerequisites in the Dotfiles wizard.' \
+		'recovery should name the standalone prerequisite action' || return 1
+	assert_contains "$(<"$CALL_LOG")" 'version|' 'Omarchy inspection should precede the missing-Stow result'
 }
 
 test_stow_conflict_stops_before_mutation_and_reports_recovery() {
@@ -157,7 +118,7 @@ test_stow_conflict_stops_before_mutation_and_reports_recovery() {
 	make_fake stow 'printf "stow %s\n" "$*" >>"$DOTFILES_TEST_CALL_LOG"
 printf "existing target would conflict: %s/.config/demo/config\n" "$HOME" >&2
 exit 1'
-	run_dotfiles "$FIXTURE_ROOT" apply demo --yes
+	DOTFILES_TEST_INPUT='y\n' run_operation "$FIXTURE_ROOT" apply_packages demo
 
 	if [[ $COMMAND_STATUS -eq 0 ]]; then
 		printf '  Stow conflict should fail apply\n' >&2
@@ -183,21 +144,19 @@ test_migrate_requires_mutation_and_inspection_approval() {
 	local before_target
 	before_target=$(sha256sum "$FIXTURE_HOME/.config/demo/config")
 
-	run_dotfiles "$FIXTURE_ROOT" migrate demo .config/demo/config
-	assert_eq 2 "$COMMAND_STATUS" 'migration without mutation approval should be declined' || return 1
-	assert_contains "$COMMAND_OUTPUT" 'Migration candidate: regular file:' 'declined migration should still expose the candidate for inspection' || return 1
-	assert_contains "$COMMAND_OUTPUT" 'requires explicit mutation approval with --yes' 'migration should name its mutation checkpoint' || return 1
-
-	run_dotfiles "$FIXTURE_ROOT" migrate demo .config/demo/config --yes
-	assert_eq 2 "$COMMAND_STATUS" 'migration without content inspection approval should be declined' || return 1
-	assert_contains "$COMMAND_OUTPUT" 'inspect for sensitive or machine-specific content' 'migration should name the distinct inspection checkpoint' || return 1
-	assert_contains "$COMMAND_OUTPUT" 'rerun with --inspection-approved' 'migration should require a separate inspection approval' || return 1
+	DOTFILES_TEST_INPUT='n\n' run_operation "$FIXTURE_ROOT" migrate_target demo .config/demo/config --interactive
+	assert_eq 0 "$COMMAND_STATUS" 'declining the migration plan should be a safe skip' || return 1
+	assert_contains "$COMMAND_OUTPUT" 'Migration candidate: regular file:' 'migration should expose the candidate before approval' || return 1
+	assert_contains "$COMMAND_OUTPUT" 'Migrate this complete plan?' 'migration should request mutation approval' || return 1
 	assert_eq "$before_target" "$(sha256sum "$FIXTURE_HOME/.config/demo/config")" 'declined migration should preserve the target' || return 1
 	if [[ -e $FIXTURE_REPO/config/demo/.config/demo/config ]]; then
 		printf '  declined migration should not create package content\n' >&2
 		return 1
 	fi
-	assert_eq '' "$(<"$CALL_LOG")" 'declined migration should invoke no external mutation commands'
+	if [[ $(<"$CALL_LOG") == *$'stow --verbose=2 '* ]]; then
+		printf '  declined migration should invoke no external mutation commands\n' >&2
+		return 1
+	fi
 }
 
 test_migrate_rejects_home_parent_symlink_escape() {
@@ -208,7 +167,7 @@ test_migrate_rejects_home_parent_symlink_escape() {
 	printf 'outside target\n' >"$outside/config"
 	ln -s "$outside" "$FIXTURE_HOME/escape"
 
-	run_dotfiles "$FIXTURE_ROOT" migrate demo escape/config --yes --inspection-approved
+	run_operation "$FIXTURE_ROOT" migrate_target demo escape/config --yes --inspection-approved
 
 	assert_eq 1 "$COMMAND_STATUS" 'migration should reject a target resolving outside HOME' || return 1
 	assert_contains "$COMMAND_OUTPUT" 'migration target resolves outside HOME' 'rejection should explain the containment failure' || return 1
@@ -228,7 +187,7 @@ test_migrate_rejects_package_parent_symlink_escape() {
 	printf 'approved user content\n' >"$FIXTURE_HOME/escape/config"
 	ln -s "$outside" "$FIXTURE_REPO/config/demo/escape"
 
-	run_dotfiles "$FIXTURE_ROOT" migrate demo escape/config --yes --inspection-approved
+	run_operation "$FIXTURE_ROOT" migrate_target demo escape/config --yes --inspection-approved
 
 	assert_eq 1 "$COMMAND_STATUS" 'migration should reject a package destination resolving outside its package' || return 1
 	assert_contains "$COMMAND_OUTPUT" 'package destination resolves outside package demo' 'rejection should explain package ownership containment' || return 1
@@ -253,7 +212,7 @@ if [[ " $* " != *" --simulate "* ]]; then
 	ln -s "$DOTFILES_TEST_REPO/config/$package/.config/$package/config" "$HOME/.config/$package/config"
 fi'
 
-	run_dotfiles "$FIXTURE_ROOT" migrate demo .config/demo/config --yes --inspection-approved
+	run_operation "$FIXTURE_ROOT" migrate_target demo .config/demo/config --yes --inspection-approved
 
 	assert_eq 0 "$COMMAND_STATUS" 'approved migration should succeed' || return 1
 	assert_contains "$COMMAND_OUTPUT" 'Backup created:' 'migration should expose recovery evidence before moving content' || return 1
@@ -292,7 +251,7 @@ if [[ " $* " != *" --simulate "* ]]; then
 	fi
 fi'
 
-	run_dotfiles "$FIXTURE_ROOT" migrate app .config/app/config --yes --inspection-approved
+	run_operation "$FIXTURE_ROOT" migrate_target app .config/app/config --yes --inspection-approved
 
 	assert_eq 0 "$COMMAND_STATUS" 'migration with a dependency should succeed' || return 1
 	assert_contains "$COMMAND_OUTPUT" $'Plan: migration package order:\n  1. base (required dependency; apply only)\n  2. app (selected; migrate and apply)' \
@@ -335,7 +294,7 @@ if [[ " $* " != *" --simulate "* ]]; then
 	ln -s "$DOTFILES_TEST_REPO/config/$package/.config/$package" "$HOME/.config/$package"
 fi'
 
-	run_dotfiles "$FIXTURE_ROOT" migrate app .config/app/config --yes --inspection-approved
+	run_operation "$FIXTURE_ROOT" migrate_target app .config/app/config --yes --inspection-approved
 
 	assert_eq 1 "$COMMAND_STATUS" 'dependency apply failure should stop migration' || return 1
 	assert_contains "$COMMAND_OUTPUT" 'Package state: base: succeeded' 'earlier dependency success should be retained and reported' || return 1
@@ -360,7 +319,7 @@ test_migrate_unrelated_conflict_stops_before_backup_or_move() {
 printf "existing sibling target conflicts\n" >&2
 exit 45'
 
-	run_dotfiles "$FIXTURE_ROOT" migrate demo .config/demo/config --yes --inspection-approved
+	run_operation "$FIXTURE_ROOT" migrate_target demo .config/demo/config --yes --inspection-approved
 
 	assert_eq 1 "$COMMAND_STATUS" 'unrelated pre-move conflict should fail migration planning' || return 1
 	assert_contains "$COMMAND_OUTPUT" 'existing sibling target conflicts' 'migration should expose the unrelated conflict' || return 1
@@ -386,11 +345,12 @@ test_migrate_backup_failure_preserves_target() {
 exit 41'
 	make_fake stow 'printf "stow %s\n" "$*" >>"$DOTFILES_TEST_CALL_LOG"'
 
-	run_dotfiles "$FIXTURE_ROOT" migrate demo .config/demo/config --yes --inspection-approved
+	run_operation "$FIXTURE_ROOT" migrate_target demo .config/demo/config --yes --inspection-approved
 
 	assert_eq 1 "$COMMAND_STATUS" 'backup failure should fail migration' || return 1
 	assert_contains "$COMMAND_OUTPUT" 'Error: backup phase failed for package demo.' 'backup failure should identify its phase' || return 1
 	assert_contains "$COMMAND_OUTPUT" 'the target remains unchanged' 'backup failure should report target recovery state' || return 1
+	assert_contains "$COMMAND_OUTPUT" 'choose Migrate existing target in the Dotfiles wizard' 'backup failure should name the migration action' || return 1
 	assert_eq "$before_target" "$(sha256sum "$FIXTURE_HOME/.config/demo/config")" 'backup failure should preserve the target' || return 1
 	if [[ -e $FIXTURE_REPO/config/demo/.config/demo/config ]]; then
 		printf '  backup failure should not create package content\n' >&2
@@ -410,11 +370,12 @@ test_migrate_move_failure_retains_backup_and_unrelated_target() {
 exit 42'
 	make_fake stow 'printf "stow %s\n" "$*" >>"$DOTFILES_TEST_CALL_LOG"'
 
-	run_dotfiles "$FIXTURE_ROOT" migrate demo .config/demo/config --yes --inspection-approved
+	run_operation "$FIXTURE_ROOT" migrate_target demo .config/demo/config --yes --inspection-approved
 
 	assert_eq 1 "$COMMAND_STATUS" 'move failure should fail migration' || return 1
 	assert_contains "$COMMAND_OUTPUT" 'Error: migrate phase failed for package demo.' 'move failure should identify its phase' || return 1
 	assert_contains "$COMMAND_OUTPUT" 'Backup retained:' 'move failure should expose retained recovery evidence' || return 1
+	assert_contains "$COMMAND_OUTPUT" 'choose Migrate existing target in the Dotfiles wizard' 'move failure should name the migration action' || return 1
 	assert_eq 'approved user content' "$(<"$FIXTURE_HOME/.config/demo/config")" 'failed move should leave the original target available' || return 1
 	assert_eq 'leave alone' "$(<"$FIXTURE_HOME/.config/unrelated/config")" 'failed move should not alter unrelated targets' || return 1
 	local -a backups=("$FIXTURE_STATE"/dotfiles/backups/demo/[0-9]*Z/.config/demo/config)
@@ -435,12 +396,13 @@ printf "remaining unrelated Stow conflict\n" >&2
 exit 43
 fi'
 
-	run_dotfiles "$FIXTURE_ROOT" migrate demo .config/demo/config --yes --inspection-approved
+	run_operation "$FIXTURE_ROOT" migrate_target demo .config/demo/config --yes --inspection-approved
 
 	assert_eq 1 "$COMMAND_STATUS" 'post-move Stow conflict should fail migration' || return 1
 	assert_contains "$COMMAND_OUTPUT" 'remaining unrelated Stow conflict' 'post-move conflict details should remain visible' || return 1
 	assert_contains "$COMMAND_OUTPUT" 'Backup retained:' 'post-move conflict should identify the retained backup' || return 1
 	assert_contains "$COMMAND_OUTPUT" 'restore the original target with:' 'post-move conflict should provide restoration evidence' || return 1
+	assert_contains "$COMMAND_OUTPUT" 'choose Migrate existing target in the Dotfiles wizard' 'post-move conflict should name the migration action' || return 1
 	assert_eq 'approved user content' "$(<"$FIXTURE_REPO/config/demo/.config/demo/config")" 'moved content should remain recoverable in the package' || return 1
 	assert_eq 'leave alone' "$(<"$FIXTURE_HOME/.config/unrelated/config")" 'post-move conflict should not alter unrelated targets' || return 1
 	assert_eq 2 "$(awk '/^stow --simulate / { count++ } END { print count + 0 }' "$CALL_LOG")" 'post-move conflict should come from the repeated simulation'
@@ -454,7 +416,7 @@ test_migrate_link_verification_failure_retains_backup() {
 	printf 'approved user content\n' >"$FIXTURE_HOME/.config/demo/config"
 	make_fake stow 'printf "stow %s\n" "$*" >>"$DOTFILES_TEST_CALL_LOG"'
 
-	run_dotfiles "$FIXTURE_ROOT" migrate demo .config/demo/config --yes --inspection-approved
+	run_operation "$FIXTURE_ROOT" migrate_target demo .config/demo/config --yes --inspection-approved
 
 	assert_eq 1 "$COMMAND_STATUS" 'missing migrated link should fail verification' || return 1
 	assert_contains "$COMMAND_OUTPUT" 'Error: verify phase failed for package demo.' 'migration should reuse link audit failure reporting' || return 1
@@ -474,19 +436,19 @@ if [[ " $* " != *" --simulate "* ]]; then
 	mkdir -p "$HOME/.config/demo"
 	ln -s "$DOTFILES_TEST_REPO/config/demo/.config/demo/config" "$HOME/.config/demo/config"
 fi'
-	DOTFILES_TEST_OMARCHY_VERSION=5.1.0 run_dotfiles "$FIXTURE_ROOT" migrate demo .config/demo/config --yes --inspection-approved
+	DOTFILES_TEST_OMARCHY_VERSION=5.1.0 DOTFILES_TEST_INPUT='y\ny\nn\n' run_operation "$FIXTURE_ROOT" migrate_target demo .config/demo/config --interactive
 
 	assert_eq 1 "$COMMAND_STATUS" 'migration should stop on an unapproved Omarchy mismatch' || return 1
 	assert_contains "$COMMAND_OUTPUT" 'Supported Omarchy: 4' 'migration should report the supported version' || return 1
 	assert_contains "$COMMAND_OUTPUT" 'Detected Omarchy: 5.1.0' 'migration should report the detected version' || return 1
-	assert_contains "$COMMAND_OUTPUT" '--allow-omarchy-mismatch' 'migration should name the distinct mismatch approval' || return 1
+	assert_contains "$COMMAND_OUTPUT" 'choose Migrate existing target in the Dotfiles wizard' 'migration should name the distinct mismatch recovery action' || return 1
 	assert_eq 'approved user content' "$(<"$FIXTURE_HOME/.config/demo/config")" 'mismatch rejection should precede target mutation' || return 1
 	if [[ -e $FIXTURE_REPO/config/demo/.config/demo/config || -d $FIXTURE_STATE/dotfiles/backups ]]; then
 		printf '  mismatch rejection should precede backup and package mutation\n' >&2
 		return 1
 	fi
 
-	DOTFILES_TEST_OMARCHY_VERSION=5.1.0 run_dotfiles "$FIXTURE_ROOT" migrate demo .config/demo/config --yes --inspection-approved --allow-omarchy-mismatch
+	DOTFILES_TEST_OMARCHY_VERSION=5.1.0 run_operation "$FIXTURE_ROOT" migrate_target demo .config/demo/config --yes --inspection-approved --allow-omarchy-mismatch
 	assert_eq 0 "$COMMAND_STATUS" 'distinct mismatch approval should permit migration' || return 1
 	assert_contains "$COMMAND_OUTPUT" 'Migrated and verified package: demo' 'approved mismatch should complete the same verified flow' || return 1
 }
@@ -497,7 +459,7 @@ test_migrate_validates_prerequisites_before_backup() {
 	rm "$FIXTURE_REPO/config/demo/.config/demo/config" "$FIXTURE_BIN/test-validator"
 	mkdir -p "$FIXTURE_HOME/.config/demo"
 	printf 'approved user content\n' >"$FIXTURE_HOME/.config/demo/config"
-	run_dotfiles "$FIXTURE_ROOT" migrate demo .config/demo/config --yes --inspection-approved
+	run_operation "$FIXTURE_ROOT" migrate_target demo .config/demo/config --yes --inspection-approved
 
 	assert_eq 1 "$COMMAND_STATUS" 'missing prerequisite should fail migration' || return 1
 	assert_contains "$COMMAND_OUTPUT" 'Missing package prerequisite for demo: test-validator' 'migration should name every missing declared command' || return 1
@@ -518,7 +480,7 @@ test_migrate_rejects_missing_validator_executable_before_simulation() {
 	mkdir -p "$FIXTURE_HOME/.config/demo"
 	printf 'approved user content\n' >"$FIXTURE_HOME/.config/demo/config"
 
-	run_dotfiles "$FIXTURE_ROOT" migrate demo .config/demo/config --yes --inspection-approved
+	run_operation "$FIXTURE_ROOT" migrate_target demo .config/demo/config --yes --inspection-approved
 
 	assert_eq 1 "$COMMAND_STATUS" 'migration should fail planning when a validator executable is unavailable' || return 1
 	assert_contains "$COMMAND_OUTPUT" 'Missing validator executable for demo: missing-validator --check' \
@@ -539,7 +501,7 @@ test_migrate_rejects_occupied_package_destination() {
 	printf 'approved user content\n' >"$FIXTURE_HOME/.config/demo/config"
 	local source_before
 	source_before=$(sha256sum "$FIXTURE_REPO/config/demo/.config/demo/config")
-	run_dotfiles "$FIXTURE_ROOT" migrate demo .config/demo/config --yes --inspection-approved
+	run_operation "$FIXTURE_ROOT" migrate_target demo .config/demo/config --yes --inspection-approved
 
 	assert_eq 1 "$COMMAND_STATUS" 'occupied package destination should reject migration' || return 1
 	assert_contains "$COMMAND_OUTPUT" 'package destination already exists' 'rejection should identify the clobber hazard' || return 1
@@ -558,11 +520,12 @@ test_migrate_parent_creation_failure_retains_backup() {
 	exit 44
 fi
 /usr/bin/mkdir "$@"'
-	run_dotfiles "$FIXTURE_ROOT" migrate demo .config/demo/config --yes --inspection-approved
+	run_operation "$FIXTURE_ROOT" migrate_target demo .config/demo/config --yes --inspection-approved
 
 	assert_eq 1 "$COMMAND_STATUS" 'package parent creation failure should fail migration' || return 1
 	assert_contains "$COMMAND_OUTPUT" 'Error: migrate phase failed for package demo.' 'parent creation failure should identify migration recovery' || return 1
 	assert_contains "$COMMAND_OUTPUT" 'Backup retained:' 'parent creation failure should expose its backup' || return 1
+	assert_contains "$COMMAND_OUTPUT" 'choose Migrate existing target in the Dotfiles wizard' 'parent creation failure should name the migration action' || return 1
 	assert_eq 'approved user content' "$(<"$FIXTURE_HOME/.config/demo/config")" 'parent creation failure should preserve the target' || return 1
 	assert_eq 'leave alone' "$(<"$FIXTURE_HOME/.config/unrelated/config")" 'parent creation failure should preserve unrelated targets' || return 1
 }
@@ -570,7 +533,7 @@ fi
 test_link_audit_failure_identifies_verify_phase_and_unlink_recovery() {
 	new_fixture
 	add_package
-	run_dotfiles "$FIXTURE_ROOT" apply demo --yes
+	DOTFILES_TEST_INPUT='y\n' run_operation "$FIXTURE_ROOT" apply_packages demo
 
 	if [[ $COMMAND_STATUS -eq 0 ]]; then
 		printf '  missing expected link should fail verification\n' >&2
@@ -590,14 +553,14 @@ test_validator_failure_identifies_command_and_recovery() {
 	make_applying_stow
 	make_fake test-validator 'printf "validator %s\n" "$*" >>"$DOTFILES_TEST_CALL_LOG"
 exit 23'
-	run_dotfiles "$FIXTURE_ROOT" apply demo --yes
+	DOTFILES_TEST_INPUT='y\n' run_operation "$FIXTURE_ROOT" apply_packages demo
 
 	assert_eq 1 "$COMMAND_STATUS" 'validator failure should fail apply' || return 1
 	assert_contains "$COMMAND_OUTPUT" 'Validator failed for demo: test-validator --check' \
 		'failure should name the declared validator' || return 1
 	assert_contains "$COMMAND_OUTPUT" 'Error: verify phase failed for package demo.' \
 		'validator should fail in verification' || return 1
-	assert_contains "$COMMAND_OUTPUT" 'fix the linked configuration, validate with: test-validator --check; then rerun apply' \
+	assert_contains "$COMMAND_OUTPUT" 'fix the linked configuration, validate with: test-validator --check; then choose Apply Stow packages' \
 		'recovery should provide the exact validation command' || return 1
 	assert_eq "$FIXTURE_REPO/config/demo/.config/demo/config" "$(readlink -f "$FIXTURE_HOME/.config/demo/config")" \
 		'failed validation should leave the applied package available for scoped recovery'
@@ -608,7 +571,7 @@ test_apply_includes_dependencies_in_visible_topological_order() {
 	add_package base
 	add_dependent_package app base
 	make_applying_stow
-	run_dotfiles "$FIXTURE_ROOT" apply app --yes
+	DOTFILES_TEST_INPUT='y\n' run_operation "$FIXTURE_ROOT" apply_packages app
 
 	assert_eq 0 "$COMMAND_STATUS" 'dependency closure should apply successfully' || return 1
 	assert_contains "$COMMAND_OUTPUT" $'Plan: apply packages in dependency order:\n  1. base (required by selection)\n  2. app (selected)' \
@@ -650,7 +613,7 @@ if [[ " $* " != *" --simulate "* ]]; then
 	mkdir -p "$HOME/.config"
 	ln -s "$DOTFILES_TEST_REPO/config/$package/.config/$package" "$HOME/.config/$package"
 fi'
-	run_dotfiles "$FIXTURE_ROOT" apply app --yes
+	DOTFILES_TEST_INPUT='y\n' run_operation "$FIXTURE_ROOT" apply_packages app
 
 	assert_eq 1 "$COMMAND_STATUS" 'the first package failure should fail the batch' || return 1
 	assert_contains "$COMMAND_OUTPUT" 'Package state: base: succeeded' 'prior verified success should be reported' || return 1
@@ -672,13 +635,15 @@ test_remove_blocks_retained_linked_dependents_and_names_each() {
 	ln -s "$FIXTURE_REPO/config/base/.config/base" "$FIXTURE_HOME/.config/base"
 	ln -s "$FIXTURE_REPO/config/app/.config/app" "$FIXTURE_HOME/.config/app"
 	ln -s "$FIXTURE_REPO/config/addon/.config/addon" "$FIXTURE_HOME/.config/addon"
-	run_dotfiles "$FIXTURE_ROOT" remove base --yes
+	run_operation "$FIXTURE_ROOT" remove_package base --yes
 
 	assert_eq 1 "$COMMAND_STATUS" 'retained linked dependents should block removal' || return 1
 	assert_contains "$COMMAND_OUTPUT" 'Removal blocked: linked packages depend on base:' \
 		'blocked removal should explain the dependency constraint' || return 1
 	assert_contains "$COMMAND_OUTPUT" '  addon' 'every linked blocker should be named' || return 1
 	assert_contains "$COMMAND_OUTPUT" '  app' 'every linked blocker should be named' || return 1
+	assert_contains "$COMMAND_OUTPUT" 'remove the named dependent packages first, or retain this package; then choose Remove Stow package in the Dotfiles wizard' \
+		'blocked removal should preserve dependent-package guidance and name the removal action' || return 1
 	if [[ $(<"$CALL_LOG") == *'stow '* ]]; then
 		printf '  blocked removal should not invoke Stow\n' >&2
 		return 1
@@ -706,7 +671,7 @@ if [[ " $* " == *" --delete "* && " $* " != *" --simulate "* ]]; then
 	package=${!#}
 	rm "$HOME/.config/$package"
 fi'
-	run_dotfiles "$FIXTURE_ROOT" remove demo --yes
+	run_operation "$FIXTURE_ROOT" remove_package demo --yes
 
 	assert_eq 0 "$COMMAND_STATUS" 'approved safe removal should succeed' || return 1
 	assert_contains "$COMMAND_OUTPUT" 'Plan: remove demo links from' 'removal plan should be visible' || return 1
@@ -732,7 +697,7 @@ run_test test_apply_plans_simulates_links_and_validates_package 'apply plans, si
 run_test test_apply_requires_separate_omarchy_mismatch_confirmation 'apply requires separate Omarchy mismatch confirmation'
 run_test test_apply_reports_missing_package_prerequisite_before_stow 'apply reports missing package prerequisite before Stow'
 run_test test_apply_rejects_missing_validator_executable_before_simulation 'apply rejects missing validator executable before simulation'
-run_test test_missing_stow_requires_confirmation_and_delegates_installation 'missing Stow requires confirmation and delegates installation'
+run_test test_missing_stow_routes_to_prerequisite_action 'missing Stow routes to the prerequisite wizard action'
 run_test test_stow_conflict_stops_before_mutation_and_reports_recovery 'Stow conflict stops before mutation and reports recovery'
 run_test test_migrate_requires_mutation_and_inspection_approval 'migration requires mutation and inspection approval'
 run_test test_migrate_rejects_home_parent_symlink_escape 'migration rejects HOME parent symlink escape'

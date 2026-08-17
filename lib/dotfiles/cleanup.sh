@@ -365,7 +365,7 @@ cleanup_applications() {
 	fi
 	if [[ $OMARCHY_VERSION_MISMATCH == true ]]; then
 		if ! wizard_confirm 'Continue despite the Omarchy version mismatch?'; then
-			printf 'Confirmation required: review Omarchy compatibility, then rerun cleanup from the Dotfiles wizard.\n' >&2
+			printf 'Confirmation required: review Omarchy compatibility, then choose Clean up Omarchy applications in the Dotfiles wizard.\n' >&2
 			return 1
 		fi
 		printf 'Approval: Omarchy version mismatch accepted interactively\n'

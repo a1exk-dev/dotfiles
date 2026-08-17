@@ -5,7 +5,7 @@ source "$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)/support/test_helper.
 test_status_inspects_empty_relocated_clone() {
 	new_fixture
 	rm "$FIXTURE_BIN/stow"
-	run_dotfiles "$FIXTURE_ROOT" status
+	run_operation "$FIXTURE_ROOT" status
 
 	assert_eq 0 "$COMMAND_STATUS" 'status should succeed' || return 1
 	assert_contains "$COMMAND_OUTPUT" 'Supported Omarchy: 4' 'status should report the supported major version' || return 1
@@ -21,7 +21,7 @@ test_status_inspects_empty_relocated_clone() {
 test_check_accepts_empty_catalog() {
 	new_fixture
 	rm "$FIXTURE_BIN/stow"
-	run_dotfiles "$FIXTURE_HOME" check
+	run_operation "$FIXTURE_HOME" check
 
 	assert_eq 0 "$COMMAND_STATUS" 'check should succeed' || return 1
 	assert_contains "$COMMAND_OUTPUT" 'Supported Omarchy: 4' 'check should report the supported major version' || return 1
@@ -40,7 +40,7 @@ test_check_rejects_missing_declared_package_prerequisite() {
 	new_fixture
 	add_package
 	rm "$FIXTURE_BIN/test-validator"
-	run_dotfiles "$FIXTURE_ROOT" check
+	run_operation "$FIXTURE_ROOT" check
 
 	assert_eq 1 "$COMMAND_STATUS" 'check should fail when a declared package prerequisite is unavailable' || return 1
 	assert_contains "$COMMAND_OUTPUT" 'Missing package prerequisite for demo: test-validator' \
@@ -52,7 +52,7 @@ test_check_rejects_missing_validator_executable() {
 	add_package
 	jq '.packages[0].validators = ["missing-validator --check"]' "$FIXTURE_REPO/packages.json" >"$FIXTURE_REPO/packages.updated"
 	mv "$FIXTURE_REPO/packages.updated" "$FIXTURE_REPO/packages.json"
-	run_dotfiles "$FIXTURE_ROOT" check
+	run_operation "$FIXTURE_ROOT" check
 
 	assert_eq 1 "$COMMAND_STATUS" 'check should fail when a validator executable is unavailable' || return 1
 	assert_contains "$COMMAND_OUTPUT" 'Missing validator executable for demo: missing-validator --check' \
@@ -72,14 +72,14 @@ test_check_rejects_missing_core_and_global_skill_commands() {
 	done
 	ln -s "$FIXTURE_BIN/omarchy" "$check_bin/omarchy"
 
-	DOTFILES_TEST_PATH=$check_bin run_dotfiles "$FIXTURE_ROOT" check
+	DOTFILES_TEST_PATH=$check_bin run_operation "$FIXTURE_ROOT" check
 	assert_eq 1 "$COMMAND_STATUS" 'check should fail before inspection when a core command is unavailable' || return 1
 	assert_contains "$COMMAND_OUTPUT" 'Error: missing core inspection command: readlink' \
 		'check should identify the missing core command' || return 1
 	assert_eq '' "$(<"$CALL_LOG")" 'missing core commands should stop before Omarchy inspection' || return 1
 
 	ln -s "$(command -v readlink)" "$check_bin/readlink"
-	DOTFILES_TEST_PATH=$check_bin run_dotfiles "$FIXTURE_ROOT" check
+	DOTFILES_TEST_PATH=$check_bin run_operation "$FIXTURE_ROOT" check
 	assert_eq 1 "$COMMAND_STATUS" 'check should fail when a global-skill prerequisite is unavailable' || return 1
 	assert_contains "$COMMAND_OUTPUT" 'Error: missing global skill prerequisite: npx' \
 		'check should identify the missing global-skill command'
@@ -96,7 +96,7 @@ test_status_warns_about_version_mismatch_without_mutation() {
 	local before
 	before=$(snapshot_isolated_paths)
 
-	DOTFILES_TEST_OMARCHY_VERSION=5.1.0 run_dotfiles "$FIXTURE_CONFIG" status
+	DOTFILES_TEST_OMARCHY_VERSION=5.1.0 run_operation "$FIXTURE_CONFIG" status
 
 	assert_eq 0 "$COMMAND_STATUS" 'a mismatch should not fail inspection' || return 1
 	assert_contains "$COMMAND_OUTPUT" 'Detected Omarchy: 5.1.0' 'status should preserve the detected version' || return 1
@@ -119,7 +119,7 @@ test_check_rejects_malformed_catalog_without_mutation() {
 	before_paths=$(snapshot_isolated_paths)
 	before_catalog=$(sha256sum "$FIXTURE_REPO/packages.json")
 
-	run_dotfiles "$FIXTURE_ROOT" check
+	run_operation "$FIXTURE_ROOT" check
 
 	if [[ $COMMAND_STATUS -eq 0 ]]; then
 		printf '  malformed catalog should fail check\n' >&2
@@ -147,7 +147,7 @@ test_status_reports_nonempty_package_states_and_metadata() {
 	mkdir -p "$FIXTURE_HOME/.config/conflicting"
 	printf 'keep me\n' >"$FIXTURE_HOME/.config/conflicting/config"
 
-	run_dotfiles "$FIXTURE_ROOT" status
+	run_operation "$FIXTURE_ROOT" status
 
 	assert_eq 0 "$COMMAND_STATUS" 'status should inspect a nonempty catalog' || return 1
 	assert_contains "$COMMAND_OUTPUT" 'linked: linked - Test package' 'status should report a fully linked package and description' || return 1
@@ -169,7 +169,7 @@ test_inspection_cannot_access_real_user_or_omarchy_paths() {
 test_check_validates_complete_package_metadata() {
 	new_fixture
 	add_package
-	run_dotfiles "$FIXTURE_ROOT" check
+	run_operation "$FIXTURE_ROOT" check
 
 	assert_eq 0 "$COMMAND_STATUS" 'complete package metadata should pass check' || return 1
 	assert_contains "$COMMAND_OUTPUT" 'Package catalog: valid (1 packages)' \
@@ -183,7 +183,7 @@ test_check_rejects_each_invalid_package_metadata_field() {
 		add_package
 		jq "$jq_filter" "$FIXTURE_REPO/packages.json" >"$FIXTURE_REPO/packages.invalid"
 		mv "$FIXTURE_REPO/packages.invalid" "$FIXTURE_REPO/packages.json"
-		run_dotfiles "$FIXTURE_ROOT" check
+		run_operation "$FIXTURE_ROOT" check
 		if [[ $COMMAND_STATUS -eq 0 || $COMMAND_OUTPUT != *"$expected"* ]]; then
 			printf '  invalid metadata was accepted: %s\n  output: %s\n' "$jq_filter" "$COMMAND_OUTPUT" >&2
 			return 1
@@ -219,7 +219,7 @@ test_check_rejects_missing_dependency_and_cycle() {
 	}]' "$FIXTURE_REPO/packages.json" >"$FIXTURE_REPO/packages.updated"
 	mv "$FIXTURE_REPO/packages.updated" "$FIXTURE_REPO/packages.json"
 
-	run_dotfiles "$FIXTURE_ROOT" check
+	run_operation "$FIXTURE_ROOT" check
 	assert_eq 1 "$COMMAND_STATUS" 'a missing dependency reference should fail check' || return 1
 	assert_contains "$COMMAND_OUTPUT" 'Error: package app depends on missing package: missing' \
 		'missing dependency output should name both packages' || return 1
@@ -228,7 +228,7 @@ test_check_rejects_missing_dependency_and_cycle() {
 		(.packages[] | select(.name == "base").dependencies) = ["app"]' \
 		"$FIXTURE_REPO/packages.json" >"$FIXTURE_REPO/packages.updated"
 	mv "$FIXTURE_REPO/packages.updated" "$FIXTURE_REPO/packages.json"
-	run_dotfiles "$FIXTURE_ROOT" check
+	run_operation "$FIXTURE_ROOT" check
 	assert_eq 1 "$COMMAND_STATUS" 'a dependency cycle should fail check' || return 1
 	assert_contains "$COMMAND_OUTPUT" 'Error: package dependency cycle detected:' \
 		'cycle output should explain the graph error' || return 1

@@ -14,7 +14,7 @@ test_check_rejects_invalid_cleanup_profiles() {
 		new_fixture
 		jq "$filter" "$FIXTURE_REPO/cleanup.json" >"$FIXTURE_REPO/cleanup.invalid"
 		mv "$FIXTURE_REPO/cleanup.invalid" "$FIXTURE_REPO/cleanup.json"
-		run_dotfiles "$FIXTURE_ROOT" check
+		run_operation "$FIXTURE_ROOT" check
 		if [[ $COMMAND_STATUS -eq 0 || $COMMAND_OUTPUT != *"$expected"* ]]; then
 			printf '  invalid cleanup profile was accepted: %s\n  output: %s\n' "$filter" "$COMMAND_OUTPUT" >&2
 			return 1
@@ -36,7 +36,7 @@ test_fallback_cleanup_selects_each_discovered_type_for_one_run() {
 	add_cleanup_launcher LazyGit 'xdg-terminal-exec --app-id=TUI.lazygit -e lazygit'
 	add_cleanup_launcher Ordinary '/usr/bin/ordinary'
 
-	DOTFILES_TEST_INPUT='9\n3\n2\n1\ny\n' run_dotfiles "$FIXTURE_ROOT"
+	DOTFILES_TEST_INPUT='8\n3\n2\n1\ny\n' run_dotfiles "$FIXTURE_ROOT"
 
 	assert_eq 0 "$COMMAND_STATUS" 'confirmed fallback cleanup should succeed' || return 1
 	assert_contains "$COMMAND_OUTPUT" 'Unavailable cleanup defaults:' 'cleanup should report profile entries absent from discovery' || return 1
@@ -61,7 +61,7 @@ test_cleanup_uses_home_local_launcher_directory_when_xdg_data_home_differs() {
 	mkdir -p "$custom_data/applications"
 	printf '[Desktop Entry]\nName=Extra App\nExec=omarchy-launch-webapp https://example.test\n' >"$custom_data/applications/Extra App.desktop"
 
-	DOTFILES_TEST_XDG_DATA_HOME=$custom_data DOTFILES_TEST_INPUT='9\n0\n1\ny\n' run_dotfiles "$FIXTURE_ROOT"
+	DOTFILES_TEST_XDG_DATA_HOME=$custom_data DOTFILES_TEST_INPUT='8\n0\n1\ny\n' run_dotfiles "$FIXTURE_ROOT"
 
 	assert_eq 0 "$COMMAND_STATUS" 'cleanup should use Omarchy HOME-local launcher discovery' || return 1
 	assert_contains "$COMMAND_OUTPUT" $'  Web apps:\n    Discord' 'HOME-local Omarchy launcher should be selected' || return 1
@@ -82,7 +82,7 @@ test_cleanup_uses_home_local_launcher_directory_when_xdg_data_home_differs() {
 test_cleanup_empty_selection_is_a_no_op() {
 	new_fixture
 	configure_cleanup_fakes
-	DOTFILES_TEST_INPUT='9\n0\n' run_dotfiles "$FIXTURE_ROOT"
+	DOTFILES_TEST_INPUT='8\n0\n' run_dotfiles "$FIXTURE_ROOT"
 
 	assert_eq 0 "$COMMAND_STATUS" 'empty cleanup should succeed' || return 1
 	assert_contains "$COMMAND_OUTPUT" 'No cleanup items selected; no changes made.' 'empty cleanup should explain its no-op result' || return 1
@@ -97,7 +97,7 @@ test_cleanup_hides_critical_packages() {
 	configure_cleanup_fakes
 	printf '%s\n' base base-devel filesystem glibc amd-ucode intel-ucode linux linux-firmware linux-hardened linux-lts linux-zen networkmanager systemd sudo bash pacman omarchy yay optional-app >"$FIXTURE_ROOT/explicit-packages"
 	cp "$FIXTURE_ROOT/explicit-packages" "$FIXTURE_ROOT/installed-packages"
-	DOTFILES_TEST_INPUT='9\n0\n' run_dotfiles "$FIXTURE_ROOT"
+	DOTFILES_TEST_INPUT='8\n0\n' run_dotfiles "$FIXTURE_ROOT"
 
 	assert_eq 0 "$COMMAND_STATUS" 'cleanup with protected package fixtures should succeed' || return 1
 	assert_contains "$COMMAND_OUTPUT" '1. [ ] optional-app' 'an ordinary explicit package should remain selectable' || return 1
@@ -115,7 +115,7 @@ test_cleanup_hides_runtime_provider_packages() {
 	configure_cleanup_fakes
 	printf '%s\n' coreutils findutils grep jq gum optional-app >"$FIXTURE_ROOT/explicit-packages"
 	cp "$FIXTURE_ROOT/explicit-packages" "$FIXTURE_ROOT/installed-packages"
-	DOTFILES_TEST_INPUT='9\n0\n' run_dotfiles "$FIXTURE_ROOT"
+	DOTFILES_TEST_INPUT='8\n0\n' run_dotfiles "$FIXTURE_ROOT"
 
 	assert_eq 0 "$COMMAND_STATUS" 'cleanup with runtime provider fixtures should succeed' || return 1
 	assert_contains "$COMMAND_OUTPUT" '1. [ ] optional-app' 'an ordinary package should remain selectable beside runtime providers' || return 1
@@ -131,7 +131,7 @@ test_cleanup_hides_runtime_provider_packages() {
 test_cleanup_decline_makes_no_mutation() {
 	new_fixture
 	configure_cleanup_fakes
-	DOTFILES_TEST_INPUT='9\n1\nn\n' run_dotfiles "$FIXTURE_ROOT"
+	DOTFILES_TEST_INPUT='8\n1\nn\n' run_dotfiles "$FIXTURE_ROOT"
 
 	assert_eq 0 "$COMMAND_STATUS" 'declining a nonempty cleanup plan should succeed without changes' || return 1
 	assert_contains "$COMMAND_OUTPUT" 'Plan: application cleanup' 'decline should happen after the complete plan' || return 1
@@ -194,12 +194,13 @@ exit 64'
 test_cleanup_declines_omarchy_mismatch_before_mutation() {
 	new_fixture
 	configure_cleanup_fakes
-	DOTFILES_TEST_OMARCHY_VERSION=5.1.0 DOTFILES_TEST_INPUT='9\n1\ny\nn\n' run_dotfiles "$FIXTURE_ROOT"
+	DOTFILES_TEST_OMARCHY_VERSION=5.1.0 DOTFILES_TEST_INPUT='8\n1\ny\nn\n' run_dotfiles "$FIXTURE_ROOT"
 
 	assert_eq 1 "$COMMAND_STATUS" 'declined Omarchy mismatch should stop cleanup' || return 1
 	assert_contains "$COMMAND_OUTPUT" 'Supported Omarchy: 4' 'cleanup should report supported Omarchy before mismatch approval' || return 1
 	assert_contains "$COMMAND_OUTPUT" 'Detected Omarchy: 5.1.0' 'cleanup should report detected Omarchy before mismatch approval' || return 1
 	assert_contains "$COMMAND_OUTPUT" 'Continue despite the Omarchy version mismatch? [y/N]' 'cleanup should require distinct mismatch approval' || return 1
+	assert_contains "$COMMAND_OUTPUT" 'choose Clean up Omarchy applications in the Dotfiles wizard' 'cleanup mismatch recovery should name the cleanup action exactly' || return 1
 	if [[ $(<"$CALL_LOG") == *'webapp remove '* || $(<"$CALL_LOG") == *'tui remove '* || $(<"$CALL_LOG") == *'pkg drop '* ]]; then
 		printf '  declined mismatch must stop before mutation\n' >&2
 		return 1
@@ -209,7 +210,7 @@ test_cleanup_declines_omarchy_mismatch_before_mutation() {
 test_cleanup_accepts_omarchy_mismatch_before_mutation() {
 	new_fixture
 	configure_cleanup_fakes
-	DOTFILES_TEST_OMARCHY_VERSION=5.1.0 DOTFILES_TEST_INPUT='9\n1\ny\ny\n' run_dotfiles "$FIXTURE_ROOT"
+	DOTFILES_TEST_OMARCHY_VERSION=5.1.0 DOTFILES_TEST_INPUT='8\n1\ny\ny\n' run_dotfiles "$FIXTURE_ROOT"
 
 	assert_eq 0 "$COMMAND_STATUS" 'accepted Omarchy mismatch should permit cleanup' || return 1
 	assert_contains "$COMMAND_OUTPUT" 'Supported Omarchy: 4' 'accepted mismatch should report supported Omarchy' || return 1
@@ -229,7 +230,7 @@ if [[ ${1-} == version ]]; then printf "%s\n" "${DOTFILES_TEST_OMARCHY_VERSION:-
 if [[ ${1-} == pkg && ${2-} == drop && ${3-} == alpha ]]; then grep -Fvx alpha "$DOTFILES_TEST_INSTALLED_PACKAGES" >"$DOTFILES_TEST_INSTALLED_PACKAGES.next"; mv "$DOTFILES_TEST_INSTALLED_PACKAGES.next" "$DOTFILES_TEST_INSTALLED_PACKAGES"; exit 0; fi
 if [[ ${1-} == pkg && ${2-} == drop && ${3-} == beta ]]; then exit 73; fi
 exit 64'
-	DOTFILES_TEST_INPUT='9\n1,2,3\ny\n' run_dotfiles "$FIXTURE_ROOT"
+	DOTFILES_TEST_INPUT='8\n1,2,3\ny\n' run_dotfiles "$FIXTURE_ROOT"
 
 	assert_eq 1 "$COMMAND_STATUS" 'package delegation failure should fail cleanup' || return 1
 	assert_contains "$COMMAND_OUTPUT" 'Removed and verified package: alpha' 'an earlier package success should be preserved' || return 1
@@ -250,7 +251,7 @@ test_cleanup_package_verification_failure_stops_later_packages() {
 if [[ ${1-} == version ]]; then printf "%s\n" "${DOTFILES_TEST_OMARCHY_VERSION:-4.0.0-1}"; exit 0; fi
 if [[ ${1-} == pkg && ${2-} == drop ]]; then exit 0; fi
 exit 64'
-	DOTFILES_TEST_INPUT='9\n1,2\ny\n' run_dotfiles "$FIXTURE_ROOT"
+	DOTFILES_TEST_INPUT='8\n1,2\ny\n' run_dotfiles "$FIXTURE_ROOT"
 
 	assert_eq 1 "$COMMAND_STATUS" 'package absence-verification failure should fail cleanup' || return 1
 	assert_contains "$(<"$CALL_LOG")" 'pkg drop alpha|' 'cleanup should delegate the first package' || return 1
@@ -266,7 +267,7 @@ test_cleanup_pacman_verification_query_failure_stops_later_packages() {
 	configure_cleanup_fakes
 	printf '%s\n' alpha beta >"$FIXTURE_ROOT/explicit-packages"
 	cp "$FIXTURE_ROOT/explicit-packages" "$FIXTURE_ROOT/installed-packages"
-	DOTFILES_TEST_PACMAN_VERIFY_FAILURE=true DOTFILES_TEST_INPUT='9\n1,2\ny\n' run_dotfiles "$FIXTURE_ROOT"
+	DOTFILES_TEST_PACMAN_VERIFY_FAILURE=true DOTFILES_TEST_INPUT='8\n1,2\ny\n' run_dotfiles "$FIXTURE_ROOT"
 
 	assert_eq 1 "$COMMAND_STATUS" 'pacman verification-query failure should fail cleanup' || return 1
 	assert_contains "$COMMAND_OUTPUT" 'Error: could not query installed packages while verifying alpha.' 'cleanup should distinguish query failure from package absence' || return 1
@@ -283,7 +284,7 @@ test_cleanup_launcher_discovery_propagates_find_failure() {
 	mkdir -p "$FIXTURE_HOME/.local/share/applications"
 	make_fake find 'printf "find %s\n" "$*" >>"$DOTFILES_TEST_CALL_LOG"
 exit 72'
-	DOTFILES_TEST_INPUT='9\n' run_dotfiles "$FIXTURE_ROOT"
+	DOTFILES_TEST_INPUT='8\n' run_dotfiles "$FIXTURE_ROOT"
 
 	assert_eq 1 "$COMMAND_STATUS" 'launcher discovery find failure should fail cleanup' || return 1
 	assert_contains "$COMMAND_OUTPUT" 'Error: could not discover Omarchy web app launchers.' 'cleanup should report launcher discovery failure' || return 1
@@ -306,7 +307,7 @@ printf "%s\n" "$count" >"$DOTFILES_TEST_FIND_COUNT"
 printf "find %s\n" "$*" >>"$DOTFILES_TEST_CALL_LOG"
 if (( count == 3 )); then exit 72; fi
 exec /usr/bin/find "$@"'
-	DOTFILES_TEST_FIND_COUNT=$find_count DOTFILES_TEST_INPUT='9\n1\n1\ny\n' run_dotfiles "$FIXTURE_ROOT"
+	DOTFILES_TEST_FIND_COUNT=$find_count DOTFILES_TEST_INPUT='8\n1\n1\ny\n' run_dotfiles "$FIXTURE_ROOT"
 
 	assert_eq 1 "$COMMAND_STATUS" 'post-removal find failure should fail cleanup verification' || return 1
 	assert_contains "$COMMAND_OUTPUT" 'Error: could not inspect Omarchy launchers while verifying Discord.' 'cleanup should report verification discovery failure' || return 1
@@ -325,11 +326,11 @@ test_cleanup_rerun_with_absent_defaults_is_a_no_op() {
 	local profile_before
 	profile_before=$(sha256sum "$FIXTURE_REPO/cleanup.json")
 
-	DOTFILES_TEST_INPUT='9\n' run_dotfiles "$FIXTURE_ROOT"
+	DOTFILES_TEST_INPUT='8\n' run_dotfiles "$FIXTURE_ROOT"
 	assert_eq 0 "$COMMAND_STATUS" 'first cleanup with absent defaults should succeed' || return 1
 	assert_contains "$COMMAND_OUTPUT" 'Unavailable cleanup defaults:' 'first cleanup should report absent defaults' || return 1
 	assert_contains "$COMMAND_OUTPUT" 'No cleanup items selected; no changes made.' 'first cleanup should be a no-op' || return 1
-	DOTFILES_TEST_INPUT='9\n' run_dotfiles "$FIXTURE_ROOT"
+	DOTFILES_TEST_INPUT='8\n' run_dotfiles "$FIXTURE_ROOT"
 	assert_eq 0 "$COMMAND_STATUS" 'repeated cleanup with absent defaults should succeed' || return 1
 	assert_contains "$COMMAND_OUTPUT" 'Unavailable cleanup defaults:' 'repeated cleanup should continue reporting absent defaults' || return 1
 	assert_contains "$COMMAND_OUTPUT" 'No cleanup items selected; no changes made.' 'repeated cleanup should remain a no-op' || return 1
@@ -345,7 +346,7 @@ test_cleanup_stops_when_package_discovery_fails() {
 	configure_cleanup_fakes
 	make_fake yay 'printf "yay %s\n" "$*" >>"$DOTFILES_TEST_CALL_LOG"
 exit 72'
-	DOTFILES_TEST_INPUT='9\n' run_dotfiles "$FIXTURE_ROOT"
+	DOTFILES_TEST_INPUT='8\n' run_dotfiles "$FIXTURE_ROOT"
 
 	assert_eq 1 "$COMMAND_STATUS" 'failed explicit-package discovery should fail cleanup' || return 1
 	assert_contains "$COMMAND_OUTPUT" 'Error: could not discover explicitly installed packages with yay -Qqe.' 'cleanup should identify its failed discovery source' || return 1
@@ -385,7 +386,7 @@ if [[ ${1-} == version ]]; then printf "%s\n" "${DOTFILES_TEST_OMARCHY_VERSION:-
 if [[ ${1-} == webapp && ${2-} == remove ]]; then exit 73; fi
 exit 64'
 
-	DOTFILES_TEST_INPUT='9\n1\n1\n1\ny\n' run_dotfiles "$FIXTURE_ROOT"
+	DOTFILES_TEST_INPUT='8\n1\n1\n1\ny\n' run_dotfiles "$FIXTURE_ROOT"
 
 	assert_eq 1 "$COMMAND_STATUS" 'delegated cleanup failure should fail the action' || return 1
 	assert_contains "$COMMAND_OUTPUT" 'Cleanup incomplete items:' 'failure should report unfinished work' || return 1
@@ -407,7 +408,7 @@ if [[ ${1-} == webapp && ${2-} == remove && ${*:3} == "Another App" ]]; then rm 
 if [[ ${1-} == webapp && ${2-} == remove ]]; then exit 0; fi
 exit 64'
 
-	DOTFILES_TEST_INPUT='9\n0\n1,2\ny\n' run_dotfiles "$FIXTURE_ROOT"
+	DOTFILES_TEST_INPUT='8\n0\n1,2\ny\n' run_dotfiles "$FIXTURE_ROOT"
 
 	assert_eq 1 "$COMMAND_STATUS" 'remaining launcher after delegated success should fail verification' || return 1
 	assert_contains "$COMMAND_OUTPUT" 'Removed and verified web app: Another App' 'cleanup should preserve and report the earlier success' || return 1

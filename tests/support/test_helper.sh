@@ -86,6 +86,8 @@ exit 64'
 	make_fake omarchy-pkg-add 'printf "omarchy-pkg-add %s\n" "$*" >>"$DOTFILES_TEST_CALL_LOG"'
 	make_fake git 'printf "git %s\n" "$*" >>"$DOTFILES_TEST_CALL_LOG"'
 	make_fake npx 'printf "npx %s\n" "$*" >>"$DOTFILES_TEST_CALL_LOG"'
+	make_fake node 'printf "v%s\n" "${DOTFILES_TEST_NODE_VERSION:-22.20.0}"'
+	make_fake npm 'exit 0'
 }
 
 add_package() {
@@ -273,6 +275,24 @@ run_dotfiles() {
 		"$FIXTURE_REPO/bin/dotfiles" "$@"
 }
 
+run_operation() {
+	local working_directory=$1 operation=$2
+	shift 2
+	run_in_sandbox "$working_directory" "${DOTFILES_TEST_PATH:-$FIXTURE_BIN:/usr/bin:/bin}" \
+		bash -c '
+			set -euo pipefail
+			repository=$1
+			operation=$2
+			shift 2
+			source "$repository/lib/dotfiles/core.sh"
+			source "$repository/lib/dotfiles/packages.sh"
+			source "$repository/lib/dotfiles/skills.sh"
+			source "$repository/lib/dotfiles/cleanup.sh"
+			source "$repository/lib/dotfiles/wizard.sh"
+			"$operation" "$@"
+		' bash "$FIXTURE_REPO" "$operation" "$@"
+}
+
 configure_skill_fakes() {
 	make_fake git 'printf "git %s\n" "$*" >>"$DOTFILES_TEST_CALL_LOG"
 if [[ ${1-} == clone ]]; then
@@ -427,7 +447,7 @@ run_make() {
 }
 
 run_dotfiles_without_real_user_or_omarchy_paths() {
-	run_dotfiles "$FIXTURE_ROOT" check
+	run_operation "$FIXTURE_ROOT" check
 }
 
 snapshot_isolated_paths() {
