@@ -69,6 +69,12 @@ new_fixture() {
 	cp "$SOURCE_REPO/lib/dotfiles/"*.sh "$FIXTURE_REPO/lib/dotfiles/"
 	cp "$SOURCE_REPO/packages.json" "$FIXTURE_REPO/packages.json"
 	cp "$SOURCE_REPO/cleanup.json" "$FIXTURE_REPO/cleanup.json"
+	if [[ -d $SOURCE_REPO/config ]]; then
+		cp -a "$SOURCE_REPO/config" "$FIXTURE_REPO/config"
+	fi
+	if [[ -d $SOURCE_REPO/docs ]]; then
+		cp -a "$SOURCE_REPO/docs" "$FIXTURE_REPO/docs"
+	fi
 	if [[ -f $SOURCE_REPO/skills.json ]]; then
 		cp "$SOURCE_REPO/skills.json" "$FIXTURE_REPO/skills.json"
 	fi
@@ -88,6 +94,14 @@ exit 64'
 	make_fake npx 'printf "npx %s\n" "$*" >>"$DOTFILES_TEST_CALL_LOG"'
 	make_fake node 'printf "v%s\n" "${DOTFILES_TEST_NODE_VERSION:-22.20.0}"'
 	make_fake npm 'exit 0'
+}
+
+use_empty_package_catalog() {
+	cat >"$FIXTURE_REPO/packages.json" <<'EOF'
+{
+	"packages": []
+}
+EOF
 }
 
 restricted_path_without_stow() {

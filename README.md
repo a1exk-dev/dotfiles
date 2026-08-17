@@ -62,6 +62,7 @@ make test
 ## Documentation
 
 - [Stow workflow](docs/stow.md)
+- [Ghostty](docs/ghostty.md)
 - [Application cleanup](docs/cleanup.md)
 - [Agent setup](docs/agent-setup.md)
 

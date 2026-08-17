@@ -4,6 +4,7 @@ source "$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)/support/test_helper.
 
 test_status_inspects_empty_relocated_clone() {
 	new_fixture
+	use_empty_package_catalog
 	rm "$FIXTURE_BIN/stow"
 	DOTFILES_TEST_PATH=$(restricted_path_without_stow) run_operation "$FIXTURE_ROOT" status
 
@@ -20,6 +21,7 @@ test_status_inspects_empty_relocated_clone() {
 
 test_check_accepts_empty_catalog() {
 	new_fixture
+	use_empty_package_catalog
 	rm "$FIXTURE_BIN/stow"
 	DOTFILES_TEST_PATH=$(restricted_path_without_stow) run_operation "$FIXTURE_HOME" check
 
@@ -159,6 +161,7 @@ test_status_reports_nonempty_package_states_and_metadata() {
 
 test_inspection_cannot_access_real_user_or_omarchy_paths() {
 	new_fixture
+	use_empty_package_catalog
 	run_dotfiles_without_real_user_or_omarchy_paths
 
 	assert_eq 0 "$COMMAND_STATUS" 'check should work with real user and Omarchy paths masked' || return 1

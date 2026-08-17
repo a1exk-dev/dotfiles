@@ -1,3 +1,12 @@
 {
-	"packages": []
+	"packages": [{
+		"name": "ghostty",
+		"path": "config/ghostty",
+		"description": "Omarchy-integrated Ghostty configuration",
+		"dependencies": [],
+		"prerequisites": ["ghostty"],
+		"validators": ["ghostty +validate-config --config-file=\"$HOME/.config/ghostty/config\""],
+		"documentation": "docs/ghostty.md",
+		"cleanup": []
+	}]
 }

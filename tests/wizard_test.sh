@@ -26,6 +26,7 @@ test_legacy_and_invalid_entry_forms_are_rejected() {
 
 test_public_action_preselection_dispatches() {
 	new_fixture
+	use_empty_package_catalog
 	run_dotfiles "$FIXTURE_ROOT" --action status
 	assert_eq 0 "$COMMAND_STATUS" 'a valid public preselection should succeed' || return 1
 	assert_contains "$COMMAND_OUTPUT" 'Packages: none' 'public preselection should dispatch to the selected operation'
@@ -33,6 +34,7 @@ test_public_action_preselection_dispatches() {
 
 test_status_and_check_standalone_actions() {
 	new_fixture
+	use_empty_package_catalog
 	DOTFILES_TEST_INPUT='2\n' run_dotfiles "$FIXTURE_ROOT"
 	assert_eq 0 "$COMMAND_STATUS" 'standalone status should succeed' || return 1
 	assert_contains "$COMMAND_OUTPUT" 'Packages: none' 'standalone status should reach the package engine' || return 1
@@ -263,6 +265,7 @@ exit 64'
 
 test_make_targets_launch_expected_wizard_actions() {
 	new_fixture
+	use_empty_package_catalog
 	DOTFILES_TEST_INPUT='2\n' run_make "$FIXTURE_ROOT"
 	assert_eq 0 "$COMMAND_STATUS" 'default Make target should open the menu' || return 1
 	assert_contains "$COMMAND_OUTPUT" 'Packages: none' 'default Make should delegate to the selected menu action' || return 1
