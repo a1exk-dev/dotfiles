@@ -83,9 +83,48 @@ test_interactive_bash_ll_delegates_to_omarchy_lsa() {
 		'missing Omarchy lsa should return command-not-found status'
 }
 
+test_interactive_bash_bare_home_delegates_to_omarchy_zd() {
+	new_fixture
+	mkdir -p "$FIXTURE_OMARCHY/default/bash" "$FIXTURE_ROOT/away"
+	printf '%s\n' \
+		"alias cd='zd'" \
+		'zd() { printf "ZD_ARG<%s>\n" "$1"; builtin cd -- "$1"; }' \
+		>"$FIXTURE_OMARCHY/default/bash/rc"
+
+	run_in_sandbox "$FIXTURE_ROOT" "$FIXTURE_BIN:/usr/bin:/bin" \
+		bash --noprofile --rcfile "$FIXTURE_REPO/config/bash/.bashrc" -i -c '
+			alias_before=$(alias "~" 2>/dev/null || true)
+			source "$1"
+			alias_after=$(alias "~" 2>/dev/null || true)
+			printf "ALIAS_BEFORE<%s>\n" "$alias_before"
+			printf "ALIAS_AFTER<%s>\n" "$alias_after"
+			builtin cd -- "$2"
+			printf "START_PWD<%s>\n" "$PWD"
+			~
+			printf "FINAL_PWD<%s>\n" "$PWD"
+			printf "TILDE_PATH<%s>\n" ~/probe
+		' bash "$FIXTURE_REPO/config/bash/.bashrc" "$FIXTURE_ROOT/away"
+
+	assert_eq 0 "$COMMAND_STATUS" 'interactive Bash bare-home startup should succeed' || return 1
+	assert_contains "$COMMAND_OUTPUT" "ALIAS_BEFORE<alias ~='cd ~'>" \
+		'startup should define the exact bare-home alias' || return 1
+	assert_contains "$COMMAND_OUTPUT" "ALIAS_AFTER<alias ~='cd ~'>" \
+		'repeated sourcing should leave the same bare-home alias' || return 1
+	assert_contains "$COMMAND_OUTPUT" "START_PWD<$FIXTURE_ROOT/away>" \
+		'the bare-home command should start outside HOME' || return 1
+	assert_contains "$COMMAND_OUTPUT" "ZD_ARG<$FIXTURE_HOME>" \
+		'the bare-home command should pass expanded HOME through Omarchy zd' || return 1
+	assert_contains "$COMMAND_OUTPUT" "FINAL_PWD<$FIXTURE_HOME>" \
+		'the bare-home command should change to HOME' || return 1
+	assert_contains "$COMMAND_OUTPUT" "TILDE_PATH<$FIXTURE_HOME/probe>" \
+		'ordinary tilde paths should retain normal expansion'
+}
+
 set -e
 run_test test_interactive_bash_uses_neovim_for_vi_and_keeps_omarchy_defaults \
 	'interactive Bash uses Neovim for vi and keeps Omarchy defaults'
 run_test test_interactive_bash_ll_delegates_to_omarchy_lsa \
 	'interactive Bash ll delegates to Omarchy lsa'
+run_test test_interactive_bash_bare_home_delegates_to_omarchy_zd \
+	'interactive Bash bare home delegates to Omarchy zd'
 finish_tests

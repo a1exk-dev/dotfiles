@@ -10,6 +10,8 @@ The package does not manage `.bash_profile`, `~/.config/starship.toml`, terminal
 
 `ll` lists all entries, including hidden files, with Omarchy's long `eza` format.
 
+A bare `~` command changes to your home directory.
+
 ## Apply
 
 Start the Dotfiles wizard:

@@ -11,3 +11,4 @@ source "$OMARCHY_PATH/default/bash/rc"
 # Add your own exports, aliases, and functions here.
 alias vi='nvim'
 alias ll='lsa'
+alias ~='cd ~'
