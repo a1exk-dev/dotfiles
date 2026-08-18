@@ -8,6 +8,8 @@ The package does not manage `.bash_profile`, `~/.config/starship.toml`, terminal
 
 `vi` opens Neovim in interactive Bash shells.
 
+`ll` lists all entries, including hidden files, with Omarchy's long `eza` format.
+
 ## Apply
 
 Start the Dotfiles wizard:
