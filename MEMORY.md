@@ -40,6 +40,14 @@ Guidance: Keep Bash as the target shell and place each approved shell-native por
 
 Reason: Omarchy 4 supplies and updates Bash-specific defaults through the user extension seam in `~/.bashrc`; retaining that seam preserves current behavior and avoids a user-owned Zsh compatibility layer that can drift from Omarchy updates.
 
+## Keep Omarchy editor selection
+
+Applies when: Configuring `EDITOR` or reconsidering the archived fixed Neovim setting.
+
+Guidance: Retain Omarchy's exported `omarchy-launch-editor --inline` value. Add a fixed editor override only after an explicit decision to replace Omarchy's selectable editor behavior.
+
+Reason: The launcher defaults to Neovim while preserving saved editor choices and the correct inline or GUI launch path.
+
 ## Defer machine-specific mechanisms
 
 Applies when: A configuration first requires a monitor name, device path, username, or other machine-specific value.
