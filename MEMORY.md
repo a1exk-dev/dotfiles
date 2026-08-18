@@ -36,7 +36,7 @@ Reason: Multi-version compatibility is outside the current repository promise.
 
 Applies when: Planning or implementing shell configuration from the archived Zsh files.
 
-Guidance: Keep Bash as the target shell. Preserve `.bashrc`'s source of Omarchy's packaged Bash defaults and add archived behaviors after it only when each behavior is explicitly approved. Keep Starship configuration and Omarchy theme state outside the Bash package.
+Guidance: Keep Bash as the target shell and place each approved shell-native port directly in `.bashrc`'s interactive custom section after Omarchy's packaged defaults. Ports require explicit approval for each collision, must tolerate repeated sourcing, and need focused verification. Revalidate intentional overlaps when the supported Omarchy target changes. Put shell-independent executables in separate application Stow packages. Keep Starship configuration and Omarchy theme state outside the Bash package.
 
 Reason: Omarchy 4 supplies and updates Bash-specific defaults through the user extension seam in `~/.bashrc`; retaining that seam preserves current behavior and avoids a user-owned Zsh compatibility layer that can drift from Omarchy updates.
 
