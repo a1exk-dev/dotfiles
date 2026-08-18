@@ -4,6 +4,10 @@ The `bash` Stow package owns only `~/.bashrc`. The tracked file loads Omarchy's 
 
 The package does not manage `.bash_profile`, `~/.config/starship.toml`, terminal configuration, Omarchy configuration, themes, or generated theme state.
 
+## Shortcuts
+
+`vi` opens Neovim in interactive Bash shells.
+
 ## Apply
 
 Start the Dotfiles wizard:
