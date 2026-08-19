@@ -2,13 +2,23 @@
 
 source "$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)/support/test_helper.sh"
 
+configure_empty_modem_sysfs() {
+	local fake_sysfs=$FIXTURE_ROOT/empty-sys
+	mkdir -p "$fake_sysfs/bus/usb/devices" "$fake_sysfs/bus/pci/drivers/xhci_hcd"
+	: >"$fake_sysfs/bus/pci/drivers/xhci_hcd/unbind"
+	: >"$fake_sysfs/bus/pci/drivers/xhci_hcd/bind"
+	BWRAP_EXTRA_ARGS=(--bind "$fake_sysfs" /sys)
+	make_fake sudo 'printf "unexpected sudo call\n" >>"$DOTFILES_TEST_CALL_LOG"; exit 99'
+	make_fake nmcli 'printf "unexpected nmcli call\n" >>"$DOTFILES_TEST_CALL_LOG"; exit 99'
+}
+
 test_top_level_menu_starts_with_guided_setup() {
 	new_fixture
 	run_dotfiles "$FIXTURE_ROOT"
 
 	assert_eq 0 "$COMMAND_STATUS" 'an empty menu choice should safely exit' || return 1
-	assert_contains "$COMMAND_OUTPUT" $'  1. Guided setup\n  2. Package status' 'guided setup should be the first top-level action' || return 1
-	assert_contains "$COMMAND_OUTPUT" '  10. Update pinned global skills' 'every retained standalone action should be listed' || return 1
+	assert_contains "$COMMAND_OUTPUT" $'  1. Guided setup\n  2. Package status\n  3. Run structural checks\n  4. Apply Stow packages\n  5. Migrate existing target\n  6. Remove Stow package\n  7. Prepare prerequisites\n  8. Clean up Omarchy applications\n  9. Install pinned global skills\n  10. Update pinned global skills\n  11. Recover ZTE USB modem\n  12. Exit' \
+		'the modem action should be appended without renumbering existing actions' || return 1
 	assert_contains "$COMMAND_OUTPUT" 'No action selected.' 'no action should be selected by default'
 }
 
@@ -30,6 +40,32 @@ test_public_action_preselection_dispatches() {
 	run_dotfiles "$FIXTURE_ROOT" --action status
 	assert_eq 0 "$COMMAND_STATUS" 'a valid public preselection should succeed' || return 1
 	assert_contains "$COMMAND_OUTPUT" 'Packages: none' 'public preselection should dispatch to the selected operation'
+}
+
+test_modem_public_action_preselection_dispatches() {
+	new_fixture
+	configure_empty_modem_sysfs
+	run_dotfiles "$FIXTURE_ROOT" --action modem
+
+	assert_eq 1 "$COMMAND_STATUS" 'the modem preselection should dispatch to its discovery failure' || return 1
+	if [[ $COMMAND_OUTPUT == *'unknown wizard action'* || $COMMAND_OUTPUT == *'Usage: bin/dotfiles'* ]]; then
+		printf '  the public modem action was rejected instead of dispatched\n' >&2
+		return 1
+	fi
+	assert_eq '' "$(<"$CALL_LOG")" 'empty fake sysfs discovery should not invoke privileged or network tools'
+}
+
+test_modem_menu_selection_dispatches() {
+	new_fixture
+	configure_empty_modem_sysfs
+	DOTFILES_TEST_INPUT='11\n' run_dotfiles "$FIXTURE_ROOT"
+
+	assert_eq 1 "$COMMAND_STATUS" 'menu item 11 should dispatch to modem discovery' || return 1
+	if [[ $COMMAND_OUTPUT == *'No action selected.'* ]]; then
+		printf '  modem menu selection exited instead of dispatching\n' >&2
+		return 1
+	fi
+	assert_eq '' "$(<"$CALL_LOG")" 'empty fake sysfs menu discovery should not invoke privileged or network tools'
 }
 
 test_status_and_check_standalone_actions() {
@@ -311,6 +347,8 @@ set -e
 run_test test_top_level_menu_starts_with_guided_setup 'top-level menu starts with guided setup'
 run_test test_legacy_and_invalid_entry_forms_are_rejected 'legacy and invalid entry forms are rejected'
 run_test test_public_action_preselection_dispatches 'public action preselection dispatches'
+run_test test_modem_public_action_preselection_dispatches 'modem public action preselection dispatches'
+run_test test_modem_menu_selection_dispatches 'modem menu selection dispatches'
 run_test test_status_and_check_standalone_actions 'status and checks remain standalone actions'
 run_test test_bash_apply_standalone_uses_one_multiselect_and_dependency_order 'Bash apply resolves a multi-selection in dependency order'
 run_test test_gum_apply_has_no_default_selection 'Gum apply has no default selection'

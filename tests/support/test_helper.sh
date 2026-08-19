@@ -404,6 +404,7 @@ run_operation() {
 			source "$repository/lib/dotfiles/packages.sh"
 			source "$repository/lib/dotfiles/skills.sh"
 			source "$repository/lib/dotfiles/cleanup.sh"
+			source "$repository/lib/dotfiles/modem.sh"
 			source "$repository/lib/dotfiles/wizard.sh"
 			"$operation" "$@"
 		' bash "$FIXTURE_REPO" "$operation" "$@"

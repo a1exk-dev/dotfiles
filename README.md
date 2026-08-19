@@ -14,6 +14,8 @@ The core wizard requires:
 
 Application cleanup also requires `pacman`, `yay`, `find`, `grep`, `sort`, `basename`, `mktemp`, `rm`, and `omarchy`.
 
+USB modem recovery requires `sudo`, `nmcli`, `readlink`, Linux sysfs, and an xHCI controller with bind and unbind controls.
+
 Stow package application, migration, and removal require GNU Stow. The wizard can install it through Omarchy after confirmation. Migration also requires a writable absolute `XDG_STATE_HOME`, or the default `~/.local/state`, for backups.
 
 Some Stow packages need Arch packages. Apply and migration plans list anything missing. After confirmation, the wizard installs and verifies those packages through Omarchy before it changes Stow links.
@@ -45,6 +47,8 @@ make
 
 Choose `Guided setup` to prepare prerequisites, install pinned global skills, clean up selected Omarchy applications, and apply selected Stow packages.
 
+Choose `Recover ZTE USB modem` to inspect and, after confirmation, recover the known ZTE USB modem.
+
 ## Repository layout
 
 - `bin/dotfiles`: Dotfiles wizard entry point
@@ -67,6 +71,7 @@ make test
 - [Bash](docs/bash.md)
 - [Tmux](docs/tmux.md)
 - [Ghostty](docs/ghostty.md)
+- [ZTE USB modem recovery](docs/usb-modem.md)
 - [Application cleanup](docs/cleanup.md)
 - [Agent setup](docs/agent-setup.md)
 

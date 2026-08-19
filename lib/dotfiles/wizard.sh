@@ -106,6 +106,7 @@ wizard_run_action() {
 		cleanup) cleanup_applications ;;
 		skills) install_skills --interactive ;;
 		skills-update) update_skills --interactive ;;
+		modem) recover_zte_usb_modem ;;
 		exit) printf 'No action selected.\n' ;;
 		*) printf 'Error: unknown wizard action: %s\n' "$action" >&2; return 2 ;;
 	esac
@@ -142,9 +143,10 @@ wizard() {
 		'Clean up Omarchy applications'
 		'Install pinned global skills'
 		'Update pinned global skills'
+		'Recover ZTE USB modem'
 		'Exit'
 	)
-	local -a actions=(guided status check apply migrate remove prerequisites cleanup skills skills-update exit)
+	local -a actions=(guided status check apply migrate remove prerequisites cleanup skills skills-update modem exit)
 	if ! choice=$(wizard_choose 'Choose an action (none selected by default)' "${labels[@]}"); then
 		printf 'No action selected.\n'
 		return 0
