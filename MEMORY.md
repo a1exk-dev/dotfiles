@@ -40,6 +40,14 @@ Guidance: Keep Bash as the target shell and place each approved shell-native por
 
 Reason: Omarchy 4 supplies and updates Bash-specific defaults through the user extension seam in `~/.bashrc`; retaining that seam preserves current behavior and avoids a user-owned Zsh compatibility layer that can drift from Omarchy updates.
 
+## Load Omarchy Bash defaults once
+
+Applies when: Changing or reloading `config/bash/.bashrc`.
+
+Guidance: Source Omarchy's packaged Bash `rc` once per Bash process. Keep custom aliases outside the guard so each `.bashrc` source reapplies them. Start a new Bash shell to load updated packaged defaults.
+
+Reason: Repeated packaged initialization duplicates Starship and zoxide `PROMPT_COMMAND` hooks under the current Arch/Omarchy stack.
+
 ## Keep Omarchy editor selection
 
 Applies when: Configuring `EDITOR` or reconsidering the archived fixed Neovim setting.

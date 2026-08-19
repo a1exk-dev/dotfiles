@@ -12,6 +12,10 @@ The package does not manage `.bash_profile`, `~/.config/starship.toml`, terminal
 
 A bare `~` command changes to your home directory.
 
+## Reloading
+
+Running `source ~/.bashrc` reloads the repository shortcuts without re-running Omarchy's packaged initialization. Start a new Bash shell to load updated Omarchy defaults.
+
 ## Apply
 
 Start the Dotfiles wizard:

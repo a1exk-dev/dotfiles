@@ -2,6 +2,58 @@
 
 source "$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)/support/test_helper.sh"
 
+test_interactive_bash_reloads_shortcuts_without_reloading_omarchy() {
+	new_fixture
+	mkdir -p "$FIXTURE_OMARCHY/default/bash"
+	printf '%s\n' \
+		'OMARCHY_LOAD_COUNT=$(( ${OMARCHY_LOAD_COUNT:-0} + 1 ))' \
+		'starship_precmd() { :; }' \
+		'__zoxide_hook() { :; }' \
+		'PROMPT_COMMAND+=(starship_precmd __zoxide_hook)' \
+		'n() { printf "fake Omarchy n\\n"; }' \
+		>"$FIXTURE_OMARCHY/default/bash/rc"
+
+	run_in_sandbox "$FIXTURE_ROOT" "$FIXTURE_BIN:/usr/bin:/bin" \
+		bash --noprofile --rcfile "$FIXTURE_REPO/config/bash/.bashrc" -i -c '
+			unalias vi ll "~"
+			source "$1"
+			source "$1"
+
+			starship_hook_count=0
+			zoxide_hook_count=0
+			for hook in "${PROMPT_COMMAND[@]}"; do
+				case $hook in
+					starship_precmd) ((starship_hook_count += 1)) ;;
+					__zoxide_hook) ((zoxide_hook_count += 1)) ;;
+				esac
+			done
+
+			printf "OMARCHY_LOAD_COUNT<%s>\n" "$OMARCHY_LOAD_COUNT"
+			printf "STARSHIP_HOOK_COUNT<%s>\n" "$starship_hook_count"
+			printf "ZOXIDE_HOOK_COUNT<%s>\n" "$zoxide_hook_count"
+			printf "VI_ALIAS<%s>\n" "$(alias vi 2>/dev/null || true)"
+			printf "LL_ALIAS<%s>\n" "$(alias ll 2>/dev/null || true)"
+			printf "TILDE_ALIAS<%s>\n" "$(alias "~" 2>/dev/null || true)"
+			printf "N_TYPE<%s>\n" "$(type -t n 2>/dev/null || true)"
+		' bash "$FIXTURE_REPO/config/bash/.bashrc"
+
+	assert_eq 0 "$COMMAND_STATUS" 'interactive Bash reload should succeed' || return 1
+	assert_contains "$COMMAND_OUTPUT" 'OMARCHY_LOAD_COUNT<1>' \
+		'packaged Omarchy initialization should run exactly once' || return 1
+	assert_contains "$COMMAND_OUTPUT" 'STARSHIP_HOOK_COUNT<1>' \
+		'reloading should leave exactly one Starship prompt hook' || return 1
+	assert_contains "$COMMAND_OUTPUT" 'ZOXIDE_HOOK_COUNT<1>' \
+		'reloading should leave exactly one zoxide prompt hook' || return 1
+	assert_contains "$COMMAND_OUTPUT" "VI_ALIAS<alias vi='nvim'>" \
+		'reloading should reapply the exact vi alias' || return 1
+	assert_contains "$COMMAND_OUTPUT" "LL_ALIAS<alias ll='lsa'>" \
+		'reloading should reapply the exact ll alias' || return 1
+	assert_contains "$COMMAND_OUTPUT" "TILDE_ALIAS<alias ~='cd ~'>" \
+		'reloading should reapply the exact bare-home alias' || return 1
+	assert_contains "$COMMAND_OUTPUT" 'N_TYPE<function>' \
+		'the fake Omarchy n function should remain available'
+}
+
 test_interactive_bash_uses_neovim_for_vi_and_keeps_omarchy_defaults() {
 	new_fixture
 	mkdir -p "$FIXTURE_OMARCHY/default/bash"
@@ -121,6 +173,8 @@ test_interactive_bash_bare_home_delegates_to_omarchy_zd() {
 }
 
 set -e
+run_test test_interactive_bash_reloads_shortcuts_without_reloading_omarchy \
+	'interactive Bash reloads shortcuts without reloading Omarchy'
 run_test test_interactive_bash_uses_neovim_for_vi_and_keeps_omarchy_defaults \
 	'interactive Bash uses Neovim for vi and keeps Omarchy defaults'
 run_test test_interactive_bash_ll_delegates_to_omarchy_lsa \

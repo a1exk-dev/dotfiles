@@ -6,7 +6,10 @@
 
 # All the default Omarchy aliases and functions
 # (don't mess with these directly, just overwrite them here!)
-source "$OMARCHY_PATH/default/bash/rc"
+if [[ -z ${DOTFILES_OMARCHY_BASH_RC_LOADED-} ]]; then
+	DOTFILES_OMARCHY_BASH_RC_LOADED=1
+	source "$OMARCHY_PATH/default/bash/rc"
+fi
 
 # Add your own exports, aliases, and functions here.
 alias vi='nvim'
