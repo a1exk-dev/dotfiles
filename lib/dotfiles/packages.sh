@@ -1,3 +1,85 @@
+declare -a ARCH_PACKAGE_ORDER=()
+declare -a MISSING_ARCH_PACKAGES=()
+declare -A ARCH_PACKAGE_OWNERS=()
+declare -A ARCH_PACKAGE_STATUS=()
+ARCH_PACKAGES_INSTALLED=false
+
+plan_arch_packages() {
+	ARCH_PACKAGE_ORDER=()
+	MISSING_ARCH_PACKAGES=()
+	ARCH_PACKAGE_OWNERS=()
+	ARCH_PACKAGE_STATUS=()
+
+	local owner arch_package
+	for owner in "$@"; do
+		while IFS= read -r arch_package; do
+			if [[ -z ${ARCH_PACKAGE_OWNERS[$arch_package]+present} ]]; then
+				ARCH_PACKAGE_ORDER+=("$arch_package")
+				ARCH_PACKAGE_OWNERS[$arch_package]=$owner
+			else
+				ARCH_PACKAGE_OWNERS[$arch_package]+=", $owner"
+			fi
+		done < <(jq -r --arg package "$owner" '.packages[] | select(.name == $package) | .arch_packages[]' "$PACKAGE_CATALOG")
+	done
+
+	for arch_package in "${ARCH_PACKAGE_ORDER[@]}"; do
+		if omarchy pkg present "$arch_package"; then
+			ARCH_PACKAGE_STATUS[$arch_package]=installed
+		else
+			ARCH_PACKAGE_STATUS[$arch_package]='will install'
+			MISSING_ARCH_PACKAGES+=("$arch_package")
+		fi
+	done
+}
+
+print_arch_package_plan() {
+	printf 'Plan: Arch package requirements:\n'
+	if ((${#ARCH_PACKAGE_ORDER[@]} == 0)); then
+		printf '  none\n'
+		return
+	fi
+
+	local arch_package
+	for arch_package in "${ARCH_PACKAGE_ORDER[@]}"; do
+		printf '  %s (required by %s): %s\n' "$arch_package" \
+			"${ARCH_PACKAGE_OWNERS[$arch_package]}" "${ARCH_PACKAGE_STATUS[$arch_package]}"
+	done
+}
+
+install_missing_arch_packages() {
+	local recovery_action=$1
+	ARCH_PACKAGES_INSTALLED=false
+	((${#MISSING_ARCH_PACKAGES[@]} > 0)) || return 0
+
+	printf 'Phase: install Arch packages\n'
+	if ! omarchy pkg add "${MISSING_ARCH_PACKAGES[@]}"; then
+		printf 'Error: Arch package installation failed.\n' >&2
+		printf 'Recovery: resolve the Omarchy package error, then choose %s in the Dotfiles wizard.\n' "$recovery_action" >&2
+		return 1
+	fi
+	ARCH_PACKAGES_INSTALLED=true
+}
+
+verify_arch_packages() {
+	local recovery_action=$1
+	((${#ARCH_PACKAGE_ORDER[@]} > 0)) || return 0
+
+	printf 'Phase: verify Arch packages\n'
+	local arch_package
+	for arch_package in "${ARCH_PACKAGE_ORDER[@]}"; do
+		if ! omarchy pkg present "$arch_package"; then
+			printf 'Error: Arch package verification failed: %s\n' "$arch_package" >&2
+			printf 'Recovery: repair the package installation, then choose %s in the Dotfiles wizard.\n' "$recovery_action" >&2
+			return 1
+		fi
+	done
+	if [[ $ARCH_PACKAGES_INSTALLED == true ]]; then
+		printf 'Arch packages installed and verified: %s\n' "${MISSING_ARCH_PACKAGES[*]}"
+	else
+		printf 'Arch packages verified: %s\n' "${ARCH_PACKAGE_ORDER[*]}"
+	fi
+}
+
 status() {
 	inspect_environment
 	if [[ $(jq '.packages | length' "$PACKAGE_CATALOG") -eq 0 ]]; then
@@ -68,7 +150,7 @@ check() {
 			missing=true
 		fi
 	done
-	local package prerequisite
+	local package prerequisite arch_package
 	while IFS= read -r package; do
 		while IFS= read -r prerequisite; do
 			if ! command -v "$prerequisite" >/dev/null 2>&1; then
@@ -80,6 +162,14 @@ check() {
 			missing=true
 		fi
 	done < <(jq -r '.packages[].name' "$PACKAGE_CATALOG")
+	local -a catalog_packages=()
+	mapfile -t catalog_packages < <(jq -r '.packages[].name' "$PACKAGE_CATALOG")
+	resolve_dependency_order "${catalog_packages[@]}"
+	plan_arch_packages "${DEPENDENCY_ORDER[@]}"
+	for arch_package in "${MISSING_ARCH_PACKAGES[@]}"; do
+		printf 'Missing declared Arch package for %s: %s\n' "${ARCH_PACKAGE_OWNERS[$arch_package]}" "$arch_package" >&2
+		missing=true
+	done
 	if command -v stow >/dev/null 2>&1; then
 		printf 'GNU Stow: available\n'
 	else
@@ -141,6 +231,28 @@ apply_one_package() {
 		fi
 	done < <(jq -r '.validators[]' <<<"$package_json")
 	printf 'Applied and verified package: %s\n' "$package"
+}
+
+migration_paths_are_unchanged() {
+	local package=$1 target=$2 source=$3 canonical_home=$4 canonical_package_root=$5 actor=$6
+	if [[ ! -f $target || -L $target || -e $source || -L $source ]]; then
+		phase_error plan "$package" "$actor changed the migration target or package destination; inspect both paths, then choose Migrate existing target in the Dotfiles wizard"
+		return 1
+	fi
+
+	local canonical_target canonical_source
+	canonical_target=$(readlink -f -- "$target") || {
+		phase_error plan "$package" "$actor made the migration target unavailable; inspect it, then choose Migrate existing target in the Dotfiles wizard"
+		return 1
+	}
+	canonical_source=$(readlink -m -- "$source") || {
+		phase_error plan "$package" "$actor made the package destination unresolvable; inspect it, then choose Migrate existing target in the Dotfiles wizard"
+		return 1
+	}
+	if [[ $canonical_target != "$canonical_home/"* || $canonical_source != "$canonical_package_root/"* ]]; then
+		phase_error plan "$package" "$actor changed path containment; the selected target was not moved, inspect both paths, then choose Migrate existing target in the Dotfiles wizard"
+		return 1
+	fi
 }
 
 migrate_target() {
@@ -265,6 +377,12 @@ migrate_target() {
 		phase_error plan "$package" 'choose Prepare prerequisites, then retry Migrate existing target in the Dotfiles wizard'
 		return 1
 	fi
+	local state_home=${XDG_STATE_HOME:-"$HOME/.local/state"}
+	if [[ $state_home != /* ]]; then
+		phase_error backup "$package" 'set XDG_STATE_HOME to an absolute path; the target is unchanged, then choose Migrate existing target in the Dotfiles wizard'
+		return 1
+	fi
+	plan_arch_packages "${packages[@]}"
 
 	printf 'Phase: conflict simulation\n'
 	for planned_package in "${packages[@]}"; do
@@ -281,6 +399,7 @@ migrate_target() {
 		printf '  %d. %s (%s)\n' "$position" "$planned_package" "$selection_label"
 		position=$((position + 1))
 	done
+	print_arch_package_plan
 	for planned_package in "${packages[@]}"; do
 		planned_json=$(jq -c --arg package "$planned_package" '.packages[] | select(.name == $package)' "$PACKAGE_CATALOG")
 		printf 'Package %s prerequisites: %s\n' "$planned_package" "$(jq -r '.prerequisites | if length == 0 then "none" else join(", ") end' <<<"$planned_json")"
@@ -302,6 +421,16 @@ migrate_target() {
 			return 1
 		fi
 	fi
+	install_missing_arch_packages 'Migrate existing target' || return 1
+	verify_arch_packages 'Migrate existing target' || return 1
+	if [[ $ARCH_PACKAGES_INSTALLED == true ]]; then
+		printf 'Phase: repeat conflict simulation after Arch package installation\n'
+		for planned_package in "${packages[@]}"; do
+			simulate_apply_package "$planned_package" || return 1
+		done
+		migration_paths_are_unchanged "$package" "$target" "$source" "$canonical_home" "$canonical_package_root" \
+			'Arch package installation' || return 1
+	fi
 
 	for planned_package in "${packages[@]}"; do
 		[[ $planned_package == "$package" ]] && continue
@@ -312,28 +441,9 @@ migrate_target() {
 			return 1
 		fi
 	done
-	if [[ ! -f $target || -L $target || -e $source || -L $source ]]; then
-		phase_error plan "$package" 'dependency application changed the migration target or package destination; inspect both paths, then choose Migrate existing target in the Dotfiles wizard'
-		return 1
-	fi
-	canonical_target=$(readlink -f -- "$target") || {
-		phase_error plan "$package" 'dependency application made the migration target unavailable; inspect it, then choose Migrate existing target in the Dotfiles wizard'
-		return 1
-	}
-	canonical_source=$(readlink -m -- "$source") || {
-		phase_error plan "$package" 'dependency application made the package destination unresolvable; inspect it, then choose Migrate existing target in the Dotfiles wizard'
-		return 1
-	}
-	if [[ $canonical_target != "$canonical_home/"* || $canonical_source != "$canonical_package_root/"* ]]; then
-		phase_error plan "$package" 'dependency application changed path containment; the selected target was not moved, inspect both paths, then choose Migrate existing target in the Dotfiles wizard'
-		return 1
-	fi
+	migration_paths_are_unchanged "$package" "$target" "$source" "$canonical_home" "$canonical_package_root" \
+		'dependency application' || return 1
 
-	local state_home=${XDG_STATE_HOME:-"$HOME/.local/state"}
-	if [[ $state_home != /* ]]; then
-		phase_error backup "$package" 'set XDG_STATE_HOME to an absolute path; the target is unchanged, then choose Migrate existing target in the Dotfiles wizard'
-		return 1
-	fi
 	local timestamp backup
 	timestamp=$(date -u +%Y%m%dT%H%M%S.%NZ)
 	backup=$state_home/dotfiles/backups/$package/$timestamp/$relative
@@ -656,6 +766,7 @@ apply_packages() {
 		phase_error plan "${selected[0]}" 'install each declared validator executable, then choose Apply Stow packages in the Dotfiles wizard'
 		return 1
 	fi
+	plan_arch_packages "${packages[@]}"
 	for package in "${packages[@]}"; do simulate_apply_package "$package" || return 1; done
 	printf 'Plan: apply packages in dependency order:\n'
 	local position=1 candidate package_json
@@ -665,6 +776,7 @@ apply_packages() {
 		printf '  %d. %s (%s)\n' "$position" "$package" "$selected_label"
 		position=$((position + 1))
 	done
+	print_arch_package_plan
 	for package in "${packages[@]}"; do
 		printf 'Plan: apply %s from config/%s to %s\n' "$package" "$package" "$HOME"
 		package_json=$(jq -c --arg package "$package" '.packages[] | select(.name == $package)' "$PACKAGE_CATALOG")
@@ -679,6 +791,12 @@ apply_packages() {
 	if [[ $OMARCHY_VERSION_MISMATCH == true ]] && ! wizard_confirm 'Continue despite the Omarchy version mismatch?'; then
 		printf 'Recovery: review compatibility, then choose Apply Stow packages in the Dotfiles wizard.\n' >&2
 		return 1
+	fi
+	install_missing_arch_packages 'Apply Stow packages' || return 1
+	verify_arch_packages 'Apply Stow packages' || return 1
+	if [[ $ARCH_PACKAGES_INSTALLED == true ]]; then
+		printf 'Phase: repeat conflict simulation after Arch package installation\n'
+		for package in "${packages[@]}"; do simulate_apply_package "$package" || return 1; done
 	fi
 	for package in "${packages[@]}"; do
 		if apply_one_package "$package"; then

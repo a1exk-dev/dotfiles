@@ -2,7 +2,7 @@
 
 ## Dotfiles repository
 
-Portable Omarchy dotfiles for the current supported Omarchy version, deployed with GNU Stow. The repository is the source of truth for configuration files, scripts, hooks, themes, and required assets. It excludes live application state and complements Omarchy rather than owning general operating-system or package provisioning, with explicit bootstrap exceptions for repository prerequisites and required agent skills. The current target is Omarchy version 4.
+Portable Omarchy dotfiles for the current supported Omarchy version, deployed with GNU Stow. The repository is the source of truth for configuration files, scripts, hooks, themes, and required assets. It excludes live application state and complements Omarchy rather than owning general operating-system package provisioning. The wizard delegates explicit repository prerequisites and package-specific Arch requirements to Omarchy. The current target is Omarchy version 4.
 
 ## Stow package
 
@@ -18,7 +18,7 @@ The root `cleanup.json` file that contains saved selection defaults for removabl
 
 ## Package catalog
 
-The root `packages.json` file containing package descriptions, prerequisites, dependencies, validation, documentation, and cleanup notes consumed by the dotfiles wizard through `jq`.
+`packages.json` is the package catalog. Each entry declares a Stow package's description, command prerequisites, Arch package requirements, Stow dependencies, validators, documentation, and cleanup notes.
 
 ## Skill manifest
 

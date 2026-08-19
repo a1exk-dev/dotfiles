@@ -197,6 +197,31 @@ test_guided_setup_orders_and_skips_nonessential_phases() {
 	assert_contains "$COMMAND_OUTPUT" 'Guided setup complete.' 'all skipped nonessential phases should complete the guide'
 }
 
+test_guided_setup_phase_four_uses_arch_aware_apply_flow() {
+	new_fixture
+	add_package
+	set_package_arch_packages demo demo-runtime
+	configure_cleanup_fakes
+	configure_skill_fakes
+	seed_current_global_skills
+	make_applying_stow
+	DOTFILES_TEST_INPUT='1\n0\n1\ny\n' run_dotfiles "$FIXTURE_ROOT"
+
+	assert_eq 0 "$COMMAND_STATUS" 'guided setup should apply a package with a missing Arch requirement' || return 1
+	assert_contains "$COMMAND_OUTPUT" 'demo-runtime (required by demo): will install' \
+		'guided phase 4 should show the same Arch requirement plan as standalone apply' || return 1
+	assert_contains "$COMMAND_OUTPUT" 'Arch packages installed and verified: demo-runtime' \
+		'guided phase 4 should use the shared installation and verification path' || return 1
+	assert_eq 1 "$(awk '/Apply this complete Stow plan[?]/ { count++ } END { print count + 0 }' <<<"$COMMAND_OUTPUT")" \
+		'guided phase 4 should keep one complete Stow-plan confirmation' || return 1
+	assert_eq 2 "$(awk '/^stow --simulate .* demo$/ { count++ } END { print count + 0 }' "$CALL_LOG")" \
+		'guided phase 4 should repeat simulation after installing a requirement' || return 1
+	assert_eq 1 "$(awk '/^pkg add demo-runtime[|]/ { count++ } END { print count + 0 }' "$CALL_LOG")" \
+		'guided phase 4 should install the missing requirement once' || return 1
+	assert_eq "$FIXTURE_REPO/config/demo/.config/demo/config" "$(readlink -f "$FIXTURE_HOME/.config/demo/config")" \
+		'guided phase 4 should finish through the normal verified Stow apply'
+}
+
 test_guided_setup_stops_on_operational_failure_with_action_recovery() {
 	new_fixture
 	rm "$FIXTURE_BIN/stow"
@@ -295,6 +320,7 @@ run_test test_prerequisites_upgrade_old_node 'prerequisites upgrade an old Node.
 run_test test_prerequisites_reject_missing_core_tool 'prerequisites reject a missing core tool with wizard recovery'
 run_test test_cleanup_skills_and_update_standalone_actions 'cleanup and skill operations remain standalone actions'
 run_test test_guided_setup_orders_and_skips_nonessential_phases 'guided setup orders and skips nonessential phases'
+run_test test_guided_setup_phase_four_uses_arch_aware_apply_flow 'guided setup phase 4 uses the Arch-aware apply flow'
 run_test test_guided_setup_stops_on_operational_failure_with_action_recovery 'guided setup stops on failure with wizard recovery'
 run_test test_guided_setup_stops_when_prerequisites_are_declined 'guided setup stops when required prerequisites are declined'
 run_test test_guided_bash_stow_selection_failure_reports_recovery 'guided Bash Stow selection failure reports recovery'

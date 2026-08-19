@@ -4,6 +4,10 @@ The `bash` Stow package owns only `~/.bashrc`. The tracked file loads Omarchy's 
 
 The package does not manage `.bash_profile`, `~/.config/starship.toml`, terminal configuration, Omarchy configuration, themes, or generated theme state.
 
+## Requirements
+
+Selecting `bash` in `Guided setup` or `Apply Stow packages` installs the official Arch `thefuck` package through Omarchy when it is missing.
+
 ## Shortcuts
 
 `vi` opens Neovim in interactive Bash shells.
@@ -11,6 +15,8 @@ The package does not manage `.bash_profile`, `~/.config/starship.toml`, terminal
 `ll` lists all entries, including hidden files, with Omarchy's long `eza` format.
 
 A bare `~` command changes to your home directory.
+
+After a command fails, run `fuck` to review a suggested correction. The Fuck asks for confirmation before it runs the selected command.
 
 ## Reloading
 
@@ -49,5 +55,7 @@ Some Omarchy commands, including `omarchy reinstall configs`, can follow the Sto
 ## Removal
 
 Use `Remove Stow package` in the Dotfiles wizard. The wizard removes the home-directory link and keeps the tracked source. Any migration backup also remains. `~/.bashrc` is absent until you reapply the package or restore an exact migration backup.
+
+Removing the Bash Stow package leaves the official Arch `thefuck` package installed.
 
 See [Stow workflow](stow.md) for removal and recovery details.

@@ -64,6 +64,7 @@ Choose `Run structural checks` to validate:
 - Package documentation links
 - Package dependencies
 - Package prerequisites and validator executables
+- Package-specific Arch requirements
 - The application cleanup profile
 - The skill manifest and required global skill commands
 - GNU Stow availability
@@ -80,13 +81,17 @@ For a nonempty selection, the wizard:
 2. Reports the supported and detected Omarchy versions.
 3. Checks GNU Stow.
 4. Resolves package dependencies.
-5. Checks package prerequisites and validator executables.
+5. Checks package prerequisites, validator executables, and Arch package requirements.
 6. Simulates all Stow operations.
-7. Shows the complete plan in dependency order.
+7. Shows the complete plan in dependency order, including missing Arch packages.
 8. Asks for confirmation.
-9. Applies and verifies each package in dependency order.
+9. Installs and verifies missing Arch packages.
+10. If it installed an Arch package, repeats all Stow simulations.
+11. Applies and verifies each package in dependency order.
 
 The plan identifies selected packages and required dependencies. Existing normal files cause a conflict. The wizard does not replace them and does not use `stow --adopt`.
+
+Package-specific Arch requirements are part of the Stow plan and use the same confirmation. The wizard installs missing packages with `omarchy pkg add`, verifies them, and repeats the Stow simulation before it changes links.
 
 An empty selection or a declined plan makes no changes.
 
@@ -100,16 +105,20 @@ The wizard:
 
 1. Confirms that the target resolves inside the user's home directory.
 2. Confirms that the package destination resolves inside the selected package.
-3. Resolves dependencies and checks prerequisites, validators, and GNU Stow.
+3. Resolves dependencies and checks prerequisites, validators, Arch package requirements, and GNU Stow.
 4. Simulates the selected package and all required dependencies.
-5. Shows the complete migration plan and asks for approval.
+5. Shows the complete migration plan, including missing Arch packages, and asks for approval.
 6. Asks if the file was inspected for sensitive and machine-specific content.
-7. Applies required dependency packages before it changes the selected target.
-8. Checks the selected target, package destination, and path containment again.
-9. Creates a timestamped backup below `${XDG_STATE_HOME:-$HOME/.local/state}/dotfiles/backups/<package>/`.
-10. Moves the approved file into the selected package without replacing package content.
-11. Simulates the selected package again.
-12. Applies the selected package and verifies its links and validators.
+7. Installs and verifies missing Arch packages.
+8. If it installed an Arch package, repeats the Stow simulation for the selected package and all required dependencies.
+9. Applies required dependency packages before it changes the selected target.
+10. Checks the selected target, package destination, and path containment again.
+11. Creates a timestamped backup below `${XDG_STATE_HOME:-$HOME/.local/state}/dotfiles/backups/<package>/`.
+12. Moves the approved file into the selected package without replacing package content.
+13. Simulates the selected package again.
+14. Applies the selected package and verifies its links and validators.
+
+Migration installs and verifies missing Arch packages before it applies dependency links, creates a backup, or moves the selected target. If installation fails, the selected target stays unchanged.
 
 Migration does not use `stow --adopt`. If a failure occurs after the backup or move, the wizard prints the backup path and recovery commands. A dependency failure can leave an earlier dependency linked, but it leaves the selected migration target unchanged and does not create its backup.
 
@@ -127,6 +136,8 @@ For an allowed removal, the wizard:
 4. Unlinks the package.
 5. Verifies that all managed targets are gone.
 
+Removing a Stow package leaves its Arch packages installed. The cleanup notes list the retained packages.
+
 Removal does not delete generated files, application state, migration backups, or other paths in the package cleanup notes.
 
 ## Package catalog
@@ -136,6 +147,7 @@ The root `packages.json` file stores each package's:
 - Name and description
 - Path below `config/`
 - Prerequisites
+- Arch packages installed through Omarchy
 - Dependencies
 - Validation commands
 - Optional documentation link
@@ -147,7 +159,7 @@ The wizard applies dependencies before dependent packages. A linked dependent bl
 
 An Omarchy version mismatch requires separate confirmation before a mutation.
 
-Successful application or migration means that each expected target resolves to its tracked source and each declared validator passes. Successful removal means that all managed targets are unlinked.
+Successful application or migration means that each expected target points to its tracked source, each validator passes, and each declared Arch package is installed. Successful removal means that all managed targets are unlinked.
 
 A package batch stops on the first failed package. Packages that passed verification earlier in the batch stay applied. Follow the printed recovery instructions. Then run `make` and choose the named standalone action.
 

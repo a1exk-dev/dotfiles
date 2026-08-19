@@ -88,13 +88,21 @@ Guidance: Stop before adding the content and ask the human to choose exclusion, 
 
 Reason: The repository has no blanket policy that makes sensitive values safe to track.
 
-## Document prerequisites and installers
+## Document non-Arch prerequisites and installers
 
-Applies when: A Stow package requires software that Omarchy does not already provide.
+Applies when: A Stow package requires software that cannot be declared as an official Arch package.
 
-Guidance: List the prerequisite and its Omarchy-supported installation command when available. Add an installation script only after making that choice for the package, and document the script in the relevant topic guide.
+Guidance: Document the prerequisite and its supported installation command. Add an installation script only after making that choice for the package, and document the script in the relevant topic guide.
 
-Reason: The repository synchronizes dotfiles by default but may carry explicit package-specific installers when they are justified.
+Reason: Software outside `arch_packages` needs an explicit setup and ownership decision instead of implicit provisioning.
+
+## Install Arch requirements with Stow packages
+
+Applies when: A Stow package requires an official Arch package.
+
+Guidance: Declare the package in `arch_packages`. During apply and migration, include missing packages in the complete plan, confirm once, install them with `omarchy pkg add`, verify package identity, and repeat Stow simulation before mutation. Stow removal retains the Arch packages and reports them in cleanup notes.
+
+Reason: Arch packages have independent ownership and can be shared. Package-specific planning avoids global installs, while retention avoids removing software without installation provenance.
 
 ## Add one requested package at a time
 

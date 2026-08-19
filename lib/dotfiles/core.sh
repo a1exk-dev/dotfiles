@@ -106,6 +106,10 @@ validate_catalog() {
 			printf 'Error: invalid dependencies for package %s\n' "$name" >&2
 			return 1
 		fi
+		if ! jq -e ".packages[$index].arch_packages | type == \"array\" and all(.[]; type == \"string\" and test(\"^[a-z0-9@_+][a-z0-9@._+-]*$\")) and (length == (unique | length))" "$PACKAGE_CATALOG" >/dev/null; then
+			printf 'Error: invalid Arch packages for package %s\n' "$name" >&2
+			return 1
+		fi
 		if ! jq -e ".packages[$index].prerequisites | type == \"array\" and all(.[]; type == \"string\" and length > 0)" "$PACKAGE_CATALOG" >/dev/null; then
 			printf 'Error: invalid prerequisites for package %s\n' "$name" >&2
 			return 1

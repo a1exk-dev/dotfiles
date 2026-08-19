@@ -14,11 +14,15 @@ test_apply_requires_explicit_package_and_approval() {
 test_apply_plans_simulates_links_and_validates_package() {
 	new_fixture
 	add_package
+	set_package_arch_packages demo demo-runtime
+	set_installed_arch_packages demo-runtime
 	make_applying_stow
 	DOTFILES_TEST_INPUT='y\n' run_operation "$FIXTURE_ROOT" apply_packages demo
 
 	assert_eq 0 "$COMMAND_STATUS" 'safe package apply should succeed' || return 1
 	assert_contains "$COMMAND_OUTPUT" 'Plan: apply demo from config/demo to' 'plan should identify source and target' || return 1
+	assert_contains "$COMMAND_OUTPUT" 'demo-runtime (required by demo): installed' \
+		'plan should identify the Arch package owner and installed status' || return 1
 	assert_contains "$COMMAND_OUTPUT" 'Phase: verify' 'output should expose the final phase' || return 1
 	assert_contains "$COMMAND_OUTPUT" 'Applied and verified package: demo' 'success should mean links and validators passed' || return 1
 	assert_eq "$FIXTURE_REPO/config/demo/.config/demo/config" "$(readlink -f "$FIXTURE_HOME/.config/demo/config")" \
@@ -27,11 +31,50 @@ test_apply_plans_simulates_links_and_validates_package() {
 	calls=$(<"$CALL_LOG")
 	expected_calls=$(printf '%s\n' \
 		"version|HOME=$FIXTURE_HOME|XDG_CONFIG_HOME=$FIXTURE_CONFIG|XDG_STATE_HOME=$FIXTURE_STATE|XDG_CACHE_HOME=$FIXTURE_CACHE" \
+		"pkg present demo-runtime|HOME=$FIXTURE_HOME|XDG_CONFIG_HOME=$FIXTURE_CONFIG|XDG_STATE_HOME=$FIXTURE_STATE|XDG_CACHE_HOME=$FIXTURE_CACHE" \
 		"stow --simulate --verbose=2 --dir $FIXTURE_REPO/config --target $FIXTURE_HOME demo" \
+		"pkg present demo-runtime|HOME=$FIXTURE_HOME|XDG_CONFIG_HOME=$FIXTURE_CONFIG|XDG_STATE_HOME=$FIXTURE_STATE|XDG_CACHE_HOME=$FIXTURE_CACHE" \
 		"stow --verbose=2 --dir $FIXTURE_REPO/config --target $FIXTURE_HOME demo" \
 		'validator --check' \
 		"validator-two --check|PWD=$FIXTURE_REPO")
 	assert_eq "$expected_calls" "$calls" 'simulation, mutation, audit, and every validator should run in order'
+}
+
+test_apply_empty_and_requirement_free_selections_skip_arch_package_commands() {
+	new_fixture
+	run_operation "$FIXTURE_ROOT" apply_packages
+	assert_eq 0 "$COMMAND_STATUS" 'an empty selection should remain a successful no-op' || return 1
+	assert_eq '' "$(<"$CALL_LOG")" 'an empty selection should not inspect or install Arch packages' || return 1
+
+	new_fixture
+	add_package
+	make_applying_stow
+	DOTFILES_TEST_INPUT='y\n' run_operation "$FIXTURE_ROOT" apply_packages demo
+	assert_eq 0 "$COMMAND_STATUS" 'a requirement-free package should apply normally' || return 1
+	if [[ $(<"$CALL_LOG") == *'pkg present'* || $(<"$CALL_LOG") == *'pkg add'* ]]; then
+		printf '  a requirement-free selection must not call an Arch package command\n' >&2
+		return 1
+	fi
+}
+
+test_apply_install_failure_stops_before_stow_mutation() {
+	new_fixture
+	add_package
+	set_package_arch_packages demo demo-runtime
+	make_applying_stow
+	DOTFILES_TEST_ARCH_INSTALL_FAILURE=true DOTFILES_TEST_INPUT='y\n' run_operation "$FIXTURE_ROOT" apply_packages demo
+
+	assert_eq 1 "$COMMAND_STATUS" 'Arch package installation failure should fail apply' || return 1
+	assert_contains "$COMMAND_OUTPUT" 'Error: Arch package installation failed.' \
+		'installation failure should identify the failed action' || return 1
+	assert_contains "$COMMAND_OUTPUT" 'choose Apply Stow packages in the Dotfiles wizard' \
+		'installation failure should provide apply-specific recovery' || return 1
+	assert_eq 1 "$(awk '/^stow --simulate / { count++ } END { print count + 0 }' "$CALL_LOG")" \
+		'installation failure should occur after the initial simulation only' || return 1
+	if [[ $(<"$CALL_LOG") == *$'stow --verbose=2 '* || -e $FIXTURE_HOME/.config/demo/config ]]; then
+		printf '  Arch package installation failure must stop before Stow mutation\n' >&2
+		return 1
+	fi
 }
 
 test_apply_requires_separate_omarchy_mismatch_confirmation() {
@@ -236,6 +279,8 @@ test_migrate_plans_and_applies_dependencies_before_selected_package() {
 	new_fixture
 	add_package base
 	add_dependent_package app base
+	set_package_arch_packages base shared-runtime
+	set_package_arch_packages app shared-runtime app-runtime
 	rm "$FIXTURE_REPO/config/app/.config/app/config"
 	mkdir -p "$FIXTURE_HOME/.config/app"
 	printf 'approved app content\n' >"$FIXTURE_HOME/.config/app/config"
@@ -260,19 +305,91 @@ fi'
 		'migration plan should include dependency prerequisites' || return 1
 	assert_contains "$COMMAND_OUTPUT" 'Package base validators: test-validator --check; test-validator-two --check' \
 		'migration plan should include dependency validators' || return 1
-	local base_sim app_initial_sim base_apply app_post_sim app_apply
-	base_sim=$(awk '/^stow --simulate .* base$/ { print NR; exit }' "$CALL_LOG")
+	assert_contains "$COMMAND_OUTPUT" 'shared-runtime (required by base, app): will install' \
+		'migration plan should deduplicate a shared requirement and retain both owners' || return 1
+	assert_contains "$COMMAND_OUTPUT" 'app-runtime (required by app): will install' \
+		'migration plan should include selected-package requirements' || return 1
+	assert_contains "$(<"$CALL_LOG")" 'pkg add shared-runtime app-runtime' \
+		'migration should install missing requirements once in dependency order' || return 1
+	local base_initial_sim app_initial_sim install_call base_repeat_sim app_repeat_sim shared_verify app_verify base_apply app_post_sim app_apply
+	base_initial_sim=$(awk '/^stow --simulate .* base$/ { print NR; exit }' "$CALL_LOG")
 	app_initial_sim=$(awk '/^stow --simulate .* app$/ { print NR; exit }' "$CALL_LOG")
+	install_call=$(awk '/^pkg add shared-runtime app-runtime[|]/ { print NR; exit }' "$CALL_LOG")
+	base_repeat_sim=$(awk '/^stow --simulate .* base$/ { count++; if (count == 2) { print NR; exit } }' "$CALL_LOG")
+	app_repeat_sim=$(awk '/^stow --simulate .* app$/ { count++; if (count == 2) { print NR; exit } }' "$CALL_LOG")
+	shared_verify=$(awk '/^pkg present shared-runtime[|]/ { count++; if (count == 2) { print NR; exit } }' "$CALL_LOG")
+	app_verify=$(awk '/^pkg present app-runtime[|]/ { count++; if (count == 2) { print NR; exit } }' "$CALL_LOG")
 	base_apply=$(awk '/^stow --verbose=2 .* base$/ { print NR; exit }' "$CALL_LOG")
-	app_post_sim=$(awk '/^stow --simulate .* app$/ { count++; if (count == 2) { print NR; exit } }' "$CALL_LOG")
+	app_post_sim=$(awk '/^stow --simulate .* app$/ { count++; if (count == 3) { print NR; exit } }' "$CALL_LOG")
 	app_apply=$(awk '/^stow --verbose=2 .* app$/ { print NR; exit }' "$CALL_LOG")
-	if [[ -z $base_sim || -z $app_initial_sim || -z $base_apply || -z $app_post_sim || -z $app_apply || \
-		$base_sim -ge $app_initial_sim || $app_initial_sim -ge $base_apply || $base_apply -ge $app_post_sim || $app_post_sim -ge $app_apply ]]; then
-		printf '  migration should simulate the closure, apply dependencies, then re-simulate and apply the selected package\n' >&2
+	if [[ -z $base_initial_sim || -z $app_initial_sim || -z $install_call || -z $base_repeat_sim || -z $app_repeat_sim || \
+		-z $shared_verify || -z $app_verify || -z $base_apply || -z $app_post_sim || -z $app_apply || $base_initial_sim -ge $app_initial_sim || \
+		$app_initial_sim -ge $install_call || $install_call -ge $shared_verify || $shared_verify -ge $app_verify || \
+		$app_verify -ge $base_repeat_sim || $base_repeat_sim -ge $app_repeat_sim || $app_repeat_sim -ge $base_apply || \
+		$base_apply -ge $app_post_sim || $app_post_sim -ge $app_apply ]]; then
+		printf '  migration should simulate, install, verify every requirement, re-simulate, then mutate in dependency order\n' >&2
 		return 1
 	fi
 	assert_eq "$FIXTURE_REPO/config/base/.config/base/config" "$(readlink -f "$FIXTURE_HOME/.config/base/config")" 'dependency should be linked first' || return 1
 	assert_eq "$FIXTURE_REPO/config/app/.config/app/config" "$(readlink -f "$FIXTURE_HOME/.config/app/config")" 'selected migrated package should be linked last'
+}
+
+test_migrate_arch_verification_failure_preserves_target_before_stow_mutation() {
+	new_fixture
+	add_package
+	set_package_arch_packages demo demo-runtime
+	set_installed_arch_packages
+	rm "$FIXTURE_REPO/config/demo/.config/demo/config"
+	mkdir -p "$FIXTURE_HOME/.config/demo"
+	printf 'approved user content\n' >"$FIXTURE_HOME/.config/demo/config"
+	make_applying_stow
+
+	DOTFILES_TEST_ARCH_VERIFY_FAILURE=true run_operation "$FIXTURE_ROOT" migrate_target demo .config/demo/config --yes --inspection-approved
+
+	assert_eq 1 "$COMMAND_STATUS" 'failed Arch package verification should fail migration' || return 1
+	assert_contains "$COMMAND_OUTPUT" 'Error: Arch package verification failed: demo-runtime' \
+		'verification failure should name the package whose identity was not confirmed' || return 1
+	assert_contains "$COMMAND_OUTPUT" 'choose Migrate existing target in the Dotfiles wizard' \
+		'verification failure should provide migration-specific recovery' || return 1
+	assert_eq 'approved user content' "$(<"$FIXTURE_HOME/.config/demo/config")" \
+		'verification failure should preserve the migration target' || return 1
+	assert_eq 'demo-runtime' "$(<"$ARCH_PACKAGE_STATE")" \
+		'a successfully added package may remain after verification failure' || return 1
+	assert_eq 1 "$(awk '/^stow --simulate / { count++ } END { print count + 0 }' "$CALL_LOG")" \
+		'failed Arch verification should stop before the post-install simulation' || return 1
+	if [[ -e $FIXTURE_REPO/config/demo/.config/demo/config || -d $FIXTURE_STATE/dotfiles/backups || \
+		$(<"$CALL_LOG") == *$'stow --verbose=2 '* ]]; then
+		printf '  Arch verification failure must precede Stow mutation, backup, and move\n' >&2
+		return 1
+	fi
+}
+
+test_migrate_rejects_relative_state_root_before_confirmation_or_mutation() {
+	new_fixture
+	add_package
+	set_package_arch_packages demo demo-runtime
+	set_installed_arch_packages
+	rm "$FIXTURE_REPO/config/demo/.config/demo/config"
+	mkdir -p "$FIXTURE_HOME/.config/demo"
+	printf 'approved user content\n' >"$FIXTURE_HOME/.config/demo/config"
+	make_applying_stow
+	local absolute_state=$FIXTURE_STATE
+	FIXTURE_STATE=relative-state
+
+	DOTFILES_TEST_INPUT='y\ny\n' run_operation "$FIXTURE_ROOT" migrate_target demo .config/demo/config --interactive
+	FIXTURE_STATE=$absolute_state
+
+	assert_eq 1 "$COMMAND_STATUS" 'a relative state root should fail migration planning' || return 1
+	assert_contains "$COMMAND_OUTPUT" 'set XDG_STATE_HOME to an absolute path; the target is unchanged' \
+		'invalid state recovery should preserve the existing backup-root guidance' || return 1
+	assert_eq 'approved user content' "$(<"$FIXTURE_HOME/.config/demo/config")" \
+		'invalid state root should preserve the migration target' || return 1
+	if [[ $COMMAND_OUTPUT == *'Migrate this complete plan?'* || $(<"$CALL_LOG") == *'pkg add'* || \
+		$(<"$CALL_LOG") == *$'stow --verbose=2 '* || -e $FIXTURE_REPO/config/demo/.config/demo/config || \
+		-d $absolute_state/dotfiles/backups ]]; then
+		printf '  invalid state root must stop before confirmation, Arch install, Stow mutation, backup, or move\n' >&2
+		return 1
+	fi
 }
 
 test_migrate_dependency_failure_preserves_target_and_earlier_success() {
@@ -570,6 +687,9 @@ test_apply_includes_dependencies_in_visible_topological_order() {
 	new_fixture
 	add_package base
 	add_dependent_package app base
+	set_package_arch_packages base shared-runtime base-runtime
+	set_package_arch_packages app shared-runtime app-runtime
+	set_installed_arch_packages base-runtime
 	make_applying_stow
 	DOTFILES_TEST_INPUT='y\n' run_operation "$FIXTURE_ROOT" apply_packages app
 
@@ -582,17 +702,37 @@ test_apply_includes_dependencies_in_visible_topological_order() {
 		'apply plan should include dependency validators' || return 1
 	assert_contains "$COMMAND_OUTPUT" 'Package app prerequisites: none' 'apply plan should include selected-package prerequisites' || return 1
 	assert_contains "$COMMAND_OUTPUT" 'Package app validators: none' 'apply plan should include selected-package validators' || return 1
-	local calls base_simulate app_simulate base_apply app_apply
+	assert_contains "$COMMAND_OUTPUT" 'shared-runtime (required by base, app): will install' \
+		'plan should deduplicate shared requirements and retain every owner' || return 1
+	assert_contains "$COMMAND_OUTPUT" 'base-runtime (required by base): installed' \
+		'plan should classify an already installed dependency requirement' || return 1
+	assert_contains "$COMMAND_OUTPUT" 'app-runtime (required by app): will install' \
+		'plan should classify a missing selected-package requirement' || return 1
+	assert_eq 1 "$(awk '/Apply this complete Stow plan[?]/ { count++ } END { print count + 0 }' <<<"$COMMAND_OUTPUT")" \
+		'Arch package requirements should remain inside the one Stow-plan confirmation' || return 1
+	local calls base_initial_simulate app_initial_simulate install_call base_repeat_simulate app_repeat_simulate shared_verify base_verify app_verify base_apply app_apply
 	calls=$(<"$CALL_LOG")
-	assert_contains "$calls" "stow --verbose=2 --dir $FIXTURE_REPO/config --target $FIXTURE_HOME base" \
-		'base should be applied' || return 1
-	base_simulate=$(awk '/^stow --simulate .* base$/ { print NR; exit }' "$CALL_LOG")
-	app_simulate=$(awk '/^stow --simulate .* app$/ { print NR; exit }' "$CALL_LOG")
+	assert_eq 1 "$(awk '/^pkg add / { count++ } END { print count + 0 }' "$CALL_LOG")" \
+		'missing requirements should use one batched installer call' || return 1
+	assert_contains "$calls" 'pkg add shared-runtime app-runtime' \
+		'batched installation should preserve dependency requirement order and omit installed packages' || return 1
+	base_initial_simulate=$(awk '/^stow --simulate .* base$/ { print NR; exit }' "$CALL_LOG")
+	app_initial_simulate=$(awk '/^stow --simulate .* app$/ { print NR; exit }' "$CALL_LOG")
+	install_call=$(awk '/^pkg add shared-runtime app-runtime[|]/ { print NR; exit }' "$CALL_LOG")
+	base_repeat_simulate=$(awk '/^stow --simulate .* base$/ { count++; if (count == 2) { print NR; exit } }' "$CALL_LOG")
+	app_repeat_simulate=$(awk '/^stow --simulate .* app$/ { count++; if (count == 2) { print NR; exit } }' "$CALL_LOG")
+	shared_verify=$(awk '/^pkg present shared-runtime[|]/ { count++; if (count == 2) { print NR; exit } }' "$CALL_LOG")
+	base_verify=$(awk '/^pkg present base-runtime[|]/ { count++; if (count == 2) { print NR; exit } }' "$CALL_LOG")
+	app_verify=$(awk '/^pkg present app-runtime[|]/ { count++; if (count == 2) { print NR; exit } }' "$CALL_LOG")
 	base_apply=$(awk '/^stow --verbose=2 .* base$/ { print NR; exit }' "$CALL_LOG")
 	app_apply=$(awk '/^stow --verbose=2 .* app$/ { print NR; exit }' "$CALL_LOG")
-	if [[ -z $base_simulate || -z $app_simulate || -z $base_apply || -z $app_apply || \
-		$base_simulate -ge $app_simulate || $app_simulate -ge $base_apply || $base_apply -ge $app_apply ]]; then
-		printf '  every dependency-order simulation should precede every dependency-order mutation\n' >&2
+	if [[ -z $base_initial_simulate || -z $app_initial_simulate || -z $install_call || -z $base_repeat_simulate || -z $app_repeat_simulate || \
+		-z $shared_verify || -z $base_verify || -z $app_verify || -z $base_apply || -z $app_apply || \
+		$base_initial_simulate -ge $app_initial_simulate || $app_initial_simulate -ge $install_call || \
+		$install_call -ge $shared_verify || $shared_verify -ge $base_verify || $base_verify -ge $app_verify || \
+		$app_verify -ge $base_repeat_simulate || $base_repeat_simulate -ge $app_repeat_simulate || \
+		$app_repeat_simulate -ge $base_apply || $base_apply -ge $app_apply ]]; then
+		printf '  apply should simulate, batch-install, verify every requirement, re-simulate, then mutate in dependency order\n' >&2
 		return 1
 	fi
 	assert_contains "$COMMAND_OUTPUT" 'Package state: base: succeeded' 'dependency success should be reported' || return 1
@@ -655,10 +795,13 @@ test_remove_blocks_retained_linked_dependents_and_names_each() {
 test_remove_simulates_unlinks_verifies_and_reports_retained_leftovers() {
 	new_fixture
 	add_package demo
+	set_package_arch_packages demo demo-runtime
+	set_installed_arch_packages demo-runtime
 	jq '.packages[0].cleanup = [
 		"Generated files remain in ~/.cache/demo",
 		"Application state remains in ~/.local/state/demo",
-		"Backups remain in $XDG_STATE_HOME/dotfiles/backups"
+		"Backups remain in $XDG_STATE_HOME/dotfiles/backups",
+		"Arch package demo-runtime remains installed"
 	]' "$FIXTURE_REPO/packages.json" >"$FIXTURE_REPO/packages.updated"
 	mv "$FIXTURE_REPO/packages.updated" "$FIXTURE_REPO/packages.json"
 	mkdir -p "$FIXTURE_HOME/.config" "$FIXTURE_HOME/.cache/demo" "$FIXTURE_HOME/.local/state/demo" "$FIXTURE_STATE/dotfiles/backups"
@@ -680,6 +823,8 @@ fi'
 	assert_contains "$COMMAND_OUTPUT" 'Generated files remain in ~/.cache/demo' 'generated files should be reported' || return 1
 	assert_contains "$COMMAND_OUTPUT" 'Application state remains in ~/.local/state/demo' 'application state should be reported' || return 1
 	assert_contains "$COMMAND_OUTPUT" 'Backups remain in $XDG_STATE_HOME/dotfiles/backups' 'backups should be reported' || return 1
+	assert_contains "$COMMAND_OUTPUT" 'Arch package demo-runtime remains installed' \
+		'removal should display retained package state through cleanup notes' || return 1
 	assert_eq $'version|HOME='"$FIXTURE_HOME"'|XDG_CONFIG_HOME='"$FIXTURE_CONFIG"'|XDG_STATE_HOME='"$FIXTURE_STATE"'|XDG_CACHE_HOME='"$FIXTURE_CACHE"$'\nstow --simulate --delete --verbose=2 --dir '"$FIXTURE_REPO"$'/config --target '"$FIXTURE_HOME"$' demo\nstow --delete --verbose=2 --dir '"$FIXTURE_REPO"$'/config --target '"$FIXTURE_HOME"' demo' \
 		"$(<"$CALL_LOG")" 'removal simulation should precede deletion' || return 1
 	if [[ -e $FIXTURE_HOME/.config/demo || -L $FIXTURE_HOME/.config/demo ]]; then
@@ -689,11 +834,18 @@ fi'
 	assert_eq 'generated' "$(<"$FIXTURE_HOME/.cache/demo/generated")" 'generated files should not be deleted' || return 1
 	assert_eq 'state' "$(<"$FIXTURE_HOME/.local/state/demo/state")" 'application state should not be deleted' || return 1
 	assert_eq 'backup' "$(<"$FIXTURE_STATE/dotfiles/backups/backup")" 'backups should not be deleted' || return 1
+	assert_eq 'demo-runtime' "$(<"$ARCH_PACKAGE_STATE")" 'removal should leave declared Arch packages installed' || return 1
+	if [[ $(<"$CALL_LOG") == *'pkg drop'* ]]; then
+		printf '  Stow package removal must not call the Arch package remover\n' >&2
+		return 1
+	fi
 }
 
 set -e
 run_test test_apply_requires_explicit_package_and_approval 'apply requires explicit package and approval'
 run_test test_apply_plans_simulates_links_and_validates_package 'apply plans, simulates, links, and validates a package'
+run_test test_apply_empty_and_requirement_free_selections_skip_arch_package_commands 'empty and requirement-free apply selections skip Arch package commands'
+run_test test_apply_install_failure_stops_before_stow_mutation 'Arch package installation failure stops apply before Stow mutation'
 run_test test_apply_requires_separate_omarchy_mismatch_confirmation 'apply requires separate Omarchy mismatch confirmation'
 run_test test_apply_reports_missing_package_prerequisite_before_stow 'apply reports missing package prerequisite before Stow'
 run_test test_apply_rejects_missing_validator_executable_before_simulation 'apply rejects missing validator executable before simulation'
@@ -704,6 +856,8 @@ run_test test_migrate_rejects_home_parent_symlink_escape 'migration rejects HOME
 run_test test_migrate_rejects_package_parent_symlink_escape 'migration rejects package parent symlink escape'
 run_test test_migrate_backs_up_moves_simulates_and_verifies 'migration backs up, moves, simulates, and verifies'
 run_test test_migrate_plans_and_applies_dependencies_before_selected_package 'migration plans and applies dependencies before selected package'
+run_test test_migrate_arch_verification_failure_preserves_target_before_stow_mutation 'migration Arch verification failure preserves the target before Stow mutation'
+run_test test_migrate_rejects_relative_state_root_before_confirmation_or_mutation 'migration rejects a relative state root before confirmation or mutation'
 run_test test_migrate_dependency_failure_preserves_target_and_earlier_success 'migration dependency failure preserves target and earlier success'
 run_test test_migrate_unrelated_conflict_stops_before_backup_or_move 'migration unrelated conflict stops before backup or move'
 run_test test_migrate_backup_failure_preserves_target 'migration backup failure preserves the target'

@@ -179,6 +179,56 @@ test_check_validates_complete_package_metadata() {
 		'check should count the validated package'
 }
 
+test_catalog_declares_package_specific_arch_requirements() {
+	new_fixture
+
+	assert_eq '["thefuck"]' "$(jq -c '.packages[] | select(.name == "bash") | .arch_packages' "$FIXTURE_REPO/packages.json")" \
+		'Bash should declare exactly its required Arch package' || return 1
+	assert_eq '[]' "$(jq -c '.packages[] | select(.name == "ghostty") | .arch_packages' "$FIXTURE_REPO/packages.json")" \
+		'Ghostty should declare no Arch packages' || return 1
+	assert_contains "$(jq -r '.packages[] | select(.name == "bash") | .cleanup[]' "$FIXTURE_REPO/packages.json")" \
+		'thefuck remains installed' 'Bash cleanup should disclose retained Arch package state'
+}
+
+test_check_rejects_invalid_arch_package_metadata() {
+	local jq_filter
+	while IFS= read -r jq_filter; do
+		new_fixture
+		add_package
+		jq "$jq_filter" "$FIXTURE_REPO/packages.json" >"$FIXTURE_REPO/packages.invalid"
+		mv "$FIXTURE_REPO/packages.invalid" "$FIXTURE_REPO/packages.json"
+		run_operation "$FIXTURE_ROOT" check
+		if [[ $COMMAND_STATUS -eq 0 || $COMMAND_OUTPUT != *'invalid Arch packages for package demo'* ]]; then
+			printf '  invalid Arch package metadata was accepted: %s\n  output: %s\n' "$jq_filter" "$COMMAND_OUTPUT" >&2
+			return 1
+		fi
+		rm -rf "$FIXTURE_ROOT"
+	done <<'EOF'
+del(.packages[0].arch_packages)
+.packages[0].arch_packages = "demo-runtime"
+.packages[0].arch_packages = ["Not-Lower"]
+.packages[0].arch_packages = ["bad/name"]
+.packages[0].arch_packages = ["demo-runtime", "demo-runtime"]
+EOF
+}
+
+test_check_reports_missing_declared_arch_package_without_mutation() {
+	new_fixture
+	add_package
+	set_package_arch_packages demo demo-runtime
+	set_installed_arch_packages
+	run_operation "$FIXTURE_ROOT" check
+
+	assert_eq 1 "$COMMAND_STATUS" 'check should fail when a declared Arch package is missing' || return 1
+	assert_contains "$COMMAND_OUTPUT" 'Missing declared Arch package for demo: demo-runtime' \
+		'check should identify the owner and missing Arch package' || return 1
+	assert_eq '' "$(<"$ARCH_PACKAGE_STATE")" 'check should not install a missing Arch package' || return 1
+	if [[ $(<"$CALL_LOG") == *'pkg add'* ]]; then
+		printf '  structural check must not call the Arch package installer\n' >&2
+		return 1
+	fi
+}
+
 test_check_rejects_each_invalid_package_metadata_field() {
 	local jq_filter expected
 	while IFS='|' read -r jq_filter expected; do
@@ -215,6 +265,7 @@ test_check_rejects_missing_dependency_and_cycle() {
 		"path": "config/app",
 		"description": "Dependent package",
 		"dependencies": ["missing"],
+		"arch_packages": [],
 		"prerequisites": [],
 		"validators": [],
 		"documentation": null,
@@ -250,6 +301,9 @@ run_test test_check_rejects_malformed_catalog_without_mutation 'check rejects ma
 run_test test_status_reports_nonempty_package_states_and_metadata 'status reports nonempty package states and metadata'
 run_test test_inspection_cannot_access_real_user_or_omarchy_paths 'inspection cannot access real user or Omarchy paths'
 run_test test_check_validates_complete_package_metadata 'check validates complete package metadata'
+run_test test_catalog_declares_package_specific_arch_requirements 'catalog declares package-specific Arch requirements'
+run_test test_check_rejects_invalid_arch_package_metadata 'check rejects invalid Arch package metadata'
+run_test test_check_reports_missing_declared_arch_package_without_mutation 'check reports a missing declared Arch package without mutation'
 run_test test_check_rejects_each_invalid_package_metadata_field 'check rejects invalid package metadata fields'
 run_test test_check_rejects_missing_dependency_and_cycle 'check rejects missing dependencies and cycles'
 finish_tests

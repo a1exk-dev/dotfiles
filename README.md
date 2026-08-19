@@ -16,6 +16,8 @@ Application cleanup also requires `pacman`, `yay`, `find`, `grep`, `sort`, `base
 
 Stow package application, migration, and removal require GNU Stow. The wizard can install it through Omarchy after confirmation. Migration also requires a writable absolute `XDG_STATE_HOME`, or the default `~/.local/state`, for backups.
 
+Some Stow packages need Arch packages. Apply and migration plans list anything missing. After confirmation, the wizard installs and verifies those packages through Omarchy before it changes Stow links.
+
 Pinned global skill installation and updates also require:
 
 - Node.js 22.20.0 or newer

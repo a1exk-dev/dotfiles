@@ -2,6 +2,19 @@
 
 source "$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)/support/test_helper.sh"
 
+bind_thefuck_fixture() {
+	local executable=$1
+	local fixture_usr_bin=$FIXTURE_ROOT/bwrap-usr-bin
+
+	mkdir -p "$fixture_usr_bin"
+	cp /usr/bin/bash /usr/bin/env "$fixture_usr_bin/"
+	: >"$fixture_usr_bin/thefuck"
+	BWRAP_EXTRA_ARGS=(
+		--ro-bind "$fixture_usr_bin" /usr/bin
+		--ro-bind "$executable" /usr/bin/thefuck
+	)
+}
+
 test_interactive_bash_reloads_shortcuts_without_reloading_omarchy() {
 	new_fixture
 	mkdir -p "$FIXTURE_OMARCHY/default/bash"
@@ -172,6 +185,218 @@ test_interactive_bash_bare_home_delegates_to_omarchy_zd() {
 		'ordinary tilde paths should retain normal expansion'
 }
 
+test_interactive_bash_runs_static_thefuck_correction_workflow() {
+	new_fixture
+	mkdir -p "$FIXTURE_OMARCHY/default/bash"
+	printf '%s\n' 'n() { printf "fake Omarchy n\\n"; }' >"$FIXTURE_OMARCHY/default/bash/rc"
+	make_fake thefuck '
+{
+	printf "ARG_COUNT<%s>\n" "$#"
+	argument_index=0
+	for argument in "$@"; do
+		argument_index=$((argument_index + 1))
+		printf "ARG_%s<%s>\n" "$argument_index" "$argument"
+	done
+	printf "TF_SHELL<%s>\n" "${TF_SHELL-}"
+	printf "TF_ALIAS<%s>\n" "${TF_ALIAS-}"
+	printf "PYTHONIOENCODING<%s>\n" "${PYTHONIOENCODING-}"
+	printf "TF_SHELL_ALIASES_BEGIN\n%s\nTF_SHELL_ALIASES_END\n" "${TF_SHELL_ALIASES-}"
+	printf "TF_HISTORY_BEGIN\n%s\nTF_HISTORY_END\n" "${TF_HISTORY-}"
+} >>"$DOTFILES_TEST_CALL_LOG"
+printf "CORRECTED_VALUE=ran_in_current_shell\n"'
+	mv "$FIXTURE_BIN/thefuck" "$FIXTURE_ROOT/official-thefuck"
+	make_fake thefuck '
+printf "PATH_SHADOW_INVOKED\n" >>"$DOTFILES_TEST_CALL_LOG"
+printf "PATH_SHADOW_CORRECTION=ran\n"'
+	bind_thefuck_fixture "$FIXTURE_ROOT/official-thefuck"
+
+	run_in_sandbox "$FIXTURE_ROOT" "$FIXTURE_BIN:/usr/bin:/bin" \
+		bash --noprofile --rcfile "$FIXTURE_REPO/config/bash/.bashrc" -i -c '
+			if [[ -s $DOTFILES_TEST_CALL_LOG ]]; then startup_calls=invoked; else startup_calls=none; fi
+			first_definition=$(declare -f fuck 2>/dev/null || true)
+			printf "STARTUP_CALLS<%s>\n" "$startup_calls"
+			printf "FUCK_TYPE<%s>\n" "$(type -t fuck 2>/dev/null || true)"
+
+			source "$1"
+			if [[ -s $DOTFILES_TEST_CALL_LOG ]]; then reload_calls=invoked; else reload_calls=none; fi
+			second_definition=$(declare -f fuck 2>/dev/null || true)
+			if [[ -n $first_definition && $first_definition == "$second_definition" ]]; then
+				stable=yes
+			else
+				stable=no
+			fi
+			printf "RELOAD_CALLS<%s>\n" "$reload_calls"
+			printf "FUCK_STABLE<%s>\n" "$stable"
+
+			alias workflow_probe="printf probe"
+			history -c
+			history -s "git stats"
+			PYTHONIOENCODING=latin-1
+			fuck "first caller argument" "two words"
+			printf "CORRECTED_VALUE<%s>\n" "${CORRECTED_VALUE-unset}"
+			printf "TF_HISTORY_AFTER<%s>\n" "${TF_HISTORY-unset}"
+			printf "PYTHONIOENCODING_AFTER<%s>\n" "$PYTHONIOENCODING"
+			printf "LAST_HISTORY<%s>\n" "$(history 1)"
+		' bash "$FIXTURE_REPO/config/bash/.bashrc"
+
+	local calls path_shadow_calls
+	calls=$(<"$CALL_LOG")
+	if [[ $calls == *PATH_SHADOW_INVOKED* ]]; then path_shadow_calls=invoked; else path_shadow_calls=none; fi
+	assert_eq 0 "$COMMAND_STATUS" 'interactive The Fuck workflow should complete' || return 1
+	assert_contains "$COMMAND_OUTPUT" 'STARTUP_CALLS<none>' \
+		'startup should not invoke the fake The Fuck executable' || return 1
+	assert_contains "$COMMAND_OUTPUT" 'FUCK_TYPE<function>' \
+		'tool presence should define fuck as a function' || return 1
+	assert_contains "$COMMAND_OUTPUT" 'RELOAD_CALLS<none>' \
+		'repeated sourcing should not invoke the fake The Fuck executable' || return 1
+	assert_contains "$COMMAND_OUTPUT" 'FUCK_STABLE<yes>' \
+		'repeated sourcing should leave the same static function' || return 1
+	assert_contains "$COMMAND_OUTPUT" 'CORRECTED_VALUE<ran_in_current_shell>' \
+		'a successful correction should execute in the current shell' || return 1
+	assert_eq none "$path_shadow_calls" \
+		'the correction workflow should not invoke a PATH-shadowing executable' || return 1
+	assert_contains "$calls" 'ARG_COUNT<3>' \
+		'the executable should receive the placeholder and both caller arguments' || return 1
+	assert_contains "$calls" 'ARG_1<THEFUCK_ARGUMENT_PLACEHOLDER>' \
+		'the placeholder should be the first executable argument' || return 1
+	assert_contains "$calls" 'ARG_2<first caller argument>' \
+		'the first caller argument should be forwarded unchanged' || return 1
+	assert_contains "$calls" 'ARG_3<two words>' \
+		'a quoted caller argument should be forwarded unchanged' || return 1
+	assert_contains "$calls" 'TF_SHELL<bash>' \
+		'the executable should receive the Bash shell identity' || return 1
+	assert_contains "$calls" 'TF_ALIAS<fuck>' \
+		'the executable should receive the function alias name' || return 1
+	assert_contains "$calls" 'PYTHONIOENCODING<utf-8>' \
+		'the executable should receive UTF-8 Python output encoding' || return 1
+	assert_contains "$calls" "alias workflow_probe='printf probe'" \
+		'the executable should receive current shell aliases' || return 1
+	assert_contains "$calls" 'git stats' \
+		'the executable should receive recent Bash history' || return 1
+	assert_contains "$COMMAND_OUTPUT" 'TF_HISTORY_AFTER<unset>' \
+		'TF_HISTORY should be cleaned after the correction' || return 1
+	assert_contains "$COMMAND_OUTPUT" 'PYTHONIOENCODING_AFTER<latin-1>' \
+		'PYTHONIOENCODING should be restored after the correction' || return 1
+	assert_contains "$COMMAND_OUTPUT" 'CORRECTED_VALUE=ran_in_current_shell' \
+		'the correction should be added to Bash history'
+}
+
+test_interactive_bash_does_not_evaluate_failed_thefuck_output() {
+	new_fixture
+	mkdir -p "$FIXTURE_OMARCHY/default/bash"
+	printf '%s\n' ':' >"$FIXTURE_OMARCHY/default/bash/rc"
+	make_fake thefuck '
+printf "FAILED_CALL" >>"$DOTFILES_TEST_CALL_LOG"
+printf "<%s>" "$@" >>"$DOTFILES_TEST_CALL_LOG"
+printf "\n" >>"$DOTFILES_TEST_CALL_LOG"
+printf "FAILED_CORRECTION_WAS_EVALUATED=yes\n"
+exit 23'
+	mv "$FIXTURE_BIN/thefuck" "$FIXTURE_ROOT/official-thefuck"
+	make_fake thefuck '
+printf "PATH_SHADOW_INVOKED\n" >>"$DOTFILES_TEST_CALL_LOG"
+printf "FAILED_CORRECTION_WAS_EVALUATED=path_shadow\n"'
+	bind_thefuck_fixture "$FIXTURE_ROOT/official-thefuck"
+
+	run_in_sandbox "$FIXTURE_ROOT" "$FIXTURE_BIN:/usr/bin:/bin" \
+		bash --noprofile --rcfile "$FIXTURE_REPO/config/bash/.bashrc" -i -c '
+			PYTHONIOENCODING=original-encoding
+			history -c
+			history -s "broken command"
+			fuck --fail
+			printf "FUCK_TYPE<%s>\n" "$(type -t fuck 2>/dev/null || true)"
+			printf "FAILED_CORRECTION<%s>\n" "${FAILED_CORRECTION_WAS_EVALUATED-unset}"
+			printf "TF_HISTORY_AFTER<%s>\n" "${TF_HISTORY-unset}"
+			printf "PYTHONIOENCODING_AFTER<%s>\n" "$PYTHONIOENCODING"
+		'
+
+	local calls path_shadow_calls
+	calls=$(<"$CALL_LOG")
+	if [[ $calls == *PATH_SHADOW_INVOKED* ]]; then path_shadow_calls=invoked; else path_shadow_calls=none; fi
+	assert_eq 0 "$COMMAND_STATUS" 'failed The Fuck workflow probe should complete' || return 1
+	assert_contains "$COMMAND_OUTPUT" 'FUCK_TYPE<function>' \
+		'tool presence should define the correction function' || return 1
+	assert_eq none "$path_shadow_calls" \
+		'the correction workflow should not invoke a PATH-shadowing executable' || return 1
+	assert_contains "$calls" 'FAILED_CALL<THEFUCK_ARGUMENT_PLACEHOLDER><--fail>' \
+		'the failed executable should still receive the placeholder and caller argument' || return 1
+	assert_contains "$COMMAND_OUTPUT" 'FAILED_CORRECTION<unset>' \
+		'nonzero executable output must not be evaluated' || return 1
+	assert_contains "$COMMAND_OUTPUT" 'TF_HISTORY_AFTER<unset>' \
+		'TF_HISTORY should be cleaned after executable failure' || return 1
+	assert_contains "$COMMAND_OUTPUT" 'PYTHONIOENCODING_AFTER<original-encoding>' \
+		'PYTHONIOENCODING should be restored after executable failure'
+}
+
+test_interactive_bash_clears_stale_fuck_function_when_thefuck_is_missing() {
+	new_fixture
+	mkdir -p "$FIXTURE_OMARCHY/default/bash"
+	printf '%s\n' ':' >"$FIXTURE_OMARCHY/default/bash/rc"
+	printf '%s\n' 'not executable' >"$FIXTURE_ROOT/non-executable-thefuck"
+	chmod 0644 "$FIXTURE_ROOT/non-executable-thefuck"
+	make_fake thefuck '
+printf "PATH_SHADOW_INVOKED<%s>\n" "$*" >>"$DOTFILES_TEST_CALL_LOG"
+printf ":\n"'
+	bind_thefuck_fixture "$FIXTURE_ROOT/non-executable-thefuck"
+
+	run_in_sandbox "$FIXTURE_ROOT" "$FIXTURE_BIN:/usr/bin:/bin" \
+		/usr/bin/bash --noprofile --rcfile "$FIXTURE_REPO/config/bash/.bashrc" -i -c '
+			printf "STARTUP_FUCK_TYPE<%s>\n" "$(type -t fuck 2>/dev/null || printf missing)"
+			thefuck --prime-cache >/dev/null
+			hashed_path=$(hash -t thefuck 2>/dev/null || true)
+			: >"$DOTFILES_TEST_CALL_LOG"
+			fuck() { printf "stale function ran\n"; }
+			source "$1" >"$2" 2>&1
+			reload_status=$?
+			fuck_type=$(type -t fuck 2>/dev/null || printf missing)
+			if [[ $fuck_type == function ]]; then fuck after-removal >/dev/null; fi
+			printf "HASHED_PATH<%s>\n" "$hashed_path"
+			printf "RELOAD_STATUS<%s>\n" "$reload_status"
+			printf "FUCK_TYPE<%s>\n" "$fuck_type"
+		' bash "$FIXTURE_REPO/config/bash/.bashrc" "$FIXTURE_ROOT/reload-output"
+
+	local calls reload_output
+	calls=$(<"$CALL_LOG")
+	reload_output=$(<"$FIXTURE_ROOT/reload-output")
+	assert_eq 0 "$COMMAND_STATUS" 'missing-tool reload probe should complete' || return 1
+	assert_contains "$COMMAND_OUTPUT" 'STARTUP_FUCK_TYPE<missing>' \
+		'a PATH-shadowing executable alone should not define fuck' || return 1
+	assert_contains "$COMMAND_OUTPUT" "HASHED_PATH<$FIXTURE_BIN/thefuck>" \
+		'the reload probe should begin with a cached PATH-shadowing executable' || return 1
+	assert_contains "$COMMAND_OUTPUT" 'RELOAD_STATUS<0>' \
+		'reloading without The Fuck should succeed' || return 1
+	assert_contains "$COMMAND_OUTPUT" 'FUCK_TYPE<missing>' \
+		'reloading without The Fuck should remove a stale fuck function' || return 1
+	assert_eq '' "$calls" \
+		'reloading without the official executable should not invoke the PATH shadow' || return 1
+	assert_eq '' "$reload_output" \
+		'reloading without The Fuck should be quiet'
+}
+
+test_noninteractive_bash_does_not_define_or_invoke_thefuck() {
+	new_fixture
+	mkdir -p "$FIXTURE_OMARCHY/default/bash"
+	printf '%s\n' 'OMARCHY_RC_SOURCED=yes' >"$FIXTURE_OMARCHY/default/bash/rc"
+	make_fake thefuck 'printf "unexpected invocation\n" >>"$DOTFILES_TEST_CALL_LOG"'
+	bind_thefuck_fixture "$FIXTURE_BIN/thefuck"
+
+	run_in_sandbox "$FIXTURE_ROOT" "$FIXTURE_BIN:/usr/bin:/bin" \
+		/usr/bin/bash --noprofile --norc -c '
+			source "$1"
+			printf "FUCK_TYPE<%s>\n" "$(type -t fuck 2>/dev/null || printf missing)"
+			printf "OMARCHY_RC_SOURCED<%s>\n" "${OMARCHY_RC_SOURCED-no}"
+		' bash "$FIXTURE_REPO/config/bash/.bashrc"
+
+	local calls
+	calls=$(<"$CALL_LOG")
+	assert_eq 0 "$COMMAND_STATUS" 'non-interactive Bash source should succeed' || return 1
+	assert_contains "$COMMAND_OUTPUT" 'FUCK_TYPE<missing>' \
+		'non-interactive Bash should not define the correction function' || return 1
+	assert_contains "$COMMAND_OUTPUT" 'OMARCHY_RC_SOURCED<no>' \
+		'non-interactive Bash should retain its early return before Omarchy defaults' || return 1
+	assert_eq '' "$calls" \
+		'non-interactive Bash should not invoke The Fuck'
+}
+
 set -e
 run_test test_interactive_bash_reloads_shortcuts_without_reloading_omarchy \
 	'interactive Bash reloads shortcuts without reloading Omarchy'
@@ -181,4 +406,12 @@ run_test test_interactive_bash_ll_delegates_to_omarchy_lsa \
 	'interactive Bash ll delegates to Omarchy lsa'
 run_test test_interactive_bash_bare_home_delegates_to_omarchy_zd \
 	'interactive Bash bare home delegates to Omarchy zd'
+run_test test_interactive_bash_runs_static_thefuck_correction_workflow \
+	'interactive Bash runs the static The Fuck correction workflow'
+run_test test_interactive_bash_does_not_evaluate_failed_thefuck_output \
+	'interactive Bash does not evaluate failed The Fuck output'
+run_test test_interactive_bash_clears_stale_fuck_function_when_thefuck_is_missing \
+	'interactive Bash clears a stale fuck function when The Fuck is missing'
+run_test test_noninteractive_bash_does_not_define_or_invoke_thefuck \
+	'non-interactive Bash does not define or invoke The Fuck'
 finish_tests

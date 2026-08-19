@@ -4,6 +4,7 @@ set -u
 
 SOURCE_REPO=$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")/../.." && pwd)
 BWRAP=$(command -v bwrap)
+BWRAP_EXTRA_ARGS=()
 TESTS_RUN=0
 TESTS_FAILED=0
 
@@ -39,6 +40,7 @@ assert_contains() {
 }
 
 new_fixture() {
+	BWRAP_EXTRA_ARGS=()
 	if [[ -n ${FIXTURE_ROOT-} && -d $FIXTURE_ROOT ]]; then
 		rm -rf "$FIXTURE_ROOT"
 	fi
@@ -56,6 +58,8 @@ new_fixture() {
 	FIXTURE_BIN="$FIXTURE_ROOT/fake-bin"
 	FIXTURE_OMARCHY="$FIXTURE_ROOT/packaged-omarchy"
 	CALL_LOG="$FIXTURE_ROOT/external-calls"
+	ARCH_PACKAGE_STATE="$FIXTURE_ROOT/installed-arch-packages"
+	ARCH_PACKAGE_ADD_MARKER="$FIXTURE_ROOT/arch-package-add-attempted"
 
 	mkdir -p "$FIXTURE_REPO/bin" "$FIXTURE_REPO/lib/dotfiles" "$FIXTURE_HOME" "$FIXTURE_CONFIG" \
 		"$FIXTURE_STATE" "$FIXTURE_CACHE" "$FIXTURE_TMP" "$FIXTURE_BIN" "$FIXTURE_OMARCHY" \
@@ -65,6 +69,7 @@ new_fixture() {
 	printf 'outside packaged Omarchy\n' >"$OUTSIDE_ROOT/packaged-omarchy/sentinel"
 	OUTSIDE_SNAPSHOT=$(snapshot_outside_canaries)
 	: >"$CALL_LOG"
+	printf 'thefuck\n' >"$ARCH_PACKAGE_STATE"
 	cp "$SOURCE_REPO/bin/dotfiles" "$FIXTURE_REPO/bin/dotfiles"
 	cp "$SOURCE_REPO/lib/dotfiles/"*.sh "$FIXTURE_REPO/lib/dotfiles/"
 	cp "$SOURCE_REPO/packages.json" "$FIXTURE_REPO/packages.json"
@@ -85,6 +90,22 @@ new_fixture() {
 	make_fake omarchy 'printf "%s|HOME=%s|XDG_CONFIG_HOME=%s|XDG_STATE_HOME=%s|XDG_CACHE_HOME=%s\n" "$*" "$HOME" "$XDG_CONFIG_HOME" "$XDG_STATE_HOME" "$XDG_CACHE_HOME" >>"$DOTFILES_TEST_CALL_LOG"
 if [[ ${1-} == version ]]; then
 	printf "%s\n" "${DOTFILES_TEST_OMARCHY_VERSION:-4.0.0-1}"
+	exit 0
+fi
+if [[ ${1-} == pkg && ${2-} == present ]]; then
+	shift 2
+	for package in "$@"; do
+		grep -Fxq -- "$package" "$DOTFILES_TEST_ARCH_PACKAGE_STATE" || exit 1
+	done
+	if [[ $DOTFILES_TEST_ARCH_VERIFY_FAILURE == true && -e $DOTFILES_TEST_ARCH_PACKAGE_ADD_MARKER ]]; then exit 75; fi
+	exit 0
+fi
+if [[ ${1-} == pkg && ${2-} == add ]]; then
+	touch "$DOTFILES_TEST_ARCH_PACKAGE_ADD_MARKER"
+	[[ $DOTFILES_TEST_ARCH_INSTALL_FAILURE == false ]] || exit 76
+	for package in "${@:3}"; do
+		grep -Fxq -- "$package" "$DOTFILES_TEST_ARCH_PACKAGE_STATE" || printf "%s\n" "$package" >>"$DOTFILES_TEST_ARCH_PACKAGE_STATE"
+	done
 	exit 0
 fi
 exit 64'
@@ -126,6 +147,7 @@ add_package() {
 		"path": "config/$name",
 		"description": "Test package",
 		"dependencies": [],
+		"arch_packages": [],
 		"prerequisites": ["test-validator", "test-validator-two"],
 		"validators": ["test-validator --check", "test-validator-two --check"],
 		"documentation": "$name.md",
@@ -147,12 +169,31 @@ add_dependent_package() {
 		"path": ("config/" + $name),
 		"description": "Dependent test package",
 		"dependencies": [$dependency],
+		"arch_packages": [],
 		"prerequisites": [],
 		"validators": [],
 		"documentation": null,
 		"cleanup": []
 	}]' "$FIXTURE_REPO/packages.json" >"$FIXTURE_REPO/packages.updated"
 	mv "$FIXTURE_REPO/packages.updated" "$FIXTURE_REPO/packages.json"
+}
+
+set_package_arch_packages() {
+	local package=$1
+	shift
+	local arch_packages
+	arch_packages=$(jq -cn --args '$ARGS.positional' "$@")
+	jq --arg package "$package" --argjson arch_packages "$arch_packages" \
+		'(.packages[] | select(.name == $package).arch_packages) = $arch_packages' \
+		"$FIXTURE_REPO/packages.json" >"$FIXTURE_REPO/packages.updated"
+	mv "$FIXTURE_REPO/packages.updated" "$FIXTURE_REPO/packages.json"
+}
+
+set_installed_arch_packages() {
+	: >"$ARCH_PACKAGE_STATE"
+	if (($# > 0)); then
+		printf '%s\n' "$@" >"$ARCH_PACKAGE_STATE"
+	fi
 }
 
 make_applying_stow() {
@@ -255,6 +296,18 @@ case ${1-} in
 esac'
 	make_fake omarchy 'printf "%s|HOME=%s|XDG_CONFIG_HOME=%s|XDG_STATE_HOME=%s|XDG_CACHE_HOME=%s\n" "$*" "$HOME" "$XDG_CONFIG_HOME" "$XDG_STATE_HOME" "$XDG_CACHE_HOME" >>"$DOTFILES_TEST_CALL_LOG"
 if [[ ${1-} == version ]]; then printf "%s\n" "${DOTFILES_TEST_OMARCHY_VERSION:-4.0.0-1}"; exit 0; fi
+if [[ ${1-} == pkg && ${2-} == present ]]; then
+	shift 2
+	for package in "$@"; do grep -Fxq -- "$package" "$DOTFILES_TEST_ARCH_PACKAGE_STATE" || exit 1; done
+	if [[ $DOTFILES_TEST_ARCH_VERIFY_FAILURE == true && -e $DOTFILES_TEST_ARCH_PACKAGE_ADD_MARKER ]]; then exit 75; fi
+	exit 0
+fi
+if [[ ${1-} == pkg && ${2-} == add ]]; then
+	touch "$DOTFILES_TEST_ARCH_PACKAGE_ADD_MARKER"
+	[[ $DOTFILES_TEST_ARCH_INSTALL_FAILURE == false ]] || exit 76
+	for package in "${@:3}"; do grep -Fxq -- "$package" "$DOTFILES_TEST_ARCH_PACKAGE_STATE" || printf "%s\n" "$package" >>"$DOTFILES_TEST_ARCH_PACKAGE_STATE"; done
+	exit 0
+fi
 if [[ ${1-} == webapp && ${2-} == remove ]]; then rm -f "$HOME/.local/share/applications/${*:3}.desktop"; exit 0; fi
 if [[ ${1-} == tui && ${2-} == remove ]]; then rm -f "$HOME/.local/share/applications/${*:3}.desktop"; exit 0; fi
 if [[ ${1-} == pkg && ${2-} == drop ]]; then
@@ -307,6 +360,10 @@ run_in_sandbox() {
 				DOTFILES_TEST_INSTALLED_PACKAGES="$FIXTURE_ROOT/installed-packages" \
 				DOTFILES_TEST_EXPLICIT_PACKAGES="$FIXTURE_ROOT/explicit-packages" \
 				DOTFILES_TEST_PACKAGE_METADATA="$FIXTURE_ROOT/package-metadata" \
+				DOTFILES_TEST_ARCH_PACKAGE_STATE="$ARCH_PACKAGE_STATE" \
+				DOTFILES_TEST_ARCH_PACKAGE_ADD_MARKER="$ARCH_PACKAGE_ADD_MARKER" \
+				DOTFILES_TEST_ARCH_INSTALL_FAILURE="${DOTFILES_TEST_ARCH_INSTALL_FAILURE:-false}" \
+				DOTFILES_TEST_ARCH_VERIFY_FAILURE="${DOTFILES_TEST_ARCH_VERIFY_FAILURE:-false}" \
 				DOTFILES_TEST_FIND_COUNT="${DOTFILES_TEST_FIND_COUNT-}" \
 				DOTFILES_TEST_PACMAN_VERIFY_FAILURE="${DOTFILES_TEST_PACMAN_VERIFY_FAILURE:-false}" \
 				DOTFILES_TEST_YAY_METADATA_FAILURE="${DOTFILES_TEST_YAY_METADATA_FAILURE:-false}" \
@@ -317,6 +374,7 @@ run_in_sandbox() {
 					--bind "$FIXTURE_ROOT" "$FIXTURE_ROOT" \
 					--tmpfs /home \
 					--tmpfs /usr/share/omarchy \
+					"${BWRAP_EXTRA_ARGS[@]}" \
 					-- "$@" 2>&1
 	)
 	COMMAND_STATUS=$?
