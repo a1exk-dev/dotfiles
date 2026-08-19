@@ -184,10 +184,24 @@ test_catalog_declares_package_specific_arch_requirements() {
 
 	assert_eq '["thefuck"]' "$(jq -c '.packages[] | select(.name == "bash") | .arch_packages' "$FIXTURE_REPO/packages.json")" \
 		'Bash should declare exactly its required Arch package' || return 1
+	assert_eq '["tmux"]' "$(jq -c '.packages[] | select(.name == "bash") | .dependencies' "$FIXTURE_REPO/packages.json")" \
+		'Bash should declare the tmux Stow package dependency' || return 1
+	assert_eq '["tmux","fzf"]' "$(jq -c '.packages[] | select(.name == "tmux") | .arch_packages' "$FIXTURE_REPO/packages.json")" \
+		'tmux should declare exactly its official Arch requirements' || return 1
+	assert_eq '[]' "$(jq -c '.packages[] | select(.name == "tmux") | .dependencies' "$FIXTURE_REPO/packages.json")" \
+		'tmux should have no Stow dependencies' || return 1
+	assert_eq '[]' "$(jq -c '.packages[] | select(.name == "tmux") | .prerequisites' "$FIXTURE_REPO/packages.json")" \
+		'tmux should have no command prerequisites' || return 1
+	assert_eq 'docs/tmux.md' "$(jq -r '.packages[] | select(.name == "tmux") | .documentation' "$FIXTURE_REPO/packages.json")" \
+		'tmux should reference its package guide' || return 1
 	assert_eq '[]' "$(jq -c '.packages[] | select(.name == "ghostty") | .arch_packages' "$FIXTURE_REPO/packages.json")" \
 		'Ghostty should declare no Arch packages' || return 1
 	assert_contains "$(jq -r '.packages[] | select(.name == "bash") | .cleanup[]' "$FIXTURE_REPO/packages.json")" \
-		'thefuck remains installed' 'Bash cleanup should disclose retained Arch package state'
+		'thefuck remains installed' 'Bash cleanup should disclose retained Arch package state' || return 1
+	assert_contains "$(jq -r '.packages[] | select(.name == "tmux") | .cleanup[]' "$FIXTURE_REPO/packages.json")" \
+		'tmux and fzf remain installed' 'tmux cleanup should disclose retained Arch packages' || return 1
+	assert_contains "$(jq -r '.packages[] | select(.name == "tmux") | .cleanup[]' "$FIXTURE_REPO/packages.json")" \
+		'server, sessions, logs, and state are not removed' 'tmux cleanup should disclose retained runtime state'
 }
 
 test_check_rejects_invalid_arch_package_metadata() {

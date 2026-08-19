@@ -32,9 +32,9 @@ test_apply_plans_simulates_links_and_validates_package() {
 	expected_calls=$(printf '%s\n' \
 		"version|HOME=$FIXTURE_HOME|XDG_CONFIG_HOME=$FIXTURE_CONFIG|XDG_STATE_HOME=$FIXTURE_STATE|XDG_CACHE_HOME=$FIXTURE_CACHE" \
 		"pkg present demo-runtime|HOME=$FIXTURE_HOME|XDG_CONFIG_HOME=$FIXTURE_CONFIG|XDG_STATE_HOME=$FIXTURE_STATE|XDG_CACHE_HOME=$FIXTURE_CACHE" \
-		"stow --simulate --verbose=2 --dir $FIXTURE_REPO/config --target $FIXTURE_HOME demo" \
+		"stow --no-folding --simulate --verbose=2 --dir $FIXTURE_REPO/config --target $FIXTURE_HOME demo" \
 		"pkg present demo-runtime|HOME=$FIXTURE_HOME|XDG_CONFIG_HOME=$FIXTURE_CONFIG|XDG_STATE_HOME=$FIXTURE_STATE|XDG_CACHE_HOME=$FIXTURE_CACHE" \
-		"stow --verbose=2 --dir $FIXTURE_REPO/config --target $FIXTURE_HOME demo" \
+		"stow --no-folding --verbose=2 --dir $FIXTURE_REPO/config --target $FIXTURE_HOME demo" \
 		'validator --check' \
 		"validator-two --check|PWD=$FIXTURE_REPO")
 	assert_eq "$expected_calls" "$calls" 'simulation, mutation, audit, and every validator should run in order'
@@ -69,9 +69,9 @@ test_apply_install_failure_stops_before_stow_mutation() {
 		'installation failure should identify the failed action' || return 1
 	assert_contains "$COMMAND_OUTPUT" 'choose Apply Stow packages in the Dotfiles wizard' \
 		'installation failure should provide apply-specific recovery' || return 1
-	assert_eq 1 "$(awk '/^stow --simulate / { count++ } END { print count + 0 }' "$CALL_LOG")" \
+	assert_eq 1 "$(awk '/^stow --no-folding --simulate / { count++ } END { print count + 0 }' "$CALL_LOG")" \
 		'installation failure should occur after the initial simulation only' || return 1
-	if [[ $(<"$CALL_LOG") == *$'stow --verbose=2 '* || -e $FIXTURE_HOME/.config/demo/config ]]; then
+	if [[ $(<"$CALL_LOG") == *$'stow --no-folding --verbose=2 '* || -e $FIXTURE_HOME/.config/demo/config ]]; then
 		printf '  Arch package installation failure must stop before Stow mutation\n' >&2
 		return 1
 	fi
@@ -196,7 +196,7 @@ test_migrate_requires_mutation_and_inspection_approval() {
 		printf '  declined migration should not create package content\n' >&2
 		return 1
 	fi
-	if [[ $(<"$CALL_LOG") == *$'stow --verbose=2 '* ]]; then
+	if [[ $(<"$CALL_LOG") == *$'stow --no-folding --verbose=2 '* ]]; then
 		printf '  declined migration should invoke no external mutation commands\n' >&2
 		return 1
 	fi
@@ -268,7 +268,7 @@ fi'
 	assert_eq 'approved user content' "$(<"${backups[0]}")" 'backup should preserve the original target content' || return 1
 	local calls
 	calls=$(<"$CALL_LOG")
-	assert_eq 2 "$(awk '/^stow --simulate / { count++ } END { print count + 0 }' "$CALL_LOG")" 'migration should simulate before and after moving content' || return 1
+	assert_eq 2 "$(awk '/^stow --no-folding --simulate / { count++ } END { print count + 0 }' "$CALL_LOG")" 'migration should simulate before and after moving content' || return 1
 	if [[ $calls == *--adopt* ]]; then
 		printf '  migration must never invoke Stow adoption\n' >&2
 		return 1
@@ -312,16 +312,16 @@ fi'
 	assert_contains "$(<"$CALL_LOG")" 'pkg add shared-runtime app-runtime' \
 		'migration should install missing requirements once in dependency order' || return 1
 	local base_initial_sim app_initial_sim install_call base_repeat_sim app_repeat_sim shared_verify app_verify base_apply app_post_sim app_apply
-	base_initial_sim=$(awk '/^stow --simulate .* base$/ { print NR; exit }' "$CALL_LOG")
-	app_initial_sim=$(awk '/^stow --simulate .* app$/ { print NR; exit }' "$CALL_LOG")
+	base_initial_sim=$(awk '/^stow --no-folding --simulate .* base$/ { print NR; exit }' "$CALL_LOG")
+	app_initial_sim=$(awk '/^stow --no-folding --simulate .* app$/ { print NR; exit }' "$CALL_LOG")
 	install_call=$(awk '/^pkg add shared-runtime app-runtime[|]/ { print NR; exit }' "$CALL_LOG")
-	base_repeat_sim=$(awk '/^stow --simulate .* base$/ { count++; if (count == 2) { print NR; exit } }' "$CALL_LOG")
-	app_repeat_sim=$(awk '/^stow --simulate .* app$/ { count++; if (count == 2) { print NR; exit } }' "$CALL_LOG")
+	base_repeat_sim=$(awk '/^stow --no-folding --simulate .* base$/ { count++; if (count == 2) { print NR; exit } }' "$CALL_LOG")
+	app_repeat_sim=$(awk '/^stow --no-folding --simulate .* app$/ { count++; if (count == 2) { print NR; exit } }' "$CALL_LOG")
 	shared_verify=$(awk '/^pkg present shared-runtime[|]/ { count++; if (count == 2) { print NR; exit } }' "$CALL_LOG")
 	app_verify=$(awk '/^pkg present app-runtime[|]/ { count++; if (count == 2) { print NR; exit } }' "$CALL_LOG")
-	base_apply=$(awk '/^stow --verbose=2 .* base$/ { print NR; exit }' "$CALL_LOG")
-	app_post_sim=$(awk '/^stow --simulate .* app$/ { count++; if (count == 3) { print NR; exit } }' "$CALL_LOG")
-	app_apply=$(awk '/^stow --verbose=2 .* app$/ { print NR; exit }' "$CALL_LOG")
+	base_apply=$(awk '/^stow --no-folding --verbose=2 .* base$/ { print NR; exit }' "$CALL_LOG")
+	app_post_sim=$(awk '/^stow --no-folding --simulate .* app$/ { count++; if (count == 3) { print NR; exit } }' "$CALL_LOG")
+	app_apply=$(awk '/^stow --no-folding --verbose=2 .* app$/ { print NR; exit }' "$CALL_LOG")
 	if [[ -z $base_initial_sim || -z $app_initial_sim || -z $install_call || -z $base_repeat_sim || -z $app_repeat_sim || \
 		-z $shared_verify || -z $app_verify || -z $base_apply || -z $app_post_sim || -z $app_apply || $base_initial_sim -ge $app_initial_sim || \
 		$app_initial_sim -ge $install_call || $install_call -ge $shared_verify || $shared_verify -ge $app_verify || \
@@ -355,10 +355,10 @@ test_migrate_arch_verification_failure_preserves_target_before_stow_mutation() {
 		'verification failure should preserve the migration target' || return 1
 	assert_eq 'demo-runtime' "$(<"$ARCH_PACKAGE_STATE")" \
 		'a successfully added package may remain after verification failure' || return 1
-	assert_eq 1 "$(awk '/^stow --simulate / { count++ } END { print count + 0 }' "$CALL_LOG")" \
+	assert_eq 1 "$(awk '/^stow --no-folding --simulate / { count++ } END { print count + 0 }' "$CALL_LOG")" \
 		'failed Arch verification should stop before the post-install simulation' || return 1
 	if [[ -e $FIXTURE_REPO/config/demo/.config/demo/config || -d $FIXTURE_STATE/dotfiles/backups || \
-		$(<"$CALL_LOG") == *$'stow --verbose=2 '* ]]; then
+		$(<"$CALL_LOG") == *$'stow --no-folding --verbose=2 '* ]]; then
 		printf '  Arch verification failure must precede Stow mutation, backup, and move\n' >&2
 		return 1
 	fi
@@ -385,7 +385,7 @@ test_migrate_rejects_relative_state_root_before_confirmation_or_mutation() {
 	assert_eq 'approved user content' "$(<"$FIXTURE_HOME/.config/demo/config")" \
 		'invalid state root should preserve the migration target' || return 1
 	if [[ $COMMAND_OUTPUT == *'Migrate this complete plan?'* || $(<"$CALL_LOG") == *'pkg add'* || \
-		$(<"$CALL_LOG") == *$'stow --verbose=2 '* || -e $FIXTURE_REPO/config/demo/.config/demo/config || \
+		$(<"$CALL_LOG") == *$'stow --no-folding --verbose=2 '* || -e $FIXTURE_REPO/config/demo/.config/demo/config || \
 		-d $absolute_state/dotfiles/backups ]]; then
 		printf '  invalid state root must stop before confirmation, Arch install, Stow mutation, backup, or move\n' >&2
 		return 1
@@ -447,7 +447,7 @@ exit 45'
 		printf '  preflight conflict must stop before backup or move\n' >&2
 		return 1
 	fi
-	assert_eq 1 "$(awk '/^stow --simulate / { count++ } END { print count + 0 }' "$CALL_LOG")" 'preflight conflict should run only the initial simulation'
+	assert_eq 1 "$(awk '/^stow --no-folding --simulate / { count++ } END { print count + 0 }' "$CALL_LOG")" 'preflight conflict should run only the initial simulation'
 }
 
 test_migrate_backup_failure_preserves_target() {
@@ -518,11 +518,13 @@ fi'
 	assert_eq 1 "$COMMAND_STATUS" 'post-move Stow conflict should fail migration' || return 1
 	assert_contains "$COMMAND_OUTPUT" 'remaining unrelated Stow conflict' 'post-move conflict details should remain visible' || return 1
 	assert_contains "$COMMAND_OUTPUT" 'Backup retained:' 'post-move conflict should identify the retained backup' || return 1
+	assert_contains "$COMMAND_OUTPUT" 'stow --no-folding --delete --dir' \
+		'post-move recovery should preserve leaf-only Stow ownership' || return 1
 	assert_contains "$COMMAND_OUTPUT" 'restore the original target with:' 'post-move conflict should provide restoration evidence' || return 1
 	assert_contains "$COMMAND_OUTPUT" 'choose Migrate existing target in the Dotfiles wizard' 'post-move conflict should name the migration action' || return 1
 	assert_eq 'approved user content' "$(<"$FIXTURE_REPO/config/demo/.config/demo/config")" 'moved content should remain recoverable in the package' || return 1
 	assert_eq 'leave alone' "$(<"$FIXTURE_HOME/.config/unrelated/config")" 'post-move conflict should not alter unrelated targets' || return 1
-	assert_eq 2 "$(awk '/^stow --simulate / { count++ } END { print count + 0 }' "$CALL_LOG")" 'post-move conflict should come from the repeated simulation'
+	assert_eq 2 "$(awk '/^stow --no-folding --simulate / { count++ } END { print count + 0 }' "$CALL_LOG")" 'post-move conflict should come from the repeated simulation'
 }
 
 test_migrate_link_verification_failure_retains_backup() {
@@ -660,7 +662,7 @@ test_link_audit_failure_identifies_verify_phase_and_unlink_recovery() {
 		'audit should name the missing expected link' || return 1
 	assert_contains "$COMMAND_OUTPUT" 'Error: verify phase failed for package demo.' \
 		'audit should identify the verify phase' || return 1
-	assert_contains "$COMMAND_OUTPUT" "stow --delete --dir '$FIXTURE_REPO/config' --target '$FIXTURE_HOME' 'demo'" \
+	assert_contains "$COMMAND_OUTPUT" "stow --no-folding --delete --dir '$FIXTURE_REPO/config' --target '$FIXTURE_HOME' 'demo'" \
 		'audit recovery should give the exact unlink command'
 }
 
@@ -716,16 +718,16 @@ test_apply_includes_dependencies_in_visible_topological_order() {
 		'missing requirements should use one batched installer call' || return 1
 	assert_contains "$calls" 'pkg add shared-runtime app-runtime' \
 		'batched installation should preserve dependency requirement order and omit installed packages' || return 1
-	base_initial_simulate=$(awk '/^stow --simulate .* base$/ { print NR; exit }' "$CALL_LOG")
-	app_initial_simulate=$(awk '/^stow --simulate .* app$/ { print NR; exit }' "$CALL_LOG")
+	base_initial_simulate=$(awk '/^stow --no-folding --simulate .* base$/ { print NR; exit }' "$CALL_LOG")
+	app_initial_simulate=$(awk '/^stow --no-folding --simulate .* app$/ { print NR; exit }' "$CALL_LOG")
 	install_call=$(awk '/^pkg add shared-runtime app-runtime[|]/ { print NR; exit }' "$CALL_LOG")
-	base_repeat_simulate=$(awk '/^stow --simulate .* base$/ { count++; if (count == 2) { print NR; exit } }' "$CALL_LOG")
-	app_repeat_simulate=$(awk '/^stow --simulate .* app$/ { count++; if (count == 2) { print NR; exit } }' "$CALL_LOG")
+	base_repeat_simulate=$(awk '/^stow --no-folding --simulate .* base$/ { count++; if (count == 2) { print NR; exit } }' "$CALL_LOG")
+	app_repeat_simulate=$(awk '/^stow --no-folding --simulate .* app$/ { count++; if (count == 2) { print NR; exit } }' "$CALL_LOG")
 	shared_verify=$(awk '/^pkg present shared-runtime[|]/ { count++; if (count == 2) { print NR; exit } }' "$CALL_LOG")
 	base_verify=$(awk '/^pkg present base-runtime[|]/ { count++; if (count == 2) { print NR; exit } }' "$CALL_LOG")
 	app_verify=$(awk '/^pkg present app-runtime[|]/ { count++; if (count == 2) { print NR; exit } }' "$CALL_LOG")
-	base_apply=$(awk '/^stow --verbose=2 .* base$/ { print NR; exit }' "$CALL_LOG")
-	app_apply=$(awk '/^stow --verbose=2 .* app$/ { print NR; exit }' "$CALL_LOG")
+	base_apply=$(awk '/^stow --no-folding --verbose=2 .* base$/ { print NR; exit }' "$CALL_LOG")
+	app_apply=$(awk '/^stow --no-folding --verbose=2 .* app$/ { print NR; exit }' "$CALL_LOG")
 	if [[ -z $base_initial_simulate || -z $app_initial_simulate || -z $install_call || -z $base_repeat_simulate || -z $app_repeat_simulate || \
 		-z $shared_verify || -z $base_verify || -z $app_verify || -z $base_apply || -z $app_apply || \
 		$base_initial_simulate -ge $app_initial_simulate || $app_initial_simulate -ge $install_call || \
@@ -825,7 +827,7 @@ fi'
 	assert_contains "$COMMAND_OUTPUT" 'Backups remain in $XDG_STATE_HOME/dotfiles/backups' 'backups should be reported' || return 1
 	assert_contains "$COMMAND_OUTPUT" 'Arch package demo-runtime remains installed' \
 		'removal should display retained package state through cleanup notes' || return 1
-	assert_eq $'version|HOME='"$FIXTURE_HOME"'|XDG_CONFIG_HOME='"$FIXTURE_CONFIG"'|XDG_STATE_HOME='"$FIXTURE_STATE"'|XDG_CACHE_HOME='"$FIXTURE_CACHE"$'\nstow --simulate --delete --verbose=2 --dir '"$FIXTURE_REPO"$'/config --target '"$FIXTURE_HOME"$' demo\nstow --delete --verbose=2 --dir '"$FIXTURE_REPO"$'/config --target '"$FIXTURE_HOME"' demo' \
+	assert_eq $'version|HOME='"$FIXTURE_HOME"'|XDG_CONFIG_HOME='"$FIXTURE_CONFIG"'|XDG_STATE_HOME='"$FIXTURE_STATE"'|XDG_CACHE_HOME='"$FIXTURE_CACHE"$'\nstow --no-folding --simulate --delete --verbose=2 --dir '"$FIXTURE_REPO"$'/config --target '"$FIXTURE_HOME"$' demo\nstow --no-folding --delete --verbose=2 --dir '"$FIXTURE_REPO"$'/config --target '"$FIXTURE_HOME"' demo' \
 		"$(<"$CALL_LOG")" 'removal simulation should precede deletion' || return 1
 	if [[ -e $FIXTURE_HOME/.config/demo || -L $FIXTURE_HOME/.config/demo ]]; then
 		printf '  managed package link should be gone\n' >&2
@@ -839,6 +841,114 @@ fi'
 		printf '  Stow package removal must not call the Arch package remover\n' >&2
 		return 1
 	fi
+}
+
+test_real_tmux_dependency_and_leaf_only_lifecycle() {
+	new_fixture
+	DOTFILES_TEST_INPUT='n\n' run_operation "$FIXTURE_ROOT" apply_packages bash
+
+	assert_eq 0 "$COMMAND_STATUS" 'declining the real Bash package plan should be a safe no-op' || return 1
+	assert_contains "$COMMAND_OUTPUT" $'Plan: apply packages in dependency order:\n  1. tmux (required by selection)\n  2. bash (selected)' \
+		'the real Bash plan should include tmux first' || return 1
+	assert_contains "$COMMAND_OUTPUT" 'tmux (required by tmux): installed' \
+		'the real plan should attribute the tmux Arch package to its Stow package' || return 1
+	assert_contains "$COMMAND_OUTPUT" 'fzf (required by tmux): installed' \
+		'the real plan should attribute fzf to the tmux Stow package' || return 1
+	assert_contains "$COMMAND_OUTPUT" 'thefuck (required by bash): installed' \
+		'Bash should retain its own Arch requirement' || return 1
+	if [[ $(<"$CALL_LOG") == *$'stow --no-folding --verbose=2 '* ]]; then
+		printf '  declining the real dependency plan should not mutate Stow links\n' >&2
+		return 1
+	fi
+
+	new_fixture
+	local starter=$FIXTURE_REPO/config/tmux/.local/libexec/dotfiles/tmux-starter
+	if [[ ! -f $starter ]]; then
+		printf '  the real tmux package executable is missing\n' >&2
+		return 1
+	fi
+	mkdir -p "$FIXTURE_HOME/.local/libexec/dotfiles"
+	ln -s "$starter" "$FIXTURE_HOME/.local/libexec/dotfiles/tmux-starter"
+	ln -s "$FIXTURE_REPO/config/bash/.bashrc" "$FIXTURE_HOME/.bashrc"
+	run_operation "$FIXTURE_ROOT" remove_package tmux --yes
+
+	assert_eq 1 "$COMMAND_STATUS" 'linked Bash should block removal of its real tmux dependency' || return 1
+	assert_contains "$COMMAND_OUTPUT" 'Removal blocked: linked packages depend on tmux:' \
+		'real tmux removal should explain its dependency constraint' || return 1
+	assert_contains "$COMMAND_OUTPUT" '  bash' 'real tmux removal should name Bash as the blocker' || return 1
+	assert_eq "$starter" "$(readlink -f "$FIXTURE_HOME/.local/libexec/dotfiles/tmux-starter")" \
+		'blocked removal should preserve the private starter link' || return 1
+	if [[ $(<"$CALL_LOG") == *'stow '* ]]; then
+		printf '  blocked real tmux removal should not invoke Stow\n' >&2
+		return 1
+	fi
+
+	new_fixture
+	starter=$FIXTURE_REPO/config/tmux/.local/libexec/dotfiles/tmux-starter
+	local retained_state=$FIXTURE_STATE/tmux/session-state
+	mkdir -p "$(dirname -- "$retained_state")"
+	printf 'retained tmux state\n' >"$retained_state"
+	make_fake stow 'printf "stow %s\n" "$*" >>"$DOTFILES_TEST_CALL_LOG"
+if [[ " $* " != *" --no-folding "* ]]; then
+	printf "leaf-only package operations require --no-folding\n" >&2
+	exit 78
+fi
+package=${!#}
+if [[ $package != tmux ]]; then
+	printf "unexpected package for leaf-only fake: %s\n" "$package" >&2
+	exit 79
+fi
+if [[ " $* " == *" --simulate "* ]]; then exit 0; fi
+target=$HOME/.local/libexec/dotfiles/tmux-starter
+if [[ " $* " == *" --delete "* ]]; then
+	rm -f "$target"
+else
+	mkdir -p "${target%/*}"
+	ln -s "$DOTFILES_TEST_REPO/config/tmux/.local/libexec/dotfiles/tmux-starter" "$target"
+fi'
+	DOTFILES_TEST_INPUT='y\n' run_operation "$FIXTURE_ROOT" apply_packages tmux
+
+	assert_eq 0 "$COMMAND_STATUS" 'the real tmux package should apply and run its validators' || return 1
+	assert_contains "$COMMAND_OUTPUT" 'Applied and verified package: tmux' \
+		'real tmux apply should complete syntax and executable-mode validation' || return 1
+	local parent
+	for parent in \
+		"$FIXTURE_HOME/.local" \
+		"$FIXTURE_HOME/.local/libexec" \
+		"$FIXTURE_HOME/.local/libexec/dotfiles"; do
+		if [[ ! -d $parent || -L $parent ]]; then
+			printf '  leaf-only apply should leave a real directory: %s\n' "$parent" >&2
+			return 1
+		fi
+	done
+	assert_eq "$starter" "$(readlink -f "$FIXTURE_HOME/.local/libexec/dotfiles/tmux-starter")" \
+		'leaf-only apply should link only tmux-starter to its exact source' || return 1
+
+	run_operation "$FIXTURE_ROOT" remove_package tmux --yes
+
+	assert_eq 0 "$COMMAND_STATUS" 'the real tmux package should remove cleanly' || return 1
+	assert_contains "$COMMAND_OUTPUT" 'Removed and verified package: tmux' \
+		'real tmux removal should verify the helper link is absent' || return 1
+	if [[ -e $FIXTURE_HOME/.local/libexec/dotfiles/tmux-starter || -L $FIXTURE_HOME/.local/libexec/dotfiles/tmux-starter ]]; then
+		printf '  tmux removal should remove only the helper link\n' >&2
+		return 1
+	fi
+	for parent in \
+		"$FIXTURE_HOME/.local" \
+		"$FIXTURE_HOME/.local/libexec" \
+		"$FIXTURE_HOME/.local/libexec/dotfiles"; do
+		if [[ ! -d $parent || -L $parent ]]; then
+			printf '  tmux removal should retain the real parent directory: %s\n' "$parent" >&2
+			return 1
+		fi
+	done
+	assert_eq 'retained tmux state' "$(<"$retained_state")" 'tmux state should remain after Stow removal' || return 1
+	assert_eq $'thefuck\ntmux\nfzf' "$(<"$ARCH_PACKAGE_STATE")" 'tmux and fzf should remain installed after removal' || return 1
+	local stow_calls no_folding_calls
+	stow_calls=$(awk '/^stow / { count++ } END { print count + 0 }' "$CALL_LOG")
+	no_folding_calls=$(awk '/^stow / && / --no-folding / { count++ } END { print count + 0 }' "$CALL_LOG")
+	assert_eq 4 "$stow_calls" 'real tmux apply and remove should each simulate and mutate once' || return 1
+	assert_eq "$stow_calls" "$no_folding_calls" 'every real tmux Stow call should disable directory folding'
 }
 
 set -e
@@ -875,4 +985,5 @@ run_test test_apply_includes_dependencies_in_visible_topological_order 'apply in
 run_test test_apply_stops_after_failure_and_preserves_prior_success 'apply stops after failure and preserves prior success'
 run_test test_remove_blocks_retained_linked_dependents_and_names_each 'remove blocks retained linked dependents and names each'
 run_test test_remove_simulates_unlinks_verifies_and_reports_retained_leftovers 'remove simulates, unlinks, verifies, and reports retained leftovers'
+run_test test_real_tmux_dependency_and_leaf_only_lifecycle 'real tmux dependency and leaf-only lifecycle are enforced'
 finish_tests

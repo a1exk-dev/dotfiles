@@ -16,6 +16,21 @@ alias vi='nvim'
 alias ll='lsa'
 alias ~='cd ~'
 
+tmux() {
+	if (($# == 0)); then
+		if [[ ! -x $HOME/.local/libexec/dotfiles/tmux-starter ]]; then
+			printf 'tmux: private starter unavailable or not executable: %s; recovery: reapply the tmux package\n' \
+				"$HOME/.local/libexec/dotfiles/tmux-starter" >&2
+			return 127
+		fi
+
+		"$HOME/.local/libexec/dotfiles/tmux-starter"
+		return $?
+	fi
+
+	/usr/bin/tmux "$@"
+}
+
 unset -f fuck 2>/dev/null
 
 if [[ -x /usr/bin/thefuck ]]; then

@@ -1,0 +1,166 @@
+#!/bin/sh
+
+set -u
+
+newline='
+'
+
+if [ ! -x /usr/bin/tmux ]; then
+	printf 'tmux-starter: required executable is missing or not executable: /usr/bin/tmux\n' >&2
+	exit 127
+fi
+if [ ! -x /usr/bin/fzf ]; then
+	printf 'tmux-starter: required executable is missing or not executable: /usr/bin/fzf\n' >&2
+	exit 127
+fi
+
+# A stale TMUX environment can outlive its pane. Check every pane on a live
+# socket before deciding whether to refuse nesting or clear the leaked values.
+if [ -n "${TMUX-}" ]; then
+	tmux_socket=
+	tmux_without_session=${TMUX%,*}
+	tmux_session_id=${TMUX##*,}
+	if [ "$tmux_without_session" != "$TMUX" ] && [ -n "$tmux_session_id" ]; then
+		tmux_socket_candidate=${tmux_without_session%,*}
+		tmux_client_pid=${tmux_without_session##*,}
+		if [ "$tmux_socket_candidate" != "$tmux_without_session" ] && \
+			[ -n "$tmux_socket_candidate" ] && [ -n "$tmux_client_pid" ]; then
+			tmux_socket=$tmux_socket_candidate
+		fi
+	fi
+
+	panes_status=1
+	pane_ttys=
+	if [ -n "$tmux_socket" ]; then
+		pane_ttys=$(
+			unset TMUX TMUX_PANE
+			/usr/bin/tmux -S "$tmux_socket" list-panes -a -F '#{pane_tty}' 2>/dev/null
+		)
+		panes_status=$?
+	fi
+
+	if [ "$panes_status" -eq 0 ]; then
+		if ! current_tty=$(/usr/bin/tty 2>/dev/null) || [ -z "$current_tty" ]; then
+			printf 'tmux-starter: tmux has a live pane socket but cannot determine the current TTY; refusing to nest sessions\n' >&2
+			exit 1
+		fi
+		case "$newline$pane_ttys$newline" in
+			*"$newline$current_tty$newline"*)
+				printf 'tmux-starter: already running inside tmux; refusing to nest sessions\n' >&2
+				exit 1
+				;;
+		esac
+	fi
+fi
+
+unset TMUX TMUX_PANE
+
+tab='	'
+session_format='#{session_id}	#{session_name}	#{session_windows}	#{?session_attached,attached,detached}'
+placeholder_id=-
+
+while :; do
+	sessions=$(/usr/bin/tmux list-sessions -F "$session_format" 2>/dev/null)
+	list_status=$?
+	if [ "$list_status" -ne 0 ] || [ -z "$sessions" ]; then
+		rows=$(printf '%s\t%s\n' "$placeholder_id" 'No tmux sessions are running')
+	else
+		rows=$(
+			printf '%s\n' "$sessions" |
+				while IFS="$tab" read -r session_id session_name window_count attachment_state; do
+					[ -n "$session_id" ] || continue
+					case $window_count in
+						1) window_label=window ;;
+						*) window_label=windows ;;
+					esac
+					printf '%s\t%s\t%s %s\t%s\n' \
+						"$session_id" "$session_name" "$window_count" "$window_label" "$attachment_state"
+				done
+		)
+		if [ -z "$rows" ]; then
+			rows=$(printf '%s\t%s\n' "$placeholder_id" 'No tmux sessions are running')
+		fi
+	fi
+
+	fzf_status=0
+	selection=$(
+		printf '%s\n' "$rows" |
+			(
+				unset FZF_DEFAULT_OPTS FZF_DEFAULT_OPTS_FILE
+				/usr/bin/fzf \
+					--delimiter="$tab" \
+					--with-nth=2.. \
+					--expect=ctrl-n,ctrl-x \
+					--layout=reverse \
+					--border \
+					--prompt='tmux session> ' \
+					--header='Enter opens selected session | Ctrl-N creates/attaches | Ctrl-X kills selected after confirmation | Esc cancels'
+			)
+	) || fzf_status=$?
+
+	case $fzf_status in
+		0) ;;
+		1|130) exit 0 ;;
+		*) exit "$fzf_status" ;;
+	esac
+
+	case $selection in
+		*"$newline"*)
+			key=${selection%%"$newline"*}
+			row=${selection#*"$newline"}
+			;;
+		*)
+			key=$selection
+			row=
+			;;
+	esac
+
+	target=
+	case $row in
+		*"$tab"*) target=${row%%"$tab"*} ;;
+	esac
+
+	case $key in
+		ctrl-n)
+			printf 'Session name [Work]: '
+			if ! IFS= read -r session_name; then
+				exit 0
+			fi
+			[ -n "$session_name" ] || session_name=Work
+			# Verified with tmux 3.7b: client PWD starts new sessions, while omitting
+			# -c prevents new-session -A from changing an existing session path.
+			exec /usr/bin/tmux new-session -A -s "$session_name"
+			;;
+		ctrl-x)
+			if [ -z "$target" ] || [ "$target" = "$placeholder_id" ]; then
+				continue
+			fi
+			session_name=$(/usr/bin/tmux display-message -p -t "$target" '#{session_name}')
+			display_status=$?
+			if [ "$display_status" -ne 0 ]; then
+				printf 'tmux-starter: could not resolve selected session %s\n' "$target" >&2
+				exit "$display_status"
+			fi
+			printf "Kill session '%s'? [y/N] " "$session_name"
+			if ! IFS= read -r confirmation; then
+				continue
+			fi
+			case $confirmation in
+				[yY]|[yY][eE][sS]) ;;
+				*) continue ;;
+			esac
+			/usr/bin/tmux kill-session -t "$target"
+			kill_status=$?
+			if [ "$kill_status" -ne 0 ]; then
+				exit "$kill_status"
+			fi
+			;;
+		'')
+			if [ -z "$target" ] || [ "$target" = "$placeholder_id" ]; then
+				exit 0
+			fi
+			exec /usr/bin/tmux attach-session -t "$target"
+			;;
+		*) exit 0 ;;
+	esac
+done

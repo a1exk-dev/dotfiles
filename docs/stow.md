@@ -4,6 +4,8 @@ A Stow package manages one application or one closely related configuration conc
 
 GNU Stow links tracked files into the home directory. It does not copy them.
 
+Package operations disable Stow directory folding when they create links. New parent paths stay as ordinary directories, and each tracked file gets its own link. A link created by an older version can stay folded until you remove and reapply its package.
+
 ## Start the Dotfiles wizard
 
 ```bash

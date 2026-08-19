@@ -15,6 +15,197 @@ bind_thefuck_fixture() {
 	)
 }
 
+bind_tmux_fixture() {
+	local executable=$1
+
+	BWRAP_EXTRA_ARGS+=(--ro-bind "$executable" /usr/bin/tmux)
+}
+
+make_private_tmux_starter() {
+	local body=$1
+	local target=$FIXTURE_HOME/.local/libexec/dotfiles/tmux-starter
+
+	mkdir -p "${target%/*}"
+	make_fake tmux-starter "$body"
+	mv "$FIXTURE_BIN/tmux-starter" "$target"
+}
+
+test_interactive_bash_bare_tmux_uses_private_starter_and_command_bypasses_wrapper() {
+	new_fixture
+	mkdir -p "$FIXTURE_OMARCHY/default/bash"
+	printf '%s\n' ':' >"$FIXTURE_OMARCHY/default/bash/rc"
+	make_private_tmux_starter '
+printf "STARTER_ARG_COUNT<%s>\n" "$#" >>"$DOTFILES_TEST_CALL_LOG"
+exit 37'
+	make_fake tmux '
+printf "OFFICIAL_ARG_COUNT<%s>\n" "$#" >>"$DOTFILES_TEST_CALL_LOG"
+exit 41'
+	mv "$FIXTURE_BIN/tmux" "$FIXTURE_ROOT/official-tmux"
+	bind_tmux_fixture "$FIXTURE_ROOT/official-tmux"
+
+	run_in_sandbox "$FIXTURE_ROOT" "$FIXTURE_BIN:/usr/bin:/bin" \
+		bash --noprofile --rcfile "$FIXTURE_REPO/config/bash/.bashrc" -i -c '
+			tmux
+			printf "STARTER_STATUS<%s>\n" "$?"
+			command tmux
+			printf "BYPASS_STATUS<%s>\n" "$?"
+		'
+
+	local calls
+	calls=$(<"$CALL_LOG")
+	assert_eq 0 "$COMMAND_STATUS" 'interactive tmux probe should complete' || return 1
+	assert_contains "$COMMAND_OUTPUT" 'STARTER_STATUS<37>' \
+		'a bare tmux call should return the private starter status' || return 1
+	assert_contains "$COMMAND_OUTPUT" 'BYPASS_STATUS<41>' \
+		'command tmux should bypass the wrapper and return the executable status' || return 1
+	assert_eq $'STARTER_ARG_COUNT<0>\nOFFICIAL_ARG_COUNT<0>' "$calls" \
+		'the wrapper and explicit bypass should invoke only their exact targets'
+}
+
+test_interactive_bash_bare_tmux_reports_unavailable_private_starter() {
+	new_fixture
+	mkdir -p "$FIXTURE_OMARCHY/default/bash" "$FIXTURE_HOME/.local/libexec/dotfiles"
+	printf '%s\n' ':' >"$FIXTURE_OMARCHY/default/bash/rc"
+	make_fake tmux 'printf "UNEXPECTED_OFFICIAL_CALL\n" >>"$DOTFILES_TEST_CALL_LOG"; exit 91'
+	mv "$FIXTURE_BIN/tmux" "$FIXTURE_ROOT/official-tmux"
+	bind_tmux_fixture "$FIXTURE_ROOT/official-tmux"
+
+	run_in_sandbox "$FIXTURE_ROOT" "$FIXTURE_BIN:/usr/bin:/bin" \
+		bash --noprofile --rcfile "$FIXTURE_REPO/config/bash/.bashrc" -i -c '
+			missing_output=$(tmux 2>&1)
+			missing_status=$?
+			: >"$HOME/.local/libexec/dotfiles/tmux-starter"
+			non_executable_output=$(tmux 2>&1)
+			non_executable_status=$?
+			printf "MISSING_STATUS<%s>\n" "$missing_status"
+			printf "MISSING_OUTPUT<%s>\n" "$missing_output"
+			printf "NON_EXECUTABLE_STATUS<%s>\n" "$non_executable_status"
+			printf "NON_EXECUTABLE_OUTPUT<%s>\n" "$non_executable_output"
+		'
+
+	local calls expected_error
+	calls=$(<"$CALL_LOG")
+	expected_error="tmux: private starter unavailable or not executable: $FIXTURE_HOME/.local/libexec/dotfiles/tmux-starter; recovery: reapply the tmux package"
+	assert_eq 0 "$COMMAND_STATUS" 'unavailable private starter probe should complete' || return 1
+	assert_contains "$COMMAND_OUTPUT" 'MISSING_STATUS<127>' \
+		'a missing private starter should return 127' || return 1
+	assert_contains "$COMMAND_OUTPUT" "MISSING_OUTPUT<$expected_error>" \
+		'a missing private starter should name its path and package recovery' || return 1
+	assert_contains "$COMMAND_OUTPUT" 'NON_EXECUTABLE_STATUS<127>' \
+		'a non-executable private starter should return 127' || return 1
+	assert_contains "$COMMAND_OUTPUT" "NON_EXECUTABLE_OUTPUT<$expected_error>" \
+		'a non-executable private starter should name its path and package recovery' || return 1
+	assert_eq '' "$calls" 'an unavailable private starter must not fall back to tmux'
+}
+
+test_interactive_bash_tmux_arguments_use_exact_executable() {
+	new_fixture
+	mkdir -p "$FIXTURE_OMARCHY/default/bash"
+	printf '%s\n' ':' >"$FIXTURE_OMARCHY/default/bash/rc"
+	make_private_tmux_starter 'printf "UNEXPECTED_STARTER_CALL\n" >>"$DOTFILES_TEST_CALL_LOG"; exit 92'
+	make_fake tmux '
+printf "OFFICIAL_ARG_COUNT<%s>\n" "$#" >>"$DOTFILES_TEST_CALL_LOG"
+argument_index=0
+for argument in "$@"; do
+	argument_index=$((argument_index + 1))
+	printf "OFFICIAL_ARG_%s<%s>\n" "$argument_index" "$argument" >>"$DOTFILES_TEST_CALL_LOG"
+done
+exit 23'
+	mv "$FIXTURE_BIN/tmux" "$FIXTURE_ROOT/official-tmux"
+	make_fake tmux 'printf "PATH_SHADOW_INVOKED\n" >>"$DOTFILES_TEST_CALL_LOG"; exit 93'
+	bind_tmux_fixture "$FIXTURE_ROOT/official-tmux"
+
+	run_in_sandbox "$FIXTURE_ROOT" "$FIXTURE_BIN:/usr/bin:/bin" \
+		bash --noprofile --rcfile "$FIXTURE_REPO/config/bash/.bashrc" -i -c '
+			tmux list-sessions -F "session <#{session_name}>"
+			printf "TMUX_STATUS<%s>\n" "$?"
+		'
+
+	local calls
+	calls=$(<"$CALL_LOG")
+	assert_eq 0 "$COMMAND_STATUS" 'tmux argument forwarding probe should complete' || return 1
+	assert_contains "$COMMAND_OUTPUT" 'TMUX_STATUS<23>' \
+		'tmux arguments should return the exact executable status' || return 1
+	assert_eq $'OFFICIAL_ARG_COUNT<3>\nOFFICIAL_ARG_1<list-sessions>\nOFFICIAL_ARG_2<-F>\nOFFICIAL_ARG_3<session <#{session_name}>>' "$calls" \
+		'tmux arguments should preserve boundaries and reject the PATH shadow'
+}
+
+test_interactive_bash_retains_tmux_alias_and_stable_wrapper_on_reload() {
+	new_fixture
+	mkdir -p "$FIXTURE_OMARCHY/default/bash"
+	printf '%s\n' "alias t='tmux attach || tmux new -s Work'" >"$FIXTURE_OMARCHY/default/bash/rc"
+	make_private_tmux_starter 'printf "UNEXPECTED_STARTER_CALL\n" >>"$DOTFILES_TEST_CALL_LOG"; exit 92'
+	make_fake tmux '
+printf "OFFICIAL_ARG_COUNT<%s>\n" "$#" >>"$DOTFILES_TEST_CALL_LOG"
+argument_index=0
+for argument in "$@"; do
+	argument_index=$((argument_index + 1))
+	printf "OFFICIAL_ARG_%s<%s>\n" "$argument_index" "$argument" >>"$DOTFILES_TEST_CALL_LOG"
+done
+[[ ${1-} != attach ]]'
+	mv "$FIXTURE_BIN/tmux" "$FIXTURE_ROOT/official-tmux"
+	bind_tmux_fixture "$FIXTURE_ROOT/official-tmux"
+
+	run_in_sandbox "$FIXTURE_ROOT" "$FIXTURE_BIN:/usr/bin:/bin" \
+		bash --noprofile --rcfile "$FIXTURE_REPO/config/bash/.bashrc" -i -c '
+			first_definition=$(declare -f tmux 2>/dev/null || true)
+			source "$1"
+			source "$1"
+			second_definition=$(declare -f tmux 2>/dev/null || true)
+			if [[ -n $first_definition && $first_definition == "$second_definition" ]]; then
+				stable=yes
+			else
+				stable=no
+			fi
+			printf "TMUX_TYPE<%s>\n" "$(type -t tmux 2>/dev/null || true)"
+			printf "TMUX_STABLE<%s>\n" "$stable"
+			printf "T_ALIAS<%s>\n" "$(alias t 2>/dev/null || true)"
+			t
+			printf "T_STATUS<%s>\n" "$?"
+		' bash "$FIXTURE_REPO/config/bash/.bashrc"
+
+	local calls
+	calls=$(<"$CALL_LOG")
+	assert_eq 0 "$COMMAND_STATUS" 'tmux alias reload probe should complete' || return 1
+	assert_contains "$COMMAND_OUTPUT" 'TMUX_TYPE<function>' \
+		'interactive Bash should expose tmux as a function' || return 1
+	assert_contains "$COMMAND_OUTPUT" 'TMUX_STABLE<yes>' \
+		'repeated sourcing should leave the same tmux function' || return 1
+	assert_contains "$COMMAND_OUTPUT" "T_ALIAS<alias t='tmux attach || tmux new -s Work'>" \
+		'the exact Omarchy t alias should remain unchanged' || return 1
+	assert_contains "$COMMAND_OUTPUT" 'T_STATUS<0>' \
+		'the Omarchy t alias should fall through from attach to new' || return 1
+	assert_eq $'OFFICIAL_ARG_COUNT<1>\nOFFICIAL_ARG_1<attach>\nOFFICIAL_ARG_COUNT<3>\nOFFICIAL_ARG_1<new>\nOFFICIAL_ARG_2<-s>\nOFFICIAL_ARG_3<Work>' "$calls" \
+		'the Omarchy t alias should use the wrapper argument path'
+}
+
+test_noninteractive_bash_does_not_define_tmux_wrapper() {
+	new_fixture
+	mkdir -p "$FIXTURE_OMARCHY/default/bash"
+	printf '%s\n' 'OMARCHY_RC_SOURCED=yes' >"$FIXTURE_OMARCHY/default/bash/rc"
+	make_private_tmux_starter 'printf "UNEXPECTED_STARTER_CALL\n" >>"$DOTFILES_TEST_CALL_LOG"'
+	make_fake tmux 'printf "UNEXPECTED_OFFICIAL_CALL\n" >>"$DOTFILES_TEST_CALL_LOG"'
+	mv "$FIXTURE_BIN/tmux" "$FIXTURE_ROOT/official-tmux"
+	bind_tmux_fixture "$FIXTURE_ROOT/official-tmux"
+
+	run_in_sandbox "$FIXTURE_ROOT" "$FIXTURE_BIN:/usr/bin:/bin" \
+		/usr/bin/bash --noprofile --norc -c '
+			source "$1"
+			if declare -F tmux >/dev/null; then tmux_function=present; else tmux_function=missing; fi
+			printf "TMUX_FUNCTION<%s>\n" "$tmux_function"
+			printf "OMARCHY_RC_SOURCED<%s>\n" "${OMARCHY_RC_SOURCED-no}"
+		' bash "$FIXTURE_REPO/config/bash/.bashrc"
+
+	local calls
+	calls=$(<"$CALL_LOG")
+	assert_eq 0 "$COMMAND_STATUS" 'non-interactive tmux source should succeed' || return 1
+	assert_contains "$COMMAND_OUTPUT" 'TMUX_FUNCTION<missing>' \
+		'non-interactive Bash should not define the tmux wrapper' || return 1
+	assert_contains "$COMMAND_OUTPUT" 'OMARCHY_RC_SOURCED<no>' \
+		'non-interactive Bash should return before Omarchy defaults' || return 1
+	assert_eq '' "$calls" 'non-interactive sourcing should not invoke tmux or its starter'
+}
+
 test_interactive_bash_reloads_shortcuts_without_reloading_omarchy() {
 	new_fixture
 	mkdir -p "$FIXTURE_OMARCHY/default/bash"
@@ -398,6 +589,16 @@ test_noninteractive_bash_does_not_define_or_invoke_thefuck() {
 }
 
 set -e
+run_test test_interactive_bash_bare_tmux_uses_private_starter_and_command_bypasses_wrapper \
+	'interactive Bash sends bare tmux to its private starter and retains command bypass'
+run_test test_interactive_bash_bare_tmux_reports_unavailable_private_starter \
+	'interactive Bash reports an unavailable private tmux starter'
+run_test test_interactive_bash_tmux_arguments_use_exact_executable \
+	'interactive Bash sends tmux arguments to the exact executable'
+run_test test_interactive_bash_retains_tmux_alias_and_stable_wrapper_on_reload \
+	'interactive Bash retains the tmux alias and stable wrapper on reload'
+run_test test_noninteractive_bash_does_not_define_tmux_wrapper \
+	'non-interactive Bash does not define the tmux wrapper'
 run_test test_interactive_bash_reloads_shortcuts_without_reloading_omarchy \
 	'interactive Bash reloads shortcuts without reloading Omarchy'
 run_test test_interactive_bash_uses_neovim_for_vi_and_keeps_omarchy_defaults \

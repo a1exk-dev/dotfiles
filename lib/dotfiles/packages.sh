@@ -193,7 +193,7 @@ simulate_apply_package() {
 	local package=$1
 	printf 'Plan simulation: apply %s\n' "$package"
 	report_normal_target_conflicts "$package"
-	if ! stow --simulate --verbose=2 --dir "$REPOSITORY_ROOT/config" --target "$HOME" "$package"; then
+	if ! stow --no-folding --simulate --verbose=2 --dir "$REPOSITORY_ROOT/config" --target "$HOME" "$package"; then
 		phase_error apply "$package" 'resolve the reported target conflict without deleting it, then rerun the Dotfiles wizard and choose Apply Stow packages'
 		return 1
 	fi
@@ -205,7 +205,7 @@ apply_one_package() {
 	package_json=$(jq -c --arg package "$package" '.packages[] | select(.name == $package)' "$PACKAGE_CATALOG")
 
 	printf 'Phase: apply (%s)\n' "$package"
-	if ! stow --verbose=2 --dir "$REPOSITORY_ROOT/config" --target "$HOME" "$package"; then
+	if ! stow --no-folding --verbose=2 --dir "$REPOSITORY_ROOT/config" --target "$HOME" "$package"; then
 		phase_error apply "$package" 'inspect HOME for partial links, then rerun the Dotfiles wizard and choose Apply Stow packages'
 		return 1
 	fi
@@ -217,7 +217,7 @@ apply_one_package() {
 		target=$HOME/$relative
 		if [[ ( ! -e $target && ! -L $target ) || $(readlink -f -- "$target") != "$(readlink -f -- "$source")" ]]; then
 			printf 'Expected link is missing or incorrect: %s -> %s\n' "$target" "$source" >&2
-			phase_error verify "$package" "remove partial links with: stow --delete --dir '$REPOSITORY_ROOT/config' --target '$HOME' '$package'; then choose Apply Stow packages in the Dotfiles wizard"
+			phase_error verify "$package" "remove partial links with: stow --no-folding --delete --dir '$REPOSITORY_ROOT/config' --target '$HOME' '$package'; then choose Apply Stow packages in the Dotfiles wizard"
 			return 1
 		fi
 	done < <(find "$REPOSITORY_ROOT/config/$package" \( -type f -o -type l \) -print0)
@@ -468,7 +468,7 @@ migrate_target() {
 	# Migration changes the package tree after its initial conflict review, so validate the new tree before applying it.
 	if ! simulate_apply_package "$package" || ! apply_one_package "$package"; then
 		printf 'Backup retained: %s\n' "$backup" >&2
-		printf 'Recovery: remove any repository-owned partial links with: stow --delete --dir %q --target %q %q; then restore the original target with: cp --archive %q %q; then choose Migrate existing target in the Dotfiles wizard\n' \
+		printf 'Recovery: remove any repository-owned partial links with: stow --no-folding --delete --dir %q --target %q %q; then restore the original target with: cp --archive %q %q; then choose Migrate existing target in the Dotfiles wizard\n' \
 			"$REPOSITORY_ROOT/config" "$HOME" "$package" "$backup" "$target" >&2
 		return 1
 	fi
@@ -568,7 +568,7 @@ remove_package() {
 		return 1
 	fi
 	printf 'Plan simulation: remove %s\n' "$package"
-	if ! stow --simulate --delete --verbose=2 --dir "$REPOSITORY_ROOT/config" --target "$HOME" "$package"; then
+	if ! stow --no-folding --simulate --delete --verbose=2 --dir "$REPOSITORY_ROOT/config" --target "$HOME" "$package"; then
 		phase_error remove "$package" 'inspect the Stow simulation error, then choose Remove Stow package in the Dotfiles wizard'
 		return 1
 	fi
@@ -601,7 +601,7 @@ remove_package() {
 	fi
 
 	printf 'Phase: remove\n'
-	if ! stow --delete --verbose=2 --dir "$REPOSITORY_ROOT/config" --target "$HOME" "$package"; then
+	if ! stow --no-folding --delete --verbose=2 --dir "$REPOSITORY_ROOT/config" --target "$HOME" "$package"; then
 		phase_error remove "$package" 'inspect HOME for remaining links, then choose Remove Stow package in the Dotfiles wizard'
 		return 1
 	fi

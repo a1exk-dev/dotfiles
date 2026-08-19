@@ -6,6 +6,7 @@ readonly TEST_ROOT=$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)
 readonly SUITES=(
 	inspection_test.sh
 	bash_test.sh
+	tmux_test.sh
 	packages_test.sh
 	skills_test.sh
 	cleanup_test.sh

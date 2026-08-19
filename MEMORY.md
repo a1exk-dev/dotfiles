@@ -68,9 +68,9 @@ Reason: The repository has no current machine-specific requirement to design aro
 
 Applies when: Adding, applying, editing, verifying, or removing a Stow package.
 
-Guidance: Edit tracked files inside the repository. Run a Stow dry run, stop and show any existing-file conflict, verify the expected links, and verify clean removal. Target the user's home directory by default; decide any other target with the human when a concrete need appears. Before migration, resolve symlinks and prove both the existing target and repository destination remain inside their canonical ownership roots.
+Guidance: Edit tracked files inside the repository. Run every Stow operation with `--no-folding` so new deployments link leaf targets. Preserve valid older folded links until their package is removed and reapplied. Dry-run each change, stop and show any existing-file conflict, and verify the expected links and clean removal. Target the user's home directory by default; decide any other target with the human when a concrete need appears. Before migration, resolve symlinks and prove both the existing target and repository destination remain inside their canonical ownership roots.
 
-Reason: Repository-owned symlinks must remain predictable and must not replace user files without a decision.
+Reason: Repository-owned links must not replace user files or claim parent directories shared with other packages.
 
 ## Escalate full Omarchy replacements
 

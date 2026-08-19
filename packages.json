@@ -3,7 +3,7 @@
 		"name": "bash",
 		"path": "config/bash",
 		"description": "Omarchy Bash user configuration",
-		"dependencies": [],
+		"dependencies": ["tmux"],
 		"arch_packages": ["thefuck"],
 		"prerequisites": [],
 		"validators": [
@@ -14,6 +14,22 @@
 		"cleanup": [
 			"Removing this package leaves ~/.bashrc absent; migration backups remain under the Dotfiles XDG state backup tree",
 			"Arch package thefuck remains installed"
+		]
+	}, {
+		"name": "tmux",
+		"path": "config/tmux",
+		"description": "Private tmux session starter",
+		"dependencies": [],
+		"arch_packages": ["tmux", "fzf"],
+		"prerequisites": [],
+		"validators": [
+			"sh -n \"$HOME/.local/libexec/dotfiles/tmux-starter\"",
+			"sh -c 'test -x \"$HOME/.local/libexec/dotfiles/tmux-starter\"'"
+		],
+		"documentation": "docs/tmux.md",
+		"cleanup": [
+			"Arch packages tmux and fzf remain installed",
+			"The tmux server, sessions, logs, and state are not removed"
 		]
 	}, {
 		"name": "ghostty",

@@ -54,8 +54,8 @@ test_bash_apply_standalone_uses_one_multiselect_and_dependency_order() {
 	assert_contains "$COMMAND_OUTPUT" $'Plan: apply packages in dependency order:\n  1. base (required by selection)\n  2. app (selected)' 'apply should resolve and show the complete dependency plan' || return 1
 	assert_eq 1 "$(awk '/Apply this complete Stow plan[?]/ { count++ } END { print count + 0 }' <<<"$COMMAND_OUTPUT")" 'apply should confirm the complete plan once' || return 1
 	local base_apply app_apply
-	base_apply=$(awk '/^stow --verbose=2 .* base$/ { print NR; exit }' "$CALL_LOG")
-	app_apply=$(awk '/^stow --verbose=2 .* app$/ { print NR; exit }' "$CALL_LOG")
+	base_apply=$(awk '/^stow --no-folding --verbose=2 .* base$/ { print NR; exit }' "$CALL_LOG")
+	app_apply=$(awk '/^stow --no-folding --verbose=2 .* app$/ { print NR; exit }' "$CALL_LOG")
 	[[ -n $base_apply && -n $app_apply && $base_apply -lt $app_apply ]]
 }
 
@@ -214,7 +214,7 @@ test_guided_setup_phase_four_uses_arch_aware_apply_flow() {
 		'guided phase 4 should use the shared installation and verification path' || return 1
 	assert_eq 1 "$(awk '/Apply this complete Stow plan[?]/ { count++ } END { print count + 0 }' <<<"$COMMAND_OUTPUT")" \
 		'guided phase 4 should keep one complete Stow-plan confirmation' || return 1
-	assert_eq 2 "$(awk '/^stow --simulate .* demo$/ { count++ } END { print count + 0 }' "$CALL_LOG")" \
+	assert_eq 2 "$(awk '/^stow --no-folding --simulate .* demo$/ { count++ } END { print count + 0 }' "$CALL_LOG")" \
 		'guided phase 4 should repeat simulation after installing a requirement' || return 1
 	assert_eq 1 "$(awk '/^pkg add demo-runtime[|]/ { count++ } END { print count + 0 }' "$CALL_LOG")" \
 		'guided phase 4 should install the missing requirement once' || return 1

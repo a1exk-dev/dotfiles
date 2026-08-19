@@ -65,6 +65,7 @@ make test
 
 - [Stow workflow](docs/stow.md)
 - [Bash](docs/bash.md)
+- [Tmux](docs/tmux.md)
 - [Ghostty](docs/ghostty.md)
 - [Application cleanup](docs/cleanup.md)
 - [Agent setup](docs/agent-setup.md)
