@@ -80,6 +80,14 @@ Guidance: Prefer an Omarchy-supported override. Track a full configuration only 
 
 Reason: Omarchy should continue to own its packaged defaults wherever its customization seams are sufficient.
 
+## Own tmux configuration as a full replacement
+
+Applies when: Implementing or maintaining tmux configuration.
+
+Guidance: Use the existing `tmux` Stow package to own a complete `config/tmux/.config/tmux/tmux.conf` for `~/.config/tmux/tmux.conf`. Seed it from the packaged Omarchy 4 baseline; inspect and back up the prior live file without adopting it. Track neither a pristine baseline snapshot nor a sourced drop-in. Removal leaves the active config absent and reports `omarchy refresh tmux` as the explicit baseline-restoration step.
+
+Reason: Omarchy 4 has no stable tmux override seam; a sourced drop-in loses its include on refresh, while direct live edits are not portable or repository-owned.
+
 ## Stop before tracking sensitive values
 
 Applies when: Candidate content contains a credential, token, session value, account identifier, or other sensitive value.
