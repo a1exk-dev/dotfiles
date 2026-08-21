@@ -144,6 +144,14 @@ Guidance: Treat the resulting repository-source edit as a proposed Git change. C
 
 Reason: Omarchy file operations can follow the symlink and modify the repository-owned source instead of isolated live state.
 
+## Fail Starship validation on diagnostics
+
+Applies when: Validating a Starship configuration or adding its package validators and focused tests.
+
+Guidance: Run `starship print-config` with a fresh isolated `STARSHIP_CACHE` and a fixed `STARSHIP_SESSION_KEY`, and require both a successful status and empty standard error. Use controlled `starship prompt` or `starship module` renders to verify behavior and appearance.
+
+Reason: Starship 1.26.0 can report malformed TOML or invalid values on standard error, fall back to defaults, and still return status 0; its cache can also suppress repeated diagnostics.
+
 ## Write safe Bash installers
 
 Applies when: A package-specific installer is approved.
