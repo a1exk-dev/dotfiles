@@ -4,7 +4,7 @@ The `starship` Stow package owns one leaf target:
 
 - `~/.config/starship.toml`, linked from `config/starship/.config/starship.toml`
 
-The tracked file is a complete replacement captured byte for byte from the Omarchy 4 baseline at `/usr/share/omarchy/config/starship.toml`. Keep packaged files below `/usr/share/omarchy/` read-only. They are comparison and recovery inputs, not files to edit or track again.
+The tracked config started as a byte-for-byte capture of Omarchy 4's `/usr/share/omarchy/config/starship.toml`. Its only intentional difference is the Git status counts described below. Keep packaged files under `/usr/share/omarchy/` read-only; they are comparison and recovery inputs.
 
 The package does not own:
 
@@ -21,11 +21,19 @@ The package requires the official Arch `starship` package. If it is missing, the
 
 The `bash` and `starship` Stow packages are independent. Omarchy's packaged Bash defaults continue to initialize Starship. The `starship` package supplies only `~/.config/starship.toml`; it does not add a prompt hook or set `STARSHIP_CONFIG`. Either Stow package can be applied or removed without the other.
 
-## Unchanged Omarchy baseline
+## Prompt behavior
 
-Repository ownership does not change the Omarchy 4 prompt. The tracked baseline keeps the 200 ms command timeout, two-component directory truncation, read-only indicator, current module roster, compact Git information, success and error characters, and existing context-sensitive visibility.
+The prompt still uses a 200 ms command timeout, two directory components, the read-only lock, and Omarchy's existing module roster. It remains one line and keeps the same order, spacing, glyphs, text styles, and terminal `cyan`.
 
-It also keeps the baseline module order and grouping, one-line layout, spacing, separators, glyphs, text styles, and named terminal `cyan`. It adds no archived Powerline structure, two-line layout, icon, substitution, status notation, custom color name, typography, capability, or presentation change.
+## Git status counts
+
+Compared with Omarchy's packaged baseline, the tracked config adds a file count to three existing markers:
+
+- Conflict: `${count} `
+- Modified: `${count} `
+- Untracked: `?${count} `
+
+Starship replaces `${count}` at runtime. For example, two modified files render as `2 `. Ahead, behind, diverged, stash, staged, renamed, deleted, status order, layout, and colors are unchanged. No other archived setting is active.
 
 ## Apply
 
@@ -37,7 +45,9 @@ make
 
 Choose `Apply Stow packages` and select `starship`. The wizard checks the supported Omarchy version, plans the official Arch requirement when needed, simulates the leaf link with `--no-folding`, asks for confirmation, applies the package, verifies the link, and runs the strict config validator.
 
-The repository's one-time baseline capture used `Migrate existing target` only while `config/starship/.config/starship.toml` was empty. Before migration, the live file had to be a contained regular file and byte-for-byte equal to the packaged Omarchy baseline. The normal migration action then created its timestamped XDG-state backup, moved the approved file without clobbering a destination, linked it, and validated it. The baseline checkpoint records one byte count and digest for the pre-migration live file, reported backup, tracked source, and packaged baseline. It also verifies the exact leaf link, package status, strict validation, and controlled renders.
+The repository used `Migrate existing target` once, while `config/starship/.config/starship.toml` was empty. Before migration, the live file was a regular file inside the home directory and matched Omarchy's packaged baseline byte for byte. Migration backed it up to XDG state, moved it into the Stow package, linked it, and validated it.
+
+At that checkpoint, the live file, backup, initial tracked source, and packaged baseline shared one byte count and digest. The backup remains unchanged. The current tracked config differs only by the Git status counts above.
 
 In a normal clone, the tracked destination already exists. Do not use `Migrate existing target` or `stow --adopt` for a regular `~/.config/starship.toml`. Use the procedure below.
 
@@ -226,7 +236,7 @@ An equivalent manual check is:
 
 ## Controlled prompt tests
 
-Computed-config validation does not prove prompt behavior or appearance. The focused suite runs real `starship prompt` and `starship module` commands in scrubbed environments with fixed locale, timezone, shell, paths, status, duration, jobs, width, Git state, and session keys, plus a fresh isolated cache for each run. It checks raw ANSI and glyph bytes for success, failure, deep-path truncation, read-only directories, and clean and dirty Git states, and it rejects standard-error diagnostics.
+Computed-config validation does not prove prompt behavior or appearance. The focused suite runs real `starship prompt` and `starship module` commands in a fixed, isolated environment. It checks exact ANSI and glyph output for normal prompts, path handling, read-only directories, Git states, and one-file and multi-file counts. Any Starship diagnostic fails the test.
 
 The focused suite requires Starship 1.26.0:
 
@@ -253,6 +263,8 @@ diff -u -- \
 	/usr/share/omarchy/config/starship.toml \
 	config/starship/.config/starship.toml
 ```
+
+The expected diff is limited to the three markers under [Git status counts](#git-status-counts). Stop and investigate any other difference.
 
 Review relevant new Omarchy migrations and hooks before accepting update-related behavior. Decide which packaged changes belong in the tracked replacement, then repeat strict validation and the focused prompt tests. When the repository changes its supported Omarchy target, also audit the new migration behavior and repeat the complete package lifecycle checks.
 
@@ -377,6 +389,6 @@ make
 
 Choose `Apply Stow packages` and select `starship`. Review the simulation and complete plan. The normal `--no-folding` lifecycle Restows the package from the new clone and runs its link audit and validator. Then repeat the canonical link check and use `Package status` to confirm that `starship` is `linked`. The live link must resolve to `config/starship/.config/starship.toml` in the new clone.
 
-## Later archived features
+## Further changes
 
-The unchanged baseline checkpoint must pass byte identity, leaf-link verification, strict validation, and controlled prompt renders before any archived Starship work begins. After that checkpoint, consider only one archived capability or presentation feature at a time. Each feature needs its own decision, implementation, and focused verification before another feature is selected.
+The baseline checkpoint passed before Git counts were added. Review one further archived capability or presentation change at a time. Implement and test that change before selecting another.
