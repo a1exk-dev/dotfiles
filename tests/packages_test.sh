@@ -843,6 +843,236 @@ fi'
 	fi
 }
 
+test_real_starship_pre_migration_lifecycle() (
+	new_fixture
+	set_installed_arch_packages thefuck tmux fzf less
+	local source=$FIXTURE_REPO/config/starship/.config/starship.toml
+	local target=$FIXTURE_HOME/.config/starship.toml
+	local retained_cache=$FIXTURE_CACHE/starship/runtime-cache
+	local retained_state=$FIXTURE_STATE/starship/runtime-state
+	local real_command_bin=$FIXTURE_ROOT/real-starship-bin
+	local real_package_path=$real_command_bin:/usr/bin:/bin
+	local approved_content='add_newline = true'
+	rm -- "$source"
+	mkdir -p "$FIXTURE_HOME/.config" "$real_command_bin"
+	printf '%s\n' "$approved_content" >"$target"
+	make_fake starship '
+if [[ ${1-} != print-config || $# -ne 1 ]]; then exit 64; fi
+printf "starship %s|CONFIG=%s|CACHE=%s|SESSION=%s\n" "$*" "$STARSHIP_CONFIG" "$STARSHIP_CACHE" "$STARSHIP_SESSION_KEY" >>"$DOTFILES_TEST_CALL_LOG"
+[[ $STARSHIP_CONFIG == "$HOME/.config/starship.toml" ]] || exit 65
+[[ $STARSHIP_SESSION_KEY == dotfiles-starship-validation ]] || exit 66
+[[ -d $STARSHIP_CACHE && ! -e $STARSHIP_CACHE/invoked ]] || exit 67
+printf "invoked\n" >"$STARSHIP_CACHE/invoked"'
+	ln -s "$FIXTURE_BIN/omarchy" "$real_command_bin/omarchy"
+	ln -s "$FIXTURE_BIN/starship" "$real_command_bin/starship"
+	assert_eq /usr/bin/stow "$(PATH=$real_package_path command -v stow)" \
+		'the Starship lifecycle fixture should use real GNU Stow' || return 1
+
+	DOTFILES_TEST_PATH=$real_package_path DOTFILES_TEST_INPUT='5\n.config/starship.toml\ny\ny\n' \
+		run_dotfiles "$FIXTURE_ROOT" --action migrate
+
+	assert_eq 0 "$COMMAND_STATUS" 'the isolated initial Starship migration should succeed' || {
+		printf '  output: %s\n' "$COMMAND_OUTPUT" >&2
+		return 1
+	}
+	assert_contains "$COMMAND_OUTPUT" $'Choose a package (none selected by default)\n  1. Cancel\n  2. bash\n  3. tmux\n  4. ghostty\n  5. starship' \
+		'the public migration command should offer Bash and Starship as independent choices' || return 1
+	assert_contains "$COMMAND_OUTPUT" $'Plan: migration package order:\n  1. starship (selected; migrate and apply)' \
+		'the public migration command should plan only the selected Starship package' || return 1
+	if [[ $COMMAND_OUTPUT == *'Plan simulation: apply bash'* || $COMMAND_OUTPUT == *'Package bash prerequisites:'* ]]; then
+		printf '  selecting Starship must not include Bash in the migration plan\n' >&2
+		return 1
+	fi
+	assert_contains "$COMMAND_OUTPUT" 'starship (required by starship): will install' \
+		'the migration plan should identify the missing official Arch package' || return 1
+	assert_contains "$COMMAND_OUTPUT" 'Arch packages installed and verified: starship' \
+		'the migration should install and verify the declared Arch package' || return 1
+	assert_eq 3 "$(awk '/^Plan simulation: apply starship$/ { count++ } END { print count + 0 }' <<<"$COMMAND_OUTPUT")" \
+		'migration should simulate initially, after installation, and after moving the source' || return 1
+	assert_contains "$COMMAND_OUTPUT" 'Migrated and verified package: starship' \
+		'the public migration should complete link and validator verification' || return 1
+	assert_eq "$approved_content" "$(<"$source")" \
+		'migration should move the approved bytes into the Starship package' || return 1
+	if [[ ! -L $target ]]; then
+		printf '  migration should leave the Starship target as a leaf symlink\n' >&2
+		return 1
+	fi
+	assert_eq "$source" "$(readlink -f -- "$target")" \
+		'the migrated Starship target should resolve to its exact repository source' || return 1
+	if [[ ! -d $FIXTURE_HOME/.config || -L $FIXTURE_HOME/.config ]]; then
+		printf '  Starship migration should leave .config as an ordinary directory\n' >&2
+		return 1
+	fi
+	local -a backups=("$FIXTURE_STATE"/dotfiles/backups/starship/[0-9]*Z/.config/starship.toml)
+	assert_eq 1 "${#backups[@]}" 'Starship migration should create one timestamped XDG-state backup' || return 1
+	cmp --silent -- "$source" "${backups[0]}" || {
+		printf '  Starship source and migration backup should be byte-identical\n' >&2
+		return 1
+	}
+	if compgen -G "$FIXTURE_TMP/dotfiles-starship-validator.*" >/dev/null; then
+		printf '  successful Starship validation should remove its isolated cache root\n' >&2
+		return 1
+	fi
+
+	DOTFILES_TEST_PATH=$real_package_path run_dotfiles "$FIXTURE_ROOT" --action status
+	assert_eq 0 "$COMMAND_STATUS" 'package status should inspect migrated Starship state' || return 1
+	assert_contains "$COMMAND_OUTPUT" 'starship: linked - Complete Omarchy-based Starship prompt configuration' \
+		'package status should report Starship as linked' || return 1
+
+	mkdir -p "${retained_cache%/*}" "${retained_state%/*}"
+	printf 'cache\n' >"$retained_cache"
+	printf 'state\n' >"$retained_state"
+	DOTFILES_TEST_PATH=$real_package_path DOTFILES_TEST_INPUT='5\ny\n' \
+		run_dotfiles "$FIXTURE_ROOT" --action remove
+
+	assert_eq 0 "$COMMAND_STATUS" 'the isolated Starship package should remove cleanly' || {
+		printf '  output: %s\n' "$COMMAND_OUTPUT" >&2
+		return 1
+	}
+	assert_contains "$COMMAND_OUTPUT" 'Removed and verified package: starship' \
+		'Starship removal should verify that its leaf target is absent' || return 1
+	assert_contains "$COMMAND_OUTPUT" 'Removing this package leaves ~/.config/starship.toml absent' \
+		'Starship removal should disclose the absent config' || return 1
+	assert_contains "$COMMAND_OUTPUT" 'Arch package starship remains installed' \
+		'Starship removal should disclose the retained Arch package' || return 1
+	assert_contains "$COMMAND_OUTPUT" 'Starship cache and state are not removed' \
+		'Starship removal should disclose retained runtime data' || return 1
+	assert_contains "$COMMAND_OUTPUT" 'Migration backups remain under the Dotfiles XDG state backup tree' \
+		'Starship removal should disclose retained backups' || return 1
+	assert_contains "$COMMAND_OUTPUT" 'omarchy refresh config starship.toml' \
+		'Starship removal should report the optional baseline restoration command' || return 1
+	if [[ -e $target || -L $target ]]; then
+		printf '  Starship removal should leave the live fixture path absent\n' >&2
+		return 1
+	fi
+	assert_eq "$approved_content" "$(<"$source")" \
+		'Starship removal should retain the repository source' || return 1
+	assert_eq cache "$(<"$retained_cache")" 'Starship removal should retain cache data' || return 1
+	assert_eq state "$(<"$retained_state")" 'Starship removal should retain state data' || return 1
+	assert_eq "$approved_content" "$(<"${backups[0]}")" \
+		'Starship removal should retain migration backups' || return 1
+	assert_eq $'thefuck\ntmux\nfzf\nless\nstarship' "$(<"$ARCH_PACKAGE_STATE")" \
+		'Starship removal should retain every installed Arch package' || return 1
+	if [[ $(<"$CALL_LOG") == *'refresh config starship.toml'* || $(<"$CALL_LOG") == *'pkg drop'* ]]; then
+		printf '  Starship removal must not refresh the config or remove the Arch package\n' >&2
+		return 1
+	fi
+
+	DOTFILES_TEST_PATH=$real_package_path DOTFILES_TEST_INPUT='4\ny\n' \
+		run_dotfiles "$FIXTURE_ROOT" --action apply
+	assert_eq 0 "$COMMAND_STATUS" 'the removed Starship package should reapply successfully' || {
+		printf '  output: %s\n' "$COMMAND_OUTPUT" >&2
+		return 1
+	}
+	assert_eq "$source" "$(readlink -f -- "$target")" \
+		'reapplication should restore the exact Starship leaf link' || return 1
+	assert_eq 2 "$(awk '/^starship print-config[|]/ { count++ } END { print count + 0 }' "$CALL_LOG")" \
+		'migration and reapplication should each invoke the Starship validator once' || return 1
+	local cache cache_count=0
+	local -A validator_caches=()
+	while IFS= read -r cache; do
+		cache_count=$((cache_count + 1))
+		validator_caches["$cache"]=1
+		if [[ $cache != "$FIXTURE_TMP"/dotfiles-starship-validator.*/cache || -e $cache ]]; then
+			printf '  validator cache should be fresh, fixture-scoped, and removed: %s\n' "$cache" >&2
+			return 1
+		fi
+	done < <(awk -F 'CACHE=|[|]SESSION=' '/^starship print-config[|]/ { print $2 }' "$CALL_LOG")
+	assert_eq 2 "$cache_count" 'both lifecycle validations should report a cache' || return 1
+	assert_eq 2 "${#validator_caches[@]}" 'each lifecycle validation should receive a distinct cache' || return 1
+	assert_eq 2 "$(awk -F 'SESSION=' '/^starship print-config[|]/ && $2 == "dotfiles-starship-validation" { count++ } END { print count + 0 }' "$CALL_LOG")" \
+		'every lifecycle validation should use the fixed session key'
+)
+
+test_starship_validator_fails_on_nonzero_status_and_cleans_cache() (
+	new_fixture
+	local source=$FIXTURE_REPO/config/starship/.config/starship.toml
+	local target=$FIXTURE_HOME/.config/starship.toml
+	local real_command_bin=$FIXTURE_ROOT/real-starship-bin
+	local real_package_path=$real_command_bin:/usr/bin:/bin
+	mkdir -p "${source%/*}" "$real_command_bin"
+	printf 'add_newline = true\n' >"$source"
+	make_fake starship '
+printf "nonzero-cache=%s|session=%s\n" "$STARSHIP_CACHE" "$STARSHIP_SESSION_KEY" >>"$DOTFILES_TEST_CALL_LOG"
+printf "invoked\n" >"$STARSHIP_CACHE/invoked"
+exit 23'
+	ln -s "$FIXTURE_BIN/omarchy" "$real_command_bin/omarchy"
+	ln -s "$FIXTURE_BIN/starship" "$real_command_bin/starship"
+
+	DOTFILES_TEST_PATH=$real_package_path DOTFILES_TEST_INPUT='y\n' \
+		run_operation "$FIXTURE_ROOT" apply_packages starship
+
+	assert_eq 1 "$COMMAND_STATUS" 'a nonzero Starship status should fail package validation' || return 1
+	assert_contains "$COMMAND_OUTPUT" 'Validator failed for starship:' \
+		'the public operation should identify the failed Starship validator' || return 1
+	assert_contains "$COMMAND_OUTPUT" 'Error: verify phase failed for package starship.' \
+		'the nonzero result should fail during package verification' || return 1
+	if [[ ! -L $target || $(readlink -f -- "$target") != "$source" ]]; then
+		printf '  failed validation should leave the isolated Starship link available for recovery\n' >&2
+		return 1
+	fi
+	if compgen -G "$FIXTURE_TMP/dotfiles-starship-validator.*" >/dev/null; then
+		printf '  nonzero Starship validation should remove its isolated cache root\n' >&2
+		return 1
+	fi
+	assert_contains "$(<"$CALL_LOG")" '|session=dotfiles-starship-validation' \
+		'nonzero validation should still use the fixed session key'
+)
+
+test_starship_validator_rejects_repeated_status_zero_diagnostics_and_cleans_cache() (
+	new_fixture
+	local source=$FIXTURE_REPO/config/starship/.config/starship.toml
+	local real_command_bin=$FIXTURE_ROOT/real-starship-bin
+	local real_package_path=$real_command_bin:/usr/bin:/bin
+	mkdir -p "${source%/*}" "$real_command_bin"
+	printf 'invalid = [\n' >"$source"
+	ln -s "$FIXTURE_BIN/omarchy" "$real_command_bin/omarchy"
+
+	run_in_sandbox "$FIXTURE_ROOT" "$real_package_path" bash -c '
+		set -u
+		work=$(mktemp -d "${TMPDIR:-/tmp}/dotfiles-starship-raw.XXXXXX") || exit 1
+		cleanup() { rm -rf -- "$work"; }
+		trap cleanup EXIT
+		mkdir -p -- "$work/cache"
+		STARSHIP_CONFIG=$1 STARSHIP_CACHE=$work/cache STARSHIP_SESSION_KEY=dotfiles-starship-validation \
+			starship print-config >/dev/null 2>"$work/stderr"
+		status=$?
+		cat -- "$work/stderr" >&2
+		exit "$status"
+	' bash "$source"
+	assert_eq 0 "$COMMAND_STATUS" \
+		'Starship 1.26.0 should demonstrate the status-zero diagnostic regression' || return 1
+	assert_contains "$COMMAND_OUTPUT" 'Unable to parse the config file' \
+		'the raw status-zero command should emit a real parse diagnostic' || return 1
+	if compgen -G "$FIXTURE_TMP/dotfiles-starship-raw.*" >/dev/null; then
+		printf '  raw diagnostic proof should remove its isolated cache root\n' >&2
+		return 1
+	fi
+
+	DOTFILES_TEST_PATH=$real_package_path DOTFILES_TEST_INPUT='y\n' \
+		run_operation "$FIXTURE_ROOT" apply_packages starship
+	local first_status=$COMMAND_STATUS first_output=$COMMAND_OUTPUT
+	if compgen -G "$FIXTURE_TMP/dotfiles-starship-validator.*" >/dev/null; then
+		printf '  first diagnostic validation should remove its isolated cache root\n' >&2
+		return 1
+	fi
+	DOTFILES_TEST_PATH=$real_package_path DOTFILES_TEST_INPUT='y\n' \
+		run_operation "$FIXTURE_ROOT" apply_packages starship
+
+	assert_eq 1 "$first_status" 'the first status-zero diagnostic should fail validation' || return 1
+	assert_eq 1 "$COMMAND_STATUS" 'the repeated status-zero diagnostic should also fail validation' || return 1
+	assert_contains "$first_output" 'Unable to parse the config file' \
+		'the first validator run should preserve the real diagnostic' || return 1
+	assert_contains "$COMMAND_OUTPUT" 'Unable to parse the config file' \
+		'a fresh cache should make the fixed-session diagnostic repeat' || return 1
+	assert_contains "$COMMAND_OUTPUT" 'Validator failed for starship:' \
+		'the repeated diagnostic should fail the public package validator' || return 1
+	if compgen -G "$FIXTURE_TMP/dotfiles-starship-validator.*" >/dev/null; then
+		printf '  repeated diagnostic validation should remove its isolated cache root\n' >&2
+		return 1
+	fi
+)
+
 test_real_tmux_dependency_and_leaf_only_lifecycle() (
 	new_fixture
 	DOTFILES_TEST_INPUT='1\nn\n' run_dotfiles "$FIXTURE_ROOT" --action apply
@@ -1086,5 +1316,8 @@ run_test test_apply_includes_dependencies_in_visible_topological_order 'apply in
 run_test test_apply_stops_after_failure_and_preserves_prior_success 'apply stops after failure and preserves prior success'
 run_test test_remove_blocks_retained_linked_dependents_and_names_each 'remove blocks retained linked dependents and names each'
 run_test test_remove_simulates_unlinks_verifies_and_reports_retained_leftovers 'remove simulates, unlinks, verifies, and reports retained leftovers'
+run_test test_real_starship_pre_migration_lifecycle 'real Starship pre-migration lifecycle is enforced in isolation'
+run_test test_starship_validator_fails_on_nonzero_status_and_cleans_cache 'Starship validator fails on nonzero status and cleans its cache'
+run_test test_starship_validator_rejects_repeated_status_zero_diagnostics_and_cleans_cache 'Starship validator rejects repeated status-zero diagnostics and cleans its cache'
 run_test test_real_tmux_dependency_and_leaf_only_lifecycle 'real tmux dependency and leaf-only lifecycle are enforced'
 finish_tests

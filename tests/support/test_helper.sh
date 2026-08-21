@@ -69,7 +69,7 @@ new_fixture() {
 	printf 'outside packaged Omarchy\n' >"$OUTSIDE_ROOT/packaged-omarchy/sentinel"
 	OUTSIDE_SNAPSHOT=$(snapshot_outside_canaries)
 	: >"$CALL_LOG"
-	printf '%s\n' thefuck tmux fzf less >"$ARCH_PACKAGE_STATE"
+	printf '%s\n' thefuck tmux fzf less starship >"$ARCH_PACKAGE_STATE"
 	cp "$SOURCE_REPO/bin/dotfiles" "$FIXTURE_REPO/bin/dotfiles"
 	cp "$SOURCE_REPO/lib/dotfiles/"*.sh "$FIXTURE_REPO/lib/dotfiles/"
 	cp "$SOURCE_REPO/packages.json" "$FIXTURE_REPO/packages.json"

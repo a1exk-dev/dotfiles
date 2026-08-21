@@ -43,5 +43,23 @@
 		"validators": ["ghostty +validate-config --config-file=\"$HOME/.config/ghostty/config\""],
 		"documentation": "docs/ghostty.md",
 		"cleanup": []
+	}, {
+		"name": "starship",
+		"path": "config/starship",
+		"description": "Complete Omarchy-based Starship prompt configuration",
+		"dependencies": [],
+		"arch_packages": ["starship"],
+		"prerequisites": [],
+		"validators": [
+			"bash -c 'work=$(mktemp -d \"${TMPDIR:-/tmp}/dotfiles-starship-validator.XXXXXX\") || exit 1; diagnostics=$work/stderr; cleanup() { rm -rf -- \"$work\"; }; trap cleanup EXIT; trap \"exit 1\" HUP INT TERM; export STARSHIP_CONFIG=$HOME/.config/starship.toml; export STARSHIP_CACHE=$work/cache; export STARSHIP_SESSION_KEY=dotfiles-starship-validation; mkdir -p -- \"$STARSHIP_CACHE\" || exit 1; if ! starship print-config >/dev/null 2>\"$diagnostics\"; then cat -- \"$diagnostics\" >&2; exit 1; fi; if [[ -s $diagnostics ]]; then cat -- \"$diagnostics\" >&2; exit 1; fi'"
+		],
+		"documentation": "docs/starship.md",
+		"cleanup": [
+			"Removing this package leaves ~/.config/starship.toml absent",
+			"Arch package starship remains installed",
+			"Starship cache and state are not removed",
+			"Migration backups remain under the Dotfiles XDG state backup tree",
+			"Optional post-removal baseline restoration command (reported only, not run): omarchy refresh config starship.toml"
+		]
 	}]
 }

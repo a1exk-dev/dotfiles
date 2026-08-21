@@ -35,7 +35,7 @@ The wizard can install the Node.js toolchain through Omarchy after confirmation.
 
 Gum is optional. The wizard uses Bash prompts when Gum is not available.
 
-The integration tests require Bubblewrap (`bwrap`), GNU Stow, and tmux 3.7b.
+The integration tests require Bubblewrap (`bwrap`), GNU Stow, tmux 3.7b, and Starship 1.26.0.
 
 ## Quick start
 
@@ -69,6 +69,7 @@ make test
 
 - [Stow workflow](docs/stow.md)
 - [Bash](docs/bash.md)
+- [Starship](docs/starship.md)
 - [Tmux](docs/tmux.md)
 - [Ghostty](docs/ghostty.md)
 - [ZTE USB modem recovery](docs/usb-modem.md)

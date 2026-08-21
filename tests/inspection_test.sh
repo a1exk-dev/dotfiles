@@ -199,6 +199,26 @@ test_catalog_declares_package_specific_arch_requirements() {
 		'tmux should reference its package guide' || return 1
 	assert_eq '[]' "$(jq -c '.packages[] | select(.name == "ghostty") | .arch_packages' "$FIXTURE_REPO/packages.json")" \
 		'Ghostty should declare no Arch packages' || return 1
+	assert_eq 'Complete Omarchy-based Starship prompt configuration' \
+		"$(jq -r '.packages[] | select(.name == "starship") | .description' "$FIXTURE_REPO/packages.json")" \
+		'Starship should describe its complete prompt configuration' || return 1
+	assert_eq 'config/starship' "$(jq -r '.packages[] | select(.name == "starship") | .path' "$FIXTURE_REPO/packages.json")" \
+		'Starship should use its independent package directory' || return 1
+	assert_eq '[]' "$(jq -c '.packages[] | select(.name == "starship") | .dependencies' "$FIXTURE_REPO/packages.json")" \
+		'Starship should have no Stow dependencies' || return 1
+	assert_eq '["starship"]' "$(jq -c '.packages[] | select(.name == "starship") | .arch_packages' "$FIXTURE_REPO/packages.json")" \
+		'Starship should declare exactly its official Arch package' || return 1
+	assert_eq '[]' "$(jq -c '.packages[] | select(.name == "starship") | .prerequisites' "$FIXTURE_REPO/packages.json")" \
+		'Starship should have no command prerequisites' || return 1
+	assert_eq 'docs/starship.md' "$(jq -r '.packages[] | select(.name == "starship") | .documentation' "$FIXTURE_REPO/packages.json")" \
+		'Starship should reference its package guide' || return 1
+	assert_eq '["bash","starship"]' \
+		"$(jq -c '[.packages[] | select(.name == "bash" or .name == "starship") | .name]' "$FIXTURE_REPO/packages.json")" \
+		'Bash and Starship should remain separate catalog selections' || return 1
+	if grep -q 'STARSHIP_CONFIG' "$FIXTURE_REPO/config/bash/.bashrc"; then
+		printf '  Bash configuration must not set STARSHIP_CONFIG\n' >&2
+		return 1
+	fi
 	assert_contains "$(jq -r '.packages[] | select(.name == "bash") | .cleanup[]' "$FIXTURE_REPO/packages.json")" \
 		'thefuck remains installed' 'Bash cleanup should disclose retained Arch package state' || return 1
 	local tmux_cleanup
@@ -210,7 +230,38 @@ test_catalog_declares_package_specific_arch_requirements() {
 	assert_contains "$tmux_cleanup" 'omarchy refresh tmux' \
 		'tmux cleanup should report the explicit Omarchy baseline restoration command' || return 1
 	assert_contains "$tmux_cleanup" 'restore the Omarchy baseline' \
-		'tmux cleanup should explain the restoration command'
+		'tmux cleanup should explain the restoration command' || return 1
+	assert_eq '["Removing this package leaves ~/.config/starship.toml absent","Arch package starship remains installed","Starship cache and state are not removed","Migration backups remain under the Dotfiles XDG state backup tree","Optional post-removal baseline restoration command (reported only, not run): omarchy refresh config starship.toml"]' \
+		"$(jq -c '.packages[] | select(.name == "starship") | .cleanup' "$FIXTURE_REPO/packages.json")" \
+		'Starship cleanup should disclose every retained item and report-only restoration command'
+}
+
+test_catalog_declares_strict_isolated_starship_validation() {
+	new_fixture
+	local validators config_validator
+	validators=$(jq -c '.packages[] | select(.name == "starship") | .validators' "$FIXTURE_REPO/packages.json")
+
+	assert_eq 1 "$(jq 'length' <<<"$validators")" \
+		'Starship should have one config validator' || return 1
+	config_validator=$(jq -r '.[0]' <<<"$validators")
+	assert_eq bash "${config_validator%% *}" \
+		'the Starship validator should be shell-fronted for pre-installation preflight' || return 1
+	assert_contains "$config_validator" 'mktemp -d "${TMPDIR:-/tmp}/dotfiles-starship-validator.XXXXXX"' \
+		'the Starship validator should allocate a fresh work directory' || return 1
+	assert_contains "$config_validator" 'export STARSHIP_CONFIG=$HOME/.config/starship.toml' \
+		'the Starship validator should inspect the active linked config' || return 1
+	assert_contains "$config_validator" 'export STARSHIP_CACHE=$work/cache' \
+		'the Starship validator should use an isolated cache' || return 1
+	assert_contains "$config_validator" 'export STARSHIP_SESSION_KEY=dotfiles-starship-validation' \
+		'the Starship validator should use the fixed validation session key' || return 1
+	assert_contains "$config_validator" 'if ! starship print-config >/dev/null 2>"$diagnostics"' \
+		'the Starship validator should fail a nonzero print-config command' || return 1
+	assert_contains "$config_validator" 'if [[ -s $diagnostics ]]' \
+		'the Starship validator should reject any stderr byte' || return 1
+	assert_contains "$config_validator" 'trap cleanup EXIT' \
+		'the Starship validator should clean up on shell exit' || return 1
+	assert_contains "$config_validator" 'rm -rf -- "$work"' \
+		'the Starship validator should remove its isolated work directory'
 }
 
 test_catalog_declares_isolated_tmux_config_validation() {
@@ -260,8 +311,32 @@ test_check_accepts_tmux_validator_before_tmux_is_installed() {
 
 	assert_eq 0 "$COMMAND_STATUS" \
 		'check should accept the shell-fronted tmux validator before its declared Arch package is installed' || return 1
-	assert_contains "$COMMAND_OUTPUT" 'Package catalog: valid (3 packages)' \
+	assert_contains "$COMMAND_OUTPUT" 'Package catalog: valid (4 packages)' \
 		'preflight should still inspect the complete real catalog'
+}
+
+test_check_accepts_starship_validator_before_starship_is_installed() {
+	new_fixture
+	ln -s "$(command -v sh)" "$FIXTURE_BIN/sh"
+	make_fake ghostty 'exit 0'
+	set_installed_arch_packages thefuck tmux fzf less
+	local command_path
+	command_path=$(restricted_path_without_stow)
+	if PATH=$command_path command -v starship >/dev/null 2>&1; then
+		printf '  Starship must be absent from the structural-check PATH for this preflight test\n' >&2
+		return 1
+	fi
+
+	DOTFILES_TEST_PATH=$command_path run_operation "$FIXTURE_ROOT" check
+
+	assert_eq 1 "$COMMAND_STATUS" \
+		'the missing declared Arch package should remain the only Starship pre-installation blocker' || return 1
+	assert_contains "$COMMAND_OUTPUT" 'Missing declared Arch package for starship: starship' \
+		'preflight should report the not-yet-installed Arch package' || return 1
+	if [[ $COMMAND_OUTPUT == *'Missing validator executable for starship:'* ]]; then
+		printf '  the shell-fronted validator must pass executable preflight before Starship is installed\n' >&2
+		return 1
+	fi
 }
 
 test_check_rejects_invalid_arch_package_metadata() {
@@ -376,8 +451,10 @@ run_test test_status_reports_nonempty_package_states_and_metadata 'status report
 run_test test_inspection_cannot_access_real_user_or_omarchy_paths 'inspection cannot access real user or Omarchy paths'
 run_test test_check_validates_complete_package_metadata 'check validates complete package metadata'
 run_test test_catalog_declares_package_specific_arch_requirements 'catalog declares package-specific Arch requirements'
+run_test test_catalog_declares_strict_isolated_starship_validation 'catalog declares strict isolated Starship validation'
 run_test test_catalog_declares_isolated_tmux_config_validation 'catalog declares isolated tmux config validation'
 run_test test_check_accepts_tmux_validator_before_tmux_is_installed 'check accepts the tmux validator before tmux is installed'
+run_test test_check_accepts_starship_validator_before_starship_is_installed 'check accepts the Starship validator before Starship is installed'
 run_test test_check_rejects_invalid_arch_package_metadata 'check rejects invalid Arch package metadata'
 run_test test_check_reports_missing_declared_arch_package_without_mutation 'check reports a missing declared Arch package without mutation'
 run_test test_check_rejects_each_invalid_package_metadata_field 'check rejects invalid package metadata fields'

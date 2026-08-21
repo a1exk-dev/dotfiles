@@ -1,6 +1,6 @@
 # Bash
 
-The `bash` Stow package owns only `~/.bashrc`. The tracked file loads Omarchy's environment bootstrap and sources `/usr/share/omarchy/default/bash/rc`. Omarchy continues to provide its packaged aliases, functions, completion, tool initialization, and Starship startup.
+The `bash` Stow package owns only `~/.bashrc`. The tracked file loads Omarchy's environment bootstrap and sources `/usr/share/omarchy/default/bash/rc`. Omarchy continues to provide its packaged aliases, functions, completion, tool initialization, and Starship initialization. The independent `starship` Stow package owns only `~/.config/starship.toml`; it does not initialize Starship, and neither package depends on the other.
 
 The package does not manage `.bash_profile`, `~/.config/starship.toml`, terminal configuration, Omarchy configuration, themes, or generated theme state.
 
