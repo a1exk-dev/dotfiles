@@ -8,7 +8,7 @@ The package does not manage `.bash_profile`, `~/.config/starship.toml`, terminal
 
 Selecting `bash` in `Guided setup` or `Apply Stow packages` installs the official Arch `thefuck` package through Omarchy when it is missing.
 
-The `bash` package depends on the `tmux` Stow package. The complete plan includes its private starter and installs the official Arch `tmux` and `fzf` packages when they are missing.
+The `bash` package depends on the `tmux` Stow package. The complete plan links the complete tmux configuration and private starter and installs the official Arch `tmux`, `fzf`, and `less` packages when they are missing.
 
 ## Shortcuts
 
@@ -18,7 +18,7 @@ The `bash` package depends on the `tmux` Stow package. The complete plan include
 
 A bare `~` command changes to your home directory.
 
-A bare `tmux` command opens the private session starter. Tmux commands with arguments keep their normal behavior, and Omarchy's `t` alias remains unchanged.
+A bare `tmux` command opens the private session starter, which uses `Work` when a new-session name is empty. Tmux commands with arguments run `/usr/bin/tmux`. Omarchy's `t` alias attaches to an existing session or creates `Work`.
 
 After a command fails, run `fuck` to review a suggested correction. The Fuck asks for confirmation before it runs the selected command.
 

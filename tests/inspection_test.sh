@@ -182,11 +182,14 @@ test_check_validates_complete_package_metadata() {
 test_catalog_declares_package_specific_arch_requirements() {
 	new_fixture
 
+	assert_eq 'Complete Omarchy-based tmux configuration and private session starter' \
+		"$(jq -r '.packages[] | select(.name == "tmux") | .description' "$FIXTURE_REPO/packages.json")" \
+		'tmux should describe both owned targets' || return 1
 	assert_eq '["thefuck"]' "$(jq -c '.packages[] | select(.name == "bash") | .arch_packages' "$FIXTURE_REPO/packages.json")" \
 		'Bash should declare exactly its required Arch package' || return 1
 	assert_eq '["tmux"]' "$(jq -c '.packages[] | select(.name == "bash") | .dependencies' "$FIXTURE_REPO/packages.json")" \
 		'Bash should declare the tmux Stow package dependency' || return 1
-	assert_eq '["tmux","fzf"]' "$(jq -c '.packages[] | select(.name == "tmux") | .arch_packages' "$FIXTURE_REPO/packages.json")" \
+	assert_eq '["tmux","fzf","less"]' "$(jq -c '.packages[] | select(.name == "tmux") | .arch_packages' "$FIXTURE_REPO/packages.json")" \
 		'tmux should declare exactly its official Arch requirements' || return 1
 	assert_eq '[]' "$(jq -c '.packages[] | select(.name == "tmux") | .dependencies' "$FIXTURE_REPO/packages.json")" \
 		'tmux should have no Stow dependencies' || return 1
@@ -198,10 +201,67 @@ test_catalog_declares_package_specific_arch_requirements() {
 		'Ghostty should declare no Arch packages' || return 1
 	assert_contains "$(jq -r '.packages[] | select(.name == "bash") | .cleanup[]' "$FIXTURE_REPO/packages.json")" \
 		'thefuck remains installed' 'Bash cleanup should disclose retained Arch package state' || return 1
-	assert_contains "$(jq -r '.packages[] | select(.name == "tmux") | .cleanup[]' "$FIXTURE_REPO/packages.json")" \
-		'tmux and fzf remain installed' 'tmux cleanup should disclose retained Arch packages' || return 1
-	assert_contains "$(jq -r '.packages[] | select(.name == "tmux") | .cleanup[]' "$FIXTURE_REPO/packages.json")" \
-		'server, sessions, logs, and state are not removed' 'tmux cleanup should disclose retained runtime state'
+	local tmux_cleanup
+	tmux_cleanup=$(jq -r '.packages[] | select(.name == "tmux") | .cleanup[]' "$FIXTURE_REPO/packages.json")
+	assert_contains "$tmux_cleanup" 'Arch packages tmux, fzf, and less remain installed' \
+		'tmux cleanup should disclose every retained Arch package' || return 1
+	assert_contains "$tmux_cleanup" 'server, sessions, panes, logs, and other runtime state are not removed' \
+		'tmux cleanup should disclose all retained runtime state' || return 1
+	assert_contains "$tmux_cleanup" 'omarchy refresh tmux' \
+		'tmux cleanup should report the explicit Omarchy baseline restoration command' || return 1
+	assert_contains "$tmux_cleanup" 'restore the Omarchy baseline' \
+		'tmux cleanup should explain the restoration command'
+}
+
+test_catalog_declares_isolated_tmux_config_validation() {
+	new_fixture
+	local validators config_validator validator_without_isolated_tmux
+	validators=$(jq -c '.packages[] | select(.name == "tmux") | .validators' "$FIXTURE_REPO/packages.json")
+
+	assert_eq 3 "$(jq 'length' <<<"$validators")" \
+		'tmux should retain both starter checks and add one complete-config validator' || return 1
+	assert_eq 'sh -n "$HOME/.local/libexec/dotfiles/tmux-starter"' "$(jq -r '.[0]' <<<"$validators")" \
+		'tmux should retain starter syntax validation' || return 1
+	assert_eq 'sh -c '\''test -x "$HOME/.local/libexec/dotfiles/tmux-starter"'\''' "$(jq -r '.[1]' <<<"$validators")" \
+		'tmux should retain starter executable validation' || return 1
+
+	config_validator=$(jq -r '.[2]' <<<"$validators")
+	assert_eq bash "${config_validator%% *}" \
+		'the config validator should remain preflight-safe before tmux is installed' || return 1
+	assert_contains "$config_validator" 'mktemp -d' \
+		'the config validator should allocate a unique socket directory' || return 1
+	assert_contains "$config_validator" 'trap cleanup EXIT' \
+		'the config validator should always clean up on shell exit' || return 1
+	assert_contains "$config_validator" 'tmux -S "$socket" -f /dev/null new-session -d -s dotfiles-validator \; source-file "$HOME/.config/tmux/tmux.conf"' \
+		'the config validator should explicitly source the linked complete config through its isolated socket' || return 1
+	assert_contains "$config_validator" 'tmux -S "$socket" kill-server' \
+		'the config validator should stop only its isolated server' || return 1
+	assert_contains "$config_validator" 'rm -rf -- "$socket_dir"' \
+		'the config validator should remove its isolated socket directory' || return 1
+	validator_without_isolated_tmux=${config_validator//'tmux -S "$socket"'/}
+	if [[ $validator_without_isolated_tmux == *'tmux '* ]]; then
+		printf '  every tmux validator invocation must name the isolated socket\n' >&2
+		return 1
+	fi
+}
+
+test_check_accepts_tmux_validator_before_tmux_is_installed() {
+	new_fixture
+	ln -s "$(command -v sh)" "$FIXTURE_BIN/sh"
+	make_fake ghostty 'exit 0'
+	local command_path
+	command_path=$(restricted_path_without_stow)
+	if PATH=$command_path command -v tmux >/dev/null 2>&1; then
+		printf '  tmux must be absent from the structural-check PATH for this preflight test\n' >&2
+		return 1
+	fi
+
+	DOTFILES_TEST_PATH=$command_path run_operation "$FIXTURE_ROOT" check
+
+	assert_eq 0 "$COMMAND_STATUS" \
+		'check should accept the shell-fronted tmux validator before its declared Arch package is installed' || return 1
+	assert_contains "$COMMAND_OUTPUT" 'Package catalog: valid (3 packages)' \
+		'preflight should still inspect the complete real catalog'
 }
 
 test_check_rejects_invalid_arch_package_metadata() {
@@ -316,6 +376,8 @@ run_test test_status_reports_nonempty_package_states_and_metadata 'status report
 run_test test_inspection_cannot_access_real_user_or_omarchy_paths 'inspection cannot access real user or Omarchy paths'
 run_test test_check_validates_complete_package_metadata 'check validates complete package metadata'
 run_test test_catalog_declares_package_specific_arch_requirements 'catalog declares package-specific Arch requirements'
+run_test test_catalog_declares_isolated_tmux_config_validation 'catalog declares isolated tmux config validation'
+run_test test_check_accepts_tmux_validator_before_tmux_is_installed 'check accepts the tmux validator before tmux is installed'
 run_test test_check_rejects_invalid_arch_package_metadata 'check rejects invalid Arch package metadata'
 run_test test_check_reports_missing_declared_arch_package_without_mutation 'check reports a missing declared Arch package without mutation'
 run_test test_check_rejects_each_invalid_package_metadata_field 'check rejects invalid package metadata fields'

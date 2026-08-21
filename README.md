@@ -35,7 +35,7 @@ The wizard can install the Node.js toolchain through Omarchy after confirmation.
 
 Gum is optional. The wizard uses Bash prompts when Gum is not available.
 
-The integration tests require Bubblewrap (`bwrap`).
+The integration tests require Bubblewrap (`bwrap`), GNU Stow, and tmux 3.7b.
 
 ## Quick start
 

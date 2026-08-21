@@ -97,6 +97,132 @@ Package-specific Arch requirements are part of the Stow plan and use the same co
 
 An empty selection or a declined plan makes no changes.
 
+## Pre-existing tmux configuration
+
+The `tmux` package contains the complete tracked configuration at `config/tmux/.config/tmux/tmux.conf`. A pre-existing `~/.config/tmux/tmux.conf` is recovery data, not a source to import into the package.
+
+A normal apply reports the existing file as a conflict and leaves it unchanged. `Migrate existing target` also refuses it because the package destination already exists. Do not use `stow --adopt`.
+
+Run this preflight from the repository root before the backup and removal block:
+
+```bash
+make
+```
+
+Choose `Run structural checks`. It may report one or more of `tmux`, `fzf`, and `less` as missing declared Arch packages for `tmux`. Record each missing package as a planned wizard install under `Apply Stow packages`. Continue only if those are the only structural errors and the supported and detected Omarchy versions match. Any other structural error or Omarchy version mismatch stops this procedure.
+
+Run the wizard again:
+
+```bash
+make
+```
+
+Choose `Package status`. It must report no `conflicting` or `invalid` package except `tmux`, which is expected to be `conflicting` only because `~/.config/tmux/tmux.conf` is an existing regular file. Stop on any other unexpected package state.
+
+Then print the current requirement plan and run the complete Stow simulation from the repository root:
+
+```bash
+(
+	for package in tmux fzf less; do
+		if omarchy pkg present "$package"; then
+			printf '%s: installed\n' "$package"
+		else
+			printf '%s: will install during Apply Stow packages\n' "$package"
+		fi
+	done
+
+	if ! command -v stow >/dev/null 2>&1; then
+		printf '%s\n' 'GNU Stow is missing. Run make, choose Prepare prerequisites, then restart this preflight.' >&2
+		exit 1
+	fi
+
+	stow --no-folding --simulate --verbose=2 --dir "$PWD/config" --target "$HOME" tmux
+)
+```
+
+Each runtime package prints either `installed` or `will install during Apply Stow packages`. A planned install does not stop this preflight. GNU Stow must be present for the simulation. If GNU Stow is missing, run `make`, choose `Prepare prerequisites`, and restart this preflight before backup or removal.
+
+The Stow simulation is expected to return nonzero. Its output must show exactly one conflict: `~/.config/tmux/tmux.conf`. The starter must already be linked to its tracked source or otherwise be conflict-free. Any additional Stow conflict stops this procedure before backup or removal.
+
+The complete direct-migration plan is to inspect and back up the live file, verify the backup, remove only that file, and immediately choose `Apply Stow packages` for `tmux`. After removal clears the known Stow conflict, the wizard simulates the package and shows the complete plan. The plan must show that the wizard will install and verify every requirement marked `will install during Apply Stow packages`, repeat the simulation after any installation, apply the package with `--no-folding`, and verify both links and validators. Continue only after reviewing this full plan and deciding to apply it immediately. This procedure applies only to the tmux target described here.
+
+The following tmux-specific preparation accepts only a regular file that is not a symlink and resolves inside the user's home directory. It shows the file and its difference from the packaged Omarchy baseline, requires explicit confirmation, writes and verifies a timestamped XDG-state backup, rechecks the source, and removes only the active file.
+
+```bash
+(
+	set -euo pipefail
+
+	target=$HOME/.config/tmux/tmux.conf
+	state_home=${XDG_STATE_HOME:-"$HOME/.local/state"}
+	packaged=/usr/share/omarchy/config/tmux/tmux.conf
+
+	if [[ $state_home != /* ]]; then
+		printf 'XDG_STATE_HOME must be an absolute path: %s\n' "$state_home" >&2
+		exit 1
+	fi
+	if [[ ! -f $target || -L $target ]]; then
+		printf 'Expected a regular file that is not a symlink: %s\n' "$target" >&2
+		exit 1
+	fi
+	if [[ ! -f $packaged ]]; then
+		printf 'Packaged Omarchy tmux baseline is unavailable: %s\n' "$packaged" >&2
+		exit 1
+	fi
+
+	home_root=$(readlink -f -- "$HOME")
+	resolved_target=$(readlink -f -- "$target")
+	if [[ $resolved_target != "$home_root/"* ]]; then
+		printf 'Tmux configuration resolves outside HOME: %s -> %s\n' \
+			"$target" "$resolved_target" >&2
+		exit 1
+	fi
+
+	cat -- "$target"
+	diff_status=0
+	diff -u -- "$packaged" "$target" || diff_status=$?
+	if ((diff_status > 1)); then
+		exit "$diff_status"
+	fi
+
+	read -r -p "Type BACKUP to approve this file's backup and removal: " answer
+	if [[ $answer != BACKUP ]]; then
+		printf 'No changes made.\n'
+		exit 0
+	fi
+
+	timestamp=$(date -u +%Y%m%dT%H%M%S.%NZ)
+	backup=$state_home/dotfiles/backups/tmux/$timestamp/.config/tmux/tmux.conf
+	mkdir -p -- "${backup%/*}"
+	cp --archive -- "$target" "$backup"
+	cmp -s -- "$target" "$backup"
+	printf 'Verified backup: %s\n' "$backup"
+
+	if [[ ! -f $target || -L $target ]] ||
+		[[ $(readlink -f -- "$target") != "$resolved_target" ]]; then
+		printf 'Tmux configuration changed before removal; leaving it in place.\n' >&2
+		exit 1
+	fi
+	cmp -s -- "$target" "$backup"
+	rm -- "$target"
+	printf 'Removed only: %s\n' "$target"
+)
+```
+
+After the verified backup and removal, run the existing wizard and choose `Apply Stow packages`, then select `tmux`:
+
+```bash
+make
+```
+
+The package operation plans the official Arch requirements, simulates the leaf links, asks for confirmation, applies them, and runs the package validators. Its Stow operations use these forms from the repository root:
+
+```bash
+stow --no-folding --simulate --verbose=2 --dir "$PWD/config" --target "$HOME" tmux
+stow --no-folding --verbose=2 --dir "$PWD/config" --target "$HOME" tmux
+```
+
+If Omarchy installs a missing Arch package, the wizard repeats the simulation before it changes links. A failure after removal leaves the verified backup available for recovery. Do not move the old live contents into the tracked tmux package.
+
 ## Migrate an existing target
 
 Choose `Migrate existing target`, select a package, and enter the `Home-relative target path`.

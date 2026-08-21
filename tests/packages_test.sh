@@ -843,9 +843,9 @@ fi'
 	fi
 }
 
-test_real_tmux_dependency_and_leaf_only_lifecycle() {
+test_real_tmux_dependency_and_leaf_only_lifecycle() (
 	new_fixture
-	DOTFILES_TEST_INPUT='n\n' run_operation "$FIXTURE_ROOT" apply_packages bash
+	DOTFILES_TEST_INPUT='1\nn\n' run_dotfiles "$FIXTURE_ROOT" --action apply
 
 	assert_eq 0 "$COMMAND_STATUS" 'declining the real Bash package plan should be a safe no-op' || return 1
 	assert_contains "$COMMAND_OUTPUT" $'Plan: apply packages in dependency order:\n  1. tmux (required by selection)\n  2. bash (selected)' \
@@ -854,6 +854,8 @@ test_real_tmux_dependency_and_leaf_only_lifecycle() {
 		'the real plan should attribute the tmux Arch package to its Stow package' || return 1
 	assert_contains "$COMMAND_OUTPUT" 'fzf (required by tmux): installed' \
 		'the real plan should attribute fzf to the tmux Stow package' || return 1
+	assert_contains "$COMMAND_OUTPUT" 'less (required by tmux): installed' \
+		'the real plan should attribute less to the tmux Stow package' || return 1
 	assert_contains "$COMMAND_OUTPUT" 'thefuck (required by bash): installed' \
 		'Bash should retain its own Arch requirement' || return 1
 	if [[ $(<"$CALL_LOG") == *$'stow --no-folding --verbose=2 '* ]]; then
@@ -863,19 +865,23 @@ test_real_tmux_dependency_and_leaf_only_lifecycle() {
 
 	new_fixture
 	local starter=$FIXTURE_REPO/config/tmux/.local/libexec/dotfiles/tmux-starter
-	if [[ ! -f $starter ]]; then
-		printf '  the real tmux package executable is missing\n' >&2
+	local config=$FIXTURE_REPO/config/tmux/.config/tmux/tmux.conf
+	if [[ ! -f $starter || ! -f $config ]]; then
+		printf '  the real tmux package must contain its complete config and private starter\n' >&2
 		return 1
 	fi
-	mkdir -p "$FIXTURE_HOME/.local/libexec/dotfiles"
+	mkdir -p "$FIXTURE_HOME/.config/tmux" "$FIXTURE_HOME/.local/libexec/dotfiles"
+	ln -s "$config" "$FIXTURE_HOME/.config/tmux/tmux.conf"
 	ln -s "$starter" "$FIXTURE_HOME/.local/libexec/dotfiles/tmux-starter"
 	ln -s "$FIXTURE_REPO/config/bash/.bashrc" "$FIXTURE_HOME/.bashrc"
-	run_operation "$FIXTURE_ROOT" remove_package tmux --yes
+	DOTFILES_TEST_INPUT='3\n' run_dotfiles "$FIXTURE_ROOT" --action remove
 
 	assert_eq 1 "$COMMAND_STATUS" 'linked Bash should block removal of its real tmux dependency' || return 1
 	assert_contains "$COMMAND_OUTPUT" 'Removal blocked: linked packages depend on tmux:' \
 		'real tmux removal should explain its dependency constraint' || return 1
 	assert_contains "$COMMAND_OUTPUT" '  bash' 'real tmux removal should name Bash as the blocker' || return 1
+	assert_eq "$config" "$(readlink -f "$FIXTURE_HOME/.config/tmux/tmux.conf")" \
+		'blocked removal should preserve the complete config link' || return 1
 	assert_eq "$starter" "$(readlink -f "$FIXTURE_HOME/.local/libexec/dotfiles/tmux-starter")" \
 		'blocked removal should preserve the private starter link' || return 1
 	if [[ $(<"$CALL_LOG") == *'stow '* ]]; then
@@ -884,35 +890,87 @@ test_real_tmux_dependency_and_leaf_only_lifecycle() {
 	fi
 
 	new_fixture
+	set_installed_arch_packages thefuck tmux fzf
 	starter=$FIXTURE_REPO/config/tmux/.local/libexec/dotfiles/tmux-starter
+	config=$FIXTURE_REPO/config/tmux/.config/tmux/tmux.conf
+	local config_target=$FIXTURE_HOME/.config/tmux/tmux.conf
+	local starter_target=$FIXTURE_HOME/.local/libexec/dotfiles/tmux-starter
 	local retained_state=$FIXTURE_STATE/tmux/session-state
-	mkdir -p "$(dirname -- "$retained_state")"
+	local retained_log=$FIXTURE_CACHE/tmux/server.log
+	local tmux_tmpdir=$FIXTURE_TMP/default-tmux
+	local real_command_bin=$FIXTURE_ROOT/real-package-bin
+	local real_package_path=$real_command_bin:/usr/bin:/bin
+	mkdir -p "$FIXTURE_HOME/.config/tmux" "$FIXTURE_HOME/.local/libexec/dotfiles" \
+		"$(dirname -- "$retained_state")" "$(dirname -- "$retained_log")" "$tmux_tmpdir" "$real_command_bin"
+	ln -s "$FIXTURE_BIN/omarchy" "$real_command_bin/omarchy"
 	printf 'retained tmux state\n' >"$retained_state"
-	make_fake stow 'printf "stow %s\n" "$*" >>"$DOTFILES_TEST_CALL_LOG"
-if [[ " $* " != *" --no-folding "* ]]; then
-	printf "leaf-only package operations require --no-folding\n" >&2
-	exit 78
-fi
-package=${!#}
-if [[ $package != tmux ]]; then
-	printf "unexpected package for leaf-only fake: %s\n" "$package" >&2
-	exit 79
-fi
-if [[ " $* " == *" --simulate "* ]]; then exit 0; fi
-target=$HOME/.local/libexec/dotfiles/tmux-starter
-if [[ " $* " == *" --delete "* ]]; then
-	rm -f "$target"
-else
-	mkdir -p "${target%/*}"
-	ln -s "$DOTFILES_TEST_REPO/config/tmux/.local/libexec/dotfiles/tmux-starter" "$target"
-fi'
-	DOTFILES_TEST_INPUT='y\n' run_operation "$FIXTURE_ROOT" apply_packages tmux
+	printf 'retained tmux log\n' >"$retained_log"
+	if ! TMUX= TMUX_TMPDIR="$tmux_tmpdir" tmux -f /dev/null new-session -d -s retained-runtime 'sleep 300'; then
+		printf '  could not start the fixture-scoped default tmux server\n' >&2
+		return 1
+	fi
+	cleanup_runtime_server() {
+		TMUX= TMUX_TMPDIR="$tmux_tmpdir" tmux kill-server >/dev/null 2>&1 || true
+	}
+	trap cleanup_runtime_server EXIT
+	local runtime_pid runtime_pane runtime_prefix
+	runtime_pid=$(TMUX= TMUX_TMPDIR="$tmux_tmpdir" tmux display-message -p -t retained-runtime '#{pid}')
+	runtime_pane=$(TMUX= TMUX_TMPDIR="$tmux_tmpdir" tmux list-panes -t retained-runtime -F '#{pane_id}')
+	runtime_prefix=$(TMUX= TMUX_TMPDIR="$tmux_tmpdir" tmux show-options -gv prefix)
 
-	assert_eq 0 "$COMMAND_STATUS" 'the real tmux package should apply and run its validators' || return 1
+	cp "$config" "$FIXTURE_ROOT/valid-tmux.conf"
+	printf 'not-a-valid-tmux-command\n' >"$config"
+	DOTFILES_TEST_INPUT='2\ny\n' run_in_sandbox "$FIXTURE_ROOT" "$real_package_path" \
+		env TMUX_TMPDIR="$tmux_tmpdir" "$FIXTURE_REPO/bin/dotfiles" --action apply
+
+	assert_eq 1 "$COMMAND_STATUS" 'an invalid complete config should fail the public package validator' || return 1
+	assert_contains "$COMMAND_OUTPUT" 'less (required by tmux): will install' \
+		'the real tmux plan should attribute missing less to its owning package' || return 1
+	assert_contains "$COMMAND_OUTPUT" 'Arch packages installed and verified: less' \
+		'the generic Arch lifecycle should report less as installed and verified' || return 1
+	assert_eq 1 "$(awk '/^pkg add less[|]/ { count++ } END { print count + 0 }' "$CALL_LOG")" \
+		'missing less should use one generic Omarchy package-add call' || return 1
+	assert_eq 2 "$(awk '/^pkg present less[|]/ { count++ } END { print count + 0 }' "$CALL_LOG")" \
+		'missing less should be checked during planning and verified after installation' || return 1
+	local less_install less_verify
+	less_install=$(awk '/^pkg add less[|]/ { print NR; exit }' "$CALL_LOG")
+	less_verify=$(awk '/^pkg present less[|]/ { count++; if (count == 2) { print NR; exit } }' "$CALL_LOG")
+	if [[ -z $less_install || -z $less_verify || $less_install -ge $less_verify ]]; then
+		printf '  less installation must precede its successful package verification\n' >&2
+		return 1
+	fi
+	assert_eq $'thefuck\ntmux\nfzf\nless' "$(<"$ARCH_PACKAGE_STATE")" \
+		'the generic installer should add less without changing existing package state' || return 1
+	assert_contains "$COMMAND_OUTPUT" 'Validator failed for tmux:' \
+		'the invalid complete config should fail in package verification' || return 1
+	if compgen -G "$FIXTURE_TMP/dotfiles-tmux-validator.*" >/dev/null; then
+		printf '  failed complete-config validation should remove its isolated socket directory\n' >&2
+		return 1
+	fi
+	assert_eq "$runtime_pid" \
+		"$(TMUX= TMUX_TMPDIR="$tmux_tmpdir" tmux display-message -p -t retained-runtime '#{pid}')" \
+		'failed config validation should not stop the default tmux server' || return 1
+	assert_eq "$runtime_prefix" "$(TMUX= TMUX_TMPDIR="$tmux_tmpdir" tmux show-options -gv prefix)" \
+		'failed config validation should not load the candidate into the default server' || return 1
+	cp "$FIXTURE_ROOT/valid-tmux.conf" "$config"
+
+	DOTFILES_TEST_INPUT='2\ny\n' run_in_sandbox "$FIXTURE_ROOT" "$real_package_path" \
+		env TMUX_TMPDIR="$tmux_tmpdir" "$FIXTURE_REPO/bin/dotfiles" --action apply
+
+	assert_eq 0 "$COMMAND_STATUS" 'the real tmux package should apply through the public command and run its validators' || {
+		printf '  output: %s\n' "$COMMAND_OUTPUT" >&2
+		return 1
+	}
 	assert_contains "$COMMAND_OUTPUT" 'Applied and verified package: tmux' \
-		'real tmux apply should complete syntax and executable-mode validation' || return 1
+		'real tmux apply should complete starter and config validation' || return 1
+	assert_contains "$COMMAND_OUTPUT" 'Arch packages verified: tmux fzf less' \
+		'the successful real lifecycle should validate every tmux Arch requirement' || return 1
+	assert_contains "$COMMAND_OUTPUT" 'dotfiles-tmux-validator' \
+		'the public plan should expose isolated complete-config validation' || return 1
 	local parent
 	for parent in \
+		"$FIXTURE_HOME/.config" \
+		"$FIXTURE_HOME/.config/tmux" \
 		"$FIXTURE_HOME/.local" \
 		"$FIXTURE_HOME/.local/libexec" \
 		"$FIXTURE_HOME/.local/libexec/dotfiles"; do
@@ -921,19 +979,49 @@ fi'
 			return 1
 		fi
 	done
-	assert_eq "$starter" "$(readlink -f "$FIXTURE_HOME/.local/libexec/dotfiles/tmux-starter")" \
-		'leaf-only apply should link only tmux-starter to its exact source' || return 1
+	if [[ ! -L $config_target || ! -L $starter_target ]]; then
+		printf '  real Stow apply should create both tmux leaf links\n' >&2
+		return 1
+	fi
+	assert_eq "$config" "$(readlink -f "$config_target")" \
+		'leaf-only apply should link tmux.conf to its exact source' || return 1
+	assert_eq "$starter" "$(readlink -f "$starter_target")" \
+		'leaf-only apply should link tmux-starter to its exact source' || return 1
+	if compgen -G "$FIXTURE_TMP/dotfiles-tmux-validator.*" >/dev/null; then
+		printf '  complete-config validation should remove its isolated socket directory\n' >&2
+		return 1
+	fi
+	assert_eq "$runtime_pid" \
+		"$(TMUX= TMUX_TMPDIR="$tmux_tmpdir" tmux display-message -p -t retained-runtime '#{pid}')" \
+		'config validation should not replace or stop the default tmux server' || return 1
+	assert_eq "$runtime_pane" \
+		"$(TMUX= TMUX_TMPDIR="$tmux_tmpdir" tmux list-panes -t retained-runtime -F '#{pane_id}')" \
+		'config validation should leave the default server pane intact' || return 1
+	assert_eq "$runtime_prefix" "$(TMUX= TMUX_TMPDIR="$tmux_tmpdir" tmux show-options -gv prefix)" \
+		'config validation should not load the candidate into the default server' || return 1
 
-	run_operation "$FIXTURE_ROOT" remove_package tmux --yes
+	DOTFILES_TEST_INPUT='3\ny\n' run_in_sandbox "$FIXTURE_ROOT" "$real_package_path" \
+		env TMUX_TMPDIR="$tmux_tmpdir" "$FIXTURE_REPO/bin/dotfiles" --action remove
 
-	assert_eq 0 "$COMMAND_STATUS" 'the real tmux package should remove cleanly' || return 1
+	assert_eq 0 "$COMMAND_STATUS" 'the real tmux package should remove cleanly through the public command' || {
+		printf '  output: %s\n' "$COMMAND_OUTPUT" >&2
+		return 1
+	}
 	assert_contains "$COMMAND_OUTPUT" 'Removed and verified package: tmux' \
-		'real tmux removal should verify the helper link is absent' || return 1
-	if [[ -e $FIXTURE_HOME/.local/libexec/dotfiles/tmux-starter || -L $FIXTURE_HOME/.local/libexec/dotfiles/tmux-starter ]]; then
-		printf '  tmux removal should remove only the helper link\n' >&2
+		'real tmux removal should verify both links are absent' || return 1
+	assert_contains "$COMMAND_OUTPUT" 'Arch packages tmux, fzf, and less remain installed' \
+		'real tmux removal should report retained Arch packages' || return 1
+	assert_contains "$COMMAND_OUTPUT" 'The tmux server, sessions, panes, logs, and other runtime state are not removed' \
+		'real tmux removal should report retained runtime state' || return 1
+	assert_contains "$COMMAND_OUTPUT" 'Run omarchy refresh tmux after removal to restore the Omarchy baseline' \
+		'real tmux removal should report the explicit baseline restoration command' || return 1
+	if [[ -e $config_target || -L $config_target || -e $starter_target || -L $starter_target ]]; then
+		printf '  tmux removal should remove both managed leaf links\n' >&2
 		return 1
 	fi
 	for parent in \
+		"$FIXTURE_HOME/.config" \
+		"$FIXTURE_HOME/.config/tmux" \
 		"$FIXTURE_HOME/.local" \
 		"$FIXTURE_HOME/.local/libexec" \
 		"$FIXTURE_HOME/.local/libexec/dotfiles"; do
@@ -943,13 +1031,26 @@ fi'
 		fi
 	done
 	assert_eq 'retained tmux state' "$(<"$retained_state")" 'tmux state should remain after Stow removal' || return 1
-	assert_eq $'thefuck\ntmux\nfzf' "$(<"$ARCH_PACKAGE_STATE")" 'tmux and fzf should remain installed after removal' || return 1
-	local stow_calls no_folding_calls
-	stow_calls=$(awk '/^stow / { count++ } END { print count + 0 }' "$CALL_LOG")
-	no_folding_calls=$(awk '/^stow / && / --no-folding / { count++ } END { print count + 0 }' "$CALL_LOG")
-	assert_eq 4 "$stow_calls" 'real tmux apply and remove should each simulate and mutate once' || return 1
-	assert_eq "$stow_calls" "$no_folding_calls" 'every real tmux Stow call should disable directory folding'
-}
+	assert_eq 'retained tmux log' "$(<"$retained_log")" 'tmux logs should remain after Stow removal' || return 1
+	assert_eq $'thefuck\ntmux\nfzf\nless' "$(<"$ARCH_PACKAGE_STATE")" \
+		'tmux, fzf, and less should remain installed after removal' || return 1
+	assert_eq "$runtime_pid" \
+		"$(TMUX= TMUX_TMPDIR="$tmux_tmpdir" tmux display-message -p -t retained-runtime '#{pid}')" \
+		'tmux removal should leave the default server and session running' || return 1
+	assert_eq "$runtime_pane" \
+		"$(TMUX= TMUX_TMPDIR="$tmux_tmpdir" tmux list-panes -t retained-runtime -F '#{pane_id}')" \
+		'tmux removal should leave the default server pane intact' || return 1
+	assert_eq "$runtime_prefix" "$(TMUX= TMUX_TMPDIR="$tmux_tmpdir" tmux show-options -gv prefix)" \
+		'tmux removal should leave default-server options unchanged' || return 1
+	if [[ $(<"$CALL_LOG") == *'refresh tmux'* ]]; then
+		printf '  tmux removal must report omarchy refresh tmux without executing it\n' >&2
+		return 1
+	fi
+	if [[ $(<"$CALL_LOG") == *'pkg drop'* ]]; then
+		printf '  tmux removal must not remove retained Arch packages\n' >&2
+		return 1
+	fi
+)
 
 set -e
 run_test test_apply_requires_explicit_package_and_approval 'apply requires explicit package and approval'
