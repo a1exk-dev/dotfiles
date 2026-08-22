@@ -3,8 +3,8 @@
 source "$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)/support/test_helper.sh"
 
 readonly STARSHIP_SOURCE_RELATIVE=config/starship/.config/starship.toml
-readonly STARSHIP_SELECTED_FEATURE_BYTES=814
-readonly STARSHIP_SELECTED_FEATURE_SHA256=2c9712750b5534b2340c2d66b1236833bf29eb604b47389a8d0117befabb02d6
+readonly STARSHIP_SELECTED_FEATURE_BYTES=825
+readonly STARSHIP_SELECTED_FEATURE_SHA256=a682c6b81a38095100a944c28d705c24a2765d5071a3069b2659414be35fd175
 readonly STARSHIP_SUCCESS_PROMPT=$'\n\\[\033[1;36m\\]/fixture/project\\[\033[0m\\] \\[\033[1;36m\\]\342\235\257\\[\033[0m\\] '
 readonly STARSHIP_FAILURE_PROMPT=$'\n\\[\033[1;36m\\]/fixture/project\\[\033[0m\\] \\[\033[1;36m\\]\342\234\227\\[\033[0m\\] '
 readonly STARSHIP_DEEP_PROMPT=$'\n\\[\033[1;36m\\]\342\200\246/beta/gamma\\[\033[0m\\] \\[\033[1;36m\\]\342\235\257\\[\033[0m\\] '
@@ -368,6 +368,45 @@ test_deleted_git_module_renders_one_multiple_and_mixed_states() {
 	assert_render_cache_removed
 }
 
+test_renamed_git_module_renders_one_multiple_and_mixed_states() {
+	local git_status
+
+	setup_starship_git_runtime || return 1
+	fixture_git mv -- tracked.txt renamed.txt || return 1
+	git_status=$(fixture_git status --short) || return 1
+	assert_eq 'R  tracked.txt -> renamed.txt' "$git_status" \
+		'the one-renamed fixture should contain exactly one detected staged rename' || return 1
+	render_module git_status /mnt/repository /fixture/project 0
+	assert_eq 0 "$COMMAND_STATUS" 'the one-renamed Git status module should render' || return 1
+	assert_eq $'\033[36m\302\2731 \033[0m' "$COMMAND_OUTPUT" \
+		'the Git status module should render the exact one-file renamed count' || return 1
+	assert_render_cache_removed || return 1
+
+	setup_starship_git_runtime || return 1
+	fixture_git mv -- tracked.txt renamed.txt || return 1
+	fixture_git mv -- tracked2.txt renamed2.txt || return 1
+	git_status=$(fixture_git status --short) || return 1
+	assert_eq $'R  tracked.txt -> renamed.txt\nR  tracked2.txt -> renamed2.txt' "$git_status" \
+		'the multi-renamed fixture should contain exactly two detected staged renames' || return 1
+	render_module git_status /mnt/repository /fixture/project 0
+	assert_eq 0 "$COMMAND_STATUS" 'the multi-renamed Git status module should render' || return 1
+	assert_eq $'\033[36m\302\2732 \033[0m' "$COMMAND_OUTPUT" \
+		'the Git status module should render the exact multi-file renamed count' || return 1
+	assert_render_cache_removed || return 1
+
+	setup_starship_git_runtime || return 1
+	fixture_git mv -- tracked.txt renamed.txt || return 1
+	rm -- "$STARSHIP_GIT_REPO/tracked2.txt" || return 1
+	git_status=$(fixture_git status --short) || return 1
+	assert_eq $'R  tracked.txt -> renamed.txt\n D tracked2.txt' "$git_status" \
+		'the mixed fixture should contain one detected rename and one unstaged deletion' || return 1
+	render_module git_status /mnt/repository /fixture/project 0
+	assert_eq 0 "$COMMAND_STATUS" 'the mixed renamed and deleted Git status module should render' || return 1
+	assert_eq $'\033[36m\342\234\2301 \302\2731 \033[0m' "$COMMAND_OUTPUT" \
+		'the mixed Git status module should render deleted before renamed with exact bytes' || return 1
+	assert_render_cache_removed
+}
+
 test_focused_modules_render_exact_selected_configuration_output() {
 	setup_starship_git_runtime || return 1
 	render_module directory /mnt/deep/alpha/beta/gamma /fixture/deep/alpha/beta/gamma 0
@@ -436,6 +475,8 @@ if [[ -f $SOURCE_REPO/$STARSHIP_SOURCE_RELATIVE && ! -L $SOURCE_REPO/$STARSHIP_S
 		'staged Git module renders one-file, multi-file, and mixed states'
 	run_test test_deleted_git_module_renders_one_multiple_and_mixed_states \
 		'deleted Git module renders one-file, multi-file, and mixed states'
+	run_test test_renamed_git_module_renders_one_multiple_and_mixed_states \
+		'renamed Git module renders one-file, multi-file, and mixed states'
 	run_test test_focused_modules_render_exact_selected_configuration_output \
 		'focused modules render exact selected-configuration output'
 fi
