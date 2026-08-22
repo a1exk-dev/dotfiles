@@ -3,8 +3,8 @@
 source "$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)/support/test_helper.sh"
 
 readonly STARSHIP_SOURCE_RELATIVE=config/starship/.config/starship.toml
-readonly STARSHIP_SELECTED_FEATURE_BYTES=792
-readonly STARSHIP_SELECTED_FEATURE_SHA256=5804ce81055a31fbcdbec6e678977f8783e1c4135ce4cb9e1bbb3eafeebb7b04
+readonly STARSHIP_SELECTED_FEATURE_BYTES=802
+readonly STARSHIP_SELECTED_FEATURE_SHA256=ee73c1233ede848f06996ff364d550ad19fd9837bc7acb408d014da9d54bbc65
 readonly STARSHIP_SUCCESS_PROMPT=$'\n\\[\033[1;36m\\]/fixture/project\\[\033[0m\\] \\[\033[1;36m\\]\342\235\257\\[\033[0m\\] '
 readonly STARSHIP_FAILURE_PROMPT=$'\n\\[\033[1;36m\\]/fixture/project\\[\033[0m\\] \\[\033[1;36m\\]\342\234\227\\[\033[0m\\] '
 readonly STARSHIP_DEEP_PROMPT=$'\n\\[\033[1;36m\\]\342\200\246/beta/gamma\\[\033[0m\\] \\[\033[1;36m\\]\342\235\257\\[\033[0m\\] '
@@ -287,6 +287,48 @@ test_conflicted_git_module_renders_one_and_multiple_file_counts() {
 	assert_render_cache_removed
 }
 
+test_staged_git_module_renders_one_multiple_and_mixed_states() {
+	local git_status
+
+	setup_starship_git_runtime || return 1
+	printf 'staged\n' >"$STARSHIP_GIT_REPO/tracked.txt" || return 1
+	fixture_git add -- tracked.txt || return 1
+	git_status=$(fixture_git status --short) || return 1
+	assert_eq 'M  tracked.txt' "$git_status" \
+		'the one-staged fixture should contain exactly one index change' || return 1
+	render_module git_status /mnt/repository /fixture/project 0
+	assert_eq 0 "$COMMAND_STATUS" 'the one-staged Git status module should render' || return 1
+	assert_eq $'\033[36m+1 \033[0m' "$COMMAND_OUTPUT" \
+		'the Git status module should render the exact one-file staged count' || return 1
+	assert_render_cache_removed || return 1
+
+	setup_starship_git_runtime || return 1
+	printf 'staged\n' >"$STARSHIP_GIT_REPO/tracked.txt" || return 1
+	printf 'staged\n' >"$STARSHIP_GIT_REPO/tracked2.txt" || return 1
+	fixture_git add -- tracked.txt tracked2.txt || return 1
+	git_status=$(fixture_git status --short) || return 1
+	assert_eq $'M  tracked.txt\nM  tracked2.txt' "$git_status" \
+		'the multi-staged fixture should contain exactly two index changes' || return 1
+	render_module git_status /mnt/repository /fixture/project 0
+	assert_eq 0 "$COMMAND_STATUS" 'the multi-staged Git status module should render' || return 1
+	assert_eq $'\033[36m+2 \033[0m' "$COMMAND_OUTPUT" \
+		'the Git status module should render the exact multi-file staged count' || return 1
+	assert_render_cache_removed || return 1
+
+	setup_starship_git_runtime || return 1
+	printf 'staged\n' >"$STARSHIP_GIT_REPO/tracked.txt" || return 1
+	fixture_git add -- tracked.txt || return 1
+	printf 'modified\n' >"$STARSHIP_GIT_REPO/tracked2.txt" || return 1
+	git_status=$(fixture_git status --short) || return 1
+	assert_eq $'M  tracked.txt\n M tracked2.txt' "$git_status" \
+		'the mixed fixture should contain one index and one worktree change' || return 1
+	render_module git_status /mnt/repository /fixture/project 0
+	assert_eq 0 "$COMMAND_STATUS" 'the mixed Git status module should render' || return 1
+	assert_eq $'\033[36m\356\251\2611 +1 \033[0m' "$COMMAND_OUTPUT" \
+		'the mixed Git status module should render modified before staged with exact bytes' || return 1
+	assert_render_cache_removed
+}
+
 test_focused_modules_render_exact_selected_configuration_output() {
 	setup_starship_git_runtime || return 1
 	render_module directory /mnt/deep/alpha/beta/gamma /fixture/deep/alpha/beta/gamma 0
@@ -351,6 +393,8 @@ if [[ -f $SOURCE_REPO/$STARSHIP_SOURCE_RELATIVE && ! -L $SOURCE_REPO/$STARSHIP_S
 		'Git prompts retain clean, modified, and untracked behavior'
 	run_test test_conflicted_git_module_renders_one_and_multiple_file_counts \
 		'conflicted Git module renders one- and multi-file counts'
+	run_test test_staged_git_module_renders_one_multiple_and_mixed_states \
+		'staged Git module renders one-file, multi-file, and mixed states'
 	run_test test_focused_modules_render_exact_selected_configuration_output \
 		'focused modules render exact selected-configuration output'
 fi
