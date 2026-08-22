@@ -3,15 +3,15 @@
 source "$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)/support/test_helper.sh"
 
 readonly STARSHIP_SOURCE_RELATIVE=config/starship/.config/starship.toml
-readonly STARSHIP_SELECTED_FEATURE_BYTES=828
-readonly STARSHIP_SELECTED_FEATURE_SHA256=67746bec5d72e9a22b9868a5eec7f532d7797215a7834f69a9ad01d71247fd3f
-readonly STARSHIP_SUCCESS_PROMPT=$'\n\\[\033[1;36m\\]/fixture/project\\[\033[0m\\] \\[\033[1;36m\\]\342\235\257\\[\033[0m\\] '
-readonly STARSHIP_FAILURE_PROMPT=$'\n\\[\033[1;36m\\]/fixture/project\\[\033[0m\\] \\[\033[1;36m\\]\342\234\227\\[\033[0m\\] '
-readonly STARSHIP_DEEP_PROMPT=$'\n\\[\033[1;36m\\]\342\200\246/beta/gamma\\[\033[0m\\] \\[\033[1;36m\\]\342\235\257\\[\033[0m\\] '
-readonly STARSHIP_READ_ONLY_PROMPT=$'\n\\[\033[1;36m\\]/fixture/readonly\\[\033[0m\\]\\[\033[31m\\]\360\237\224\222\\[\033[0m\\] \\[\033[1;36m\\]\342\235\257\\[\033[0m\\] '
-readonly STARSHIP_CLEAN_GIT_PROMPT=$'\n\\[\033[3;36m\\]baseline\\[\033[0m\\] \\[\033[1;36m\\]\342\235\257\\[\033[0m\\] '
-readonly STARSHIP_MODIFIED_GIT_PROMPT=$'\n\\[\033[3;36m\\]baseline\\[\033[0m\\] \\[\033[36m\\]\356\251\2611 \\[\033[1m\\]\342\235\257\\[\033[0m\\] '
-readonly STARSHIP_UNTRACKED_GIT_PROMPT=$'\n\\[\033[3;36m\\]baseline\\[\033[0m\\] \\[\033[36m\\]?1 \\[\033[1m\\]\342\235\257\\[\033[0m\\] '
+readonly STARSHIP_SELECTED_FEATURE_BYTES=868
+readonly STARSHIP_SELECTED_FEATURE_SHA256=4e325202635d9a82c2c845f4bf6fb21a041f4cc26b568c892fa30529bb531f79
+readonly STARSHIP_SUCCESS_PROMPT=$'\n\\[\033[36m\\]\342\225\255\342\224\200 \\[\033[1m\\]/fixture/project\\[\033[0m\\] \n\\[\033[36m\\]\342\225\260\342\224\200\\[\033[1m\\]\342\235\257\\[\033[0m\\] '
+readonly STARSHIP_FAILURE_PROMPT=$'\n\\[\033[36m\\]\342\225\255\342\224\200 \\[\033[1m\\]/fixture/project\\[\033[0m\\] \n\\[\033[36m\\]\342\225\260\342\224\200\\[\033[1m\\]\342\234\227\\[\033[0m\\] '
+readonly STARSHIP_DEEP_PROMPT=$'\n\\[\033[36m\\]\342\225\255\342\224\200 \\[\033[1m\\]\342\200\246/beta/gamma\\[\033[0m\\] \n\\[\033[36m\\]\342\225\260\342\224\200\\[\033[1m\\]\342\235\257\\[\033[0m\\] '
+readonly STARSHIP_READ_ONLY_PROMPT=$'\n\\[\033[36m\\]\342\225\255\342\224\200 \\[\033[1m\\]/fixture/readonly\\[\033[0m\\]\\[\033[31m\\]\360\237\224\222\\[\033[0m\\] \n\\[\033[36m\\]\342\225\260\342\224\200\\[\033[1m\\]\342\235\257\\[\033[0m\\] '
+readonly STARSHIP_CLEAN_GIT_PROMPT=$'\n\\[\033[36m\\]\342\225\255\342\224\200 \\[\033[3m\\]baseline\\[\033[0m\\] \n\\[\033[36m\\]\342\225\260\342\224\200\\[\033[1m\\]\342\235\257\\[\033[0m\\] '
+readonly STARSHIP_MODIFIED_GIT_PROMPT=$'\n\\[\033[36m\\]\342\225\255\342\224\200 \\[\033[3m\\]baseline\\[\033[0m\\] \\[\033[36m\\]\356\251\2611 \\[\033[0m\\]\n\\[\033[36m\\]\342\225\260\342\224\200\\[\033[1m\\]\342\235\257\\[\033[0m\\] '
+readonly STARSHIP_UNTRACKED_GIT_PROMPT=$'\n\\[\033[36m\\]\342\225\255\342\224\200 \\[\033[3m\\]baseline\\[\033[0m\\] \\[\033[36m\\]?1 \\[\033[0m\\]\n\\[\033[36m\\]\342\225\260\342\224\200\\[\033[1m\\]\342\235\257\\[\033[0m\\] '
 
 setup_starship_runtime() {
 	new_fixture || return 1

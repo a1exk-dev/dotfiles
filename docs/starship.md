@@ -4,7 +4,7 @@ The `starship` Stow package owns one leaf target:
 
 - `~/.config/starship.toml`, linked from `config/starship/.config/starship.toml`
 
-The tracked config started as a byte-for-byte capture of Omarchy 4's `/usr/share/omarchy/config/starship.toml`. Its only intentional differences are the Git status markers described below. Keep packaged files under `/usr/share/omarchy/` read-only; they are comparison and recovery inputs.
+The tracked config started as a byte-for-byte capture of Omarchy 4's `/usr/share/omarchy/config/starship.toml`. Its only intentional differences are the connected two-line frame and the Git status markers described below. Keep packaged files under `/usr/share/omarchy/` read-only; they are comparison and recovery inputs.
 
 The package does not own:
 
@@ -23,7 +23,7 @@ The `bash` and `starship` Stow packages are independent. Omarchy's packaged Bash
 
 ## Prompt behavior
 
-The prompt still uses a 200 ms command timeout, two directory components, the read-only lock, and Omarchy's existing module roster. It remains one line and keeps the same order, spacing, glyphs, text styles, and terminal `cyan`.
+The prompt still uses a 200 ms command timeout, two directory components, the read-only lock, and Omarchy's existing module roster. It uses a connected two-line frame. The first line starts with `╭─ ` and shows the directory and Git context in their existing order. The second line starts with `╰─`, followed immediately by the existing success `❯` or error `✗` character. Typing starts after the character's existing trailing space. The frame uses terminal `cyan`; module spacing, glyphs, and text styles are unchanged.
 
 ## Git status
 
@@ -40,7 +40,7 @@ Stash state is presence-only:
 
 - Stash present: `\$ `
 
-Starship replaces `${count}` at runtime and treats `\$` as a literal dollar sign. Multiple stashes still render one `$ ` marker. Ahead, behind, diverged, status order, layout, and colors are unchanged. No other archived setting is active.
+Starship replaces `${count}` at runtime and treats `\$` as a literal dollar sign. Multiple stashes still render one `$ ` marker. Ahead, behind, diverged, status order, and colors are unchanged. No other archived setting is active.
 
 ## Apply
 
@@ -54,7 +54,7 @@ Choose `Apply Stow packages` and select `starship`. The wizard checks the suppor
 
 The repository used `Migrate existing target` once, while `config/starship/.config/starship.toml` was empty. Before migration, the live file was a regular file inside the home directory and matched Omarchy's packaged baseline byte for byte. Migration backed it up to XDG state, moved it into the Stow package, linked it, and validated it.
 
-At that checkpoint, the live file, backup, initial tracked source, and packaged baseline shared one byte count and digest. The backup remains unchanged. The current tracked config differs only by the Git status markers above.
+At that checkpoint, the live file, backup, initial tracked source, and packaged baseline shared one byte count and digest. The backup remains unchanged. The current tracked config differs only by the connected two-line frame and the Git status markers above.
 
 In a normal clone, the tracked destination already exists. Do not use `Migrate existing target` or `stow --adopt` for a regular `~/.config/starship.toml`. Use the procedure below.
 
@@ -243,7 +243,7 @@ An equivalent manual check is:
 
 ## Controlled prompt tests
 
-Computed-config validation does not prove prompt behavior or appearance. The focused suite runs real `starship prompt` and `starship module` commands in a fixed, isolated environment. It checks exact ANSI and glyph output for normal prompts, path handling, read-only directories, Git states, and one-file and multi-file counts. It verifies mixed staged and unstaged changes, mixed deleted and staged changes, and mixed renamed and deleted changes. It also checks one stash, multiple stashes, and mixed stash and rename state. Any Starship diagnostic fails the test.
+Computed-config validation does not prove prompt behavior or appearance. The focused suite runs real `starship prompt` and `starship module` commands in a fixed, isolated environment. It checks exact ANSI and glyph output for normal prompts, path handling, read-only directories, Git states, and one-file and multi-file counts. It checks the connected frame for success, failure, repository, deep-path, and read-only prompts. It verifies mixed staged and unstaged changes, mixed deleted and staged changes, and mixed renamed and deleted changes. It also checks one stash, multiple stashes, and mixed stash and rename state. Any Starship diagnostic fails the test.
 
 The focused suite requires Starship 1.26.0:
 
@@ -271,7 +271,7 @@ diff -u -- \
 	config/starship/.config/starship.toml
 ```
 
-The expected diff is limited to the seven marker settings under [Git status](#git-status). Stop and investigate any other difference.
+The expected diff is limited to the global prompt `format` and the seven marker settings under [Git status](#git-status). Stop and investigate any other difference.
 
 Review relevant new Omarchy migrations and hooks before accepting update-related behavior. Decide which packaged changes belong in the tracked replacement, then repeat strict validation and the focused prompt tests. When the repository changes its supported Omarchy target, also audit the new migration behavior and repeat the complete package lifecycle checks.
 

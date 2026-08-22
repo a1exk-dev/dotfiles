@@ -1,6 +1,6 @@
 add_newline = true
 command_timeout = 200
-format = "[$directory$git_branch$git_status]($style)$character"
+format = "[╭─ ](cyan)[$directory$git_branch$git_status]($style)$line_break[╰─](cyan)$character"
 
 [character]
 error_symbol = "[✗](bold cyan)"
