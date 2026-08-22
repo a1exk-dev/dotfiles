@@ -13,7 +13,8 @@ repo_root_style = "bold cyan"
 repo_root_format = "[$repo_root]($repo_root_style)[$path]($style)[$read_only]($read_only_style) "
 
 [git_branch]
-format = "[$branch]($style) "
+symbol = " "
+format = "[$symbol$branch]($style) "
 style = "italic cyan"
 
 [git_status]

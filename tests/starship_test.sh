@@ -3,15 +3,15 @@
 source "$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)/support/test_helper.sh"
 
 readonly STARSHIP_SOURCE_RELATIVE=config/starship/.config/starship.toml
-readonly STARSHIP_SELECTED_FEATURE_BYTES=868
-readonly STARSHIP_SELECTED_FEATURE_SHA256=4e325202635d9a82c2c845f4bf6fb21a041f4cc26b568c892fa30529bb531f79
+readonly STARSHIP_SELECTED_FEATURE_BYTES=891
+readonly STARSHIP_SELECTED_FEATURE_SHA256=db9aa46c3e8678a12b33d93c4d02d7b86f708e5690e2cd203607d48d080854f7
 readonly STARSHIP_SUCCESS_PROMPT=$'\n\\[\033[36m\\]\342\225\255\342\224\200 \\[\033[1m\\]/fixture/project\\[\033[0m\\] \n\\[\033[36m\\]\342\225\260\342\224\200\\[\033[1m\\]\342\235\257\\[\033[0m\\] '
 readonly STARSHIP_FAILURE_PROMPT=$'\n\\[\033[36m\\]\342\225\255\342\224\200 \\[\033[1m\\]/fixture/project\\[\033[0m\\] \n\\[\033[36m\\]\342\225\260\342\224\200\\[\033[1m\\]\342\234\227\\[\033[0m\\] '
 readonly STARSHIP_DEEP_PROMPT=$'\n\\[\033[36m\\]\342\225\255\342\224\200 \\[\033[1m\\]\342\200\246/beta/gamma\\[\033[0m\\] \n\\[\033[36m\\]\342\225\260\342\224\200\\[\033[1m\\]\342\235\257\\[\033[0m\\] '
 readonly STARSHIP_READ_ONLY_PROMPT=$'\n\\[\033[36m\\]\342\225\255\342\224\200 \\[\033[1m\\]/fixture/readonly\\[\033[0m\\]\\[\033[31m\\]\360\237\224\222\\[\033[0m\\] \n\\[\033[36m\\]\342\225\260\342\224\200\\[\033[1m\\]\342\235\257\\[\033[0m\\] '
-readonly STARSHIP_CLEAN_GIT_PROMPT=$'\n\\[\033[36m\\]\342\225\255\342\224\200 \\[\033[3m\\]baseline\\[\033[0m\\] \n\\[\033[36m\\]\342\225\260\342\224\200\\[\033[1m\\]\342\235\257\\[\033[0m\\] '
-readonly STARSHIP_MODIFIED_GIT_PROMPT=$'\n\\[\033[36m\\]\342\225\255\342\224\200 \\[\033[3m\\]baseline\\[\033[0m\\] \\[\033[36m\\]\356\251\2611 \\[\033[0m\\]\n\\[\033[36m\\]\342\225\260\342\224\200\\[\033[1m\\]\342\235\257\\[\033[0m\\] '
-readonly STARSHIP_UNTRACKED_GIT_PROMPT=$'\n\\[\033[36m\\]\342\225\255\342\224\200 \\[\033[3m\\]baseline\\[\033[0m\\] \\[\033[36m\\]?1 \\[\033[0m\\]\n\\[\033[36m\\]\342\225\260\342\224\200\\[\033[1m\\]\342\235\257\\[\033[0m\\] '
+readonly STARSHIP_CLEAN_GIT_PROMPT=$'\n\\[\033[36m\\]\342\225\255\342\224\200 \\[\033[3m\\]\357\220\230 baseline\\[\033[0m\\] \n\\[\033[36m\\]\342\225\260\342\224\200\\[\033[1m\\]\342\235\257\\[\033[0m\\] '
+readonly STARSHIP_MODIFIED_GIT_PROMPT=$'\n\\[\033[36m\\]\342\225\255\342\224\200 \\[\033[3m\\]\357\220\230 baseline\\[\033[0m\\] \\[\033[36m\\]\356\251\2611 \\[\033[0m\\]\n\\[\033[36m\\]\342\225\260\342\224\200\\[\033[1m\\]\342\235\257\\[\033[0m\\] '
+readonly STARSHIP_UNTRACKED_GIT_PROMPT=$'\n\\[\033[36m\\]\342\225\255\342\224\200 \\[\033[3m\\]\357\220\230 baseline\\[\033[0m\\] \\[\033[36m\\]?1 \\[\033[0m\\]\n\\[\033[36m\\]\342\225\260\342\224\200\\[\033[1m\\]\342\235\257\\[\033[0m\\] '
 
 setup_starship_runtime() {
 	new_fixture || return 1
@@ -483,8 +483,8 @@ test_focused_modules_render_exact_selected_configuration_output() {
 	assert_render_cache_removed || return 1
 
 	render_module git_branch /mnt/repository /fixture/project 0
-	assert_eq $'\033[3;36mbaseline\033[0m ' "$COMMAND_OUTPUT" \
-		'the Git branch module should retain exact baseline bytes' || return 1
+	assert_eq $'\033[3;36m\357\220\230 baseline\033[0m ' "$COMMAND_OUTPUT" \
+		'the Git branch module should render the exact icon, one-space separator, and italic cyan bytes' || return 1
 	assert_render_cache_removed || return 1
 
 	render_module git_status /mnt/repository /fixture/project 0
