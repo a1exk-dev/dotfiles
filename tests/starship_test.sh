@@ -3,8 +3,8 @@
 source "$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)/support/test_helper.sh"
 
 readonly STARSHIP_SOURCE_RELATIVE=config/starship/.config/starship.toml
-readonly STARSHIP_SELECTED_FEATURE_BYTES=825
-readonly STARSHIP_SELECTED_FEATURE_SHA256=a682c6b81a38095100a944c28d705c24a2765d5071a3069b2659414be35fd175
+readonly STARSHIP_SELECTED_FEATURE_BYTES=828
+readonly STARSHIP_SELECTED_FEATURE_SHA256=67746bec5d72e9a22b9868a5eec7f532d7797215a7834f69a9ad01d71247fd3f
 readonly STARSHIP_SUCCESS_PROMPT=$'\n\\[\033[1;36m\\]/fixture/project\\[\033[0m\\] \\[\033[1;36m\\]\342\235\257\\[\033[0m\\] '
 readonly STARSHIP_FAILURE_PROMPT=$'\n\\[\033[1;36m\\]/fixture/project\\[\033[0m\\] \\[\033[1;36m\\]\342\234\227\\[\033[0m\\] '
 readonly STARSHIP_DEEP_PROMPT=$'\n\\[\033[1;36m\\]\342\200\246/beta/gamma\\[\033[0m\\] \\[\033[1;36m\\]\342\235\257\\[\033[0m\\] '
@@ -93,6 +93,26 @@ create_conflicted_git_state() {
 		printf '  expected Git conflict status 1, got %d\n' "$merge_status" >&2
 		return 1
 	fi
+}
+
+create_git_stash() {
+	local label=$1
+
+	printf 'stashed %s\n' "$label" >"$STARSHIP_GIT_REPO/tracked.txt" || return 1
+	fixture_git -c user.name=Fixture -c user.email=fixture@example.invalid \
+		stash push --message "$label" -- tracked.txt >/dev/null 2>&1 || return 1
+}
+
+git_stash_count() {
+	local stash_list entry count=0
+
+	stash_list=$(fixture_git stash list --format='%gd') || return 1
+	if [[ -n $stash_list ]]; then
+		while IFS= read -r entry; do
+			count=$((count + 1))
+		done <<<"$stash_list"
+	fi
+	printf '%d\n' "$count" || return 1
 }
 
 run_starship() {
@@ -407,6 +427,54 @@ test_renamed_git_module_renders_one_multiple_and_mixed_states() {
 	assert_render_cache_removed
 }
 
+test_stashed_git_module_renders_presence_for_one_multiple_and_mixed_states() {
+	local git_status stash_count
+
+	setup_starship_git_runtime || return 1
+	create_git_stash one || return 1
+	stash_count=$(git_stash_count) || return 1
+	assert_eq 1 "$stash_count" \
+		'the one-stash fixture should contain exactly one real Git stash' || return 1
+	git_status=$(fixture_git status --porcelain=v1) || return 1
+	assert_eq '' "$git_status" \
+		'the one-stash fixture should have no index or worktree changes' || return 1
+	render_module git_status /mnt/repository /fixture/project 0
+	assert_eq 0 "$COMMAND_STATUS" 'the one-stash Git status module should render' || return 1
+	assert_eq $'\033[36m\\$ \033[0m' "$COMMAND_OUTPUT" \
+		'the Git status module should render the exact one-stash presence marker' || return 1
+	assert_render_cache_removed || return 1
+
+	setup_starship_git_runtime || return 1
+	create_git_stash one || return 1
+	create_git_stash two || return 1
+	stash_count=$(git_stash_count) || return 1
+	assert_eq 2 "$stash_count" \
+		'the multi-stash fixture should contain exactly two real Git stashes' || return 1
+	git_status=$(fixture_git status --porcelain=v1) || return 1
+	assert_eq '' "$git_status" \
+		'the multi-stash fixture should have no index or worktree changes' || return 1
+	render_module git_status /mnt/repository /fixture/project 0
+	assert_eq 0 "$COMMAND_STATUS" 'the multi-stash Git status module should render' || return 1
+	assert_eq $'\033[36m\\$ \033[0m' "$COMMAND_OUTPUT" \
+		'the Git status module should still render exactly one stash presence marker' || return 1
+	assert_render_cache_removed || return 1
+
+	setup_starship_git_runtime || return 1
+	create_git_stash one || return 1
+	fixture_git mv -- tracked.txt renamed.txt || return 1
+	stash_count=$(git_stash_count) || return 1
+	assert_eq 1 "$stash_count" \
+		'the mixed fixture should contain exactly one real Git stash' || return 1
+	git_status=$(fixture_git status --porcelain=v1) || return 1
+	assert_eq 'R  tracked.txt -> renamed.txt' "$git_status" \
+		'the mixed fixture should contain exactly one detected staged rename' || return 1
+	render_module git_status /mnt/repository /fixture/project 0
+	assert_eq 0 "$COMMAND_STATUS" 'the mixed stashed and renamed Git status module should render' || return 1
+	assert_eq $'\033[36m\\$ \302\2731 \033[0m' "$COMMAND_OUTPUT" \
+		'the mixed Git status module should render stash presence before renamed with exact bytes' || return 1
+	assert_render_cache_removed || return 1
+}
+
 test_focused_modules_render_exact_selected_configuration_output() {
 	setup_starship_git_runtime || return 1
 	render_module directory /mnt/deep/alpha/beta/gamma /fixture/deep/alpha/beta/gamma 0
@@ -477,6 +545,8 @@ if [[ -f $SOURCE_REPO/$STARSHIP_SOURCE_RELATIVE && ! -L $SOURCE_REPO/$STARSHIP_S
 		'deleted Git module renders one-file, multi-file, and mixed states'
 	run_test test_renamed_git_module_renders_one_multiple_and_mixed_states \
 		'renamed Git module renders one-file, multi-file, and mixed states'
+	run_test test_stashed_git_module_renders_presence_for_one_multiple_and_mixed_states \
+		'stashed Git module renders one-stash, multi-stash, and mixed states'
 	run_test test_focused_modules_render_exact_selected_configuration_output \
 		'focused modules render exact selected-configuration output'
 fi
