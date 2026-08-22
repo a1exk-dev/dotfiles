@@ -27,14 +27,15 @@ The prompt still uses a 200 ms command timeout, two directory components, the re
 
 ## Git status counts
 
-Compared with Omarchy's packaged baseline, the tracked config reports file counts for four Git states:
+Compared with Omarchy's packaged baseline, the tracked config reports file counts for five Git states:
 
 - Conflict: `${count} `
 - Modified: `${count} `
 - Untracked: `?${count} `
 - Staged: `+${count} `
+- Deleted: `✘${count} `
 
-Starship replaces `${count}` at runtime. For example, two staged files render as `+2 `. Ahead, behind, diverged, stash, renamed, deleted, status order, layout, and colors are unchanged. No other archived setting is active.
+Starship replaces `${count}` at runtime. For example, two deleted files render as `✘2 `. Ahead, behind, diverged, stash, renamed, status order, layout, and colors are unchanged. No other archived setting is active.
 
 ## Apply
 
@@ -237,7 +238,7 @@ An equivalent manual check is:
 
 ## Controlled prompt tests
 
-Computed-config validation does not prove prompt behavior or appearance. The focused suite runs real `starship prompt` and `starship module` commands in a fixed, isolated environment. It checks exact ANSI and glyph output for normal prompts, path handling, read-only directories, Git states, and one-file and multi-file counts. It also verifies mixed staged and unstaged changes. Any Starship diagnostic fails the test.
+Computed-config validation does not prove prompt behavior or appearance. The focused suite runs real `starship prompt` and `starship module` commands in a fixed, isolated environment. It checks exact ANSI and glyph output for normal prompts, path handling, read-only directories, Git states, and one-file and multi-file counts. It also verifies mixed staged and unstaged changes, plus mixed deleted and staged changes. Any Starship diagnostic fails the test.
 
 The focused suite requires Starship 1.26.0:
 
@@ -265,7 +266,7 @@ diff -u -- \
 	config/starship/.config/starship.toml
 ```
 
-The expected diff is limited to the four markers under [Git status counts](#git-status-counts). Stop and investigate any other difference.
+The expected diff is limited to the five markers under [Git status counts](#git-status-counts). Stop and investigate any other difference.
 
 Review relevant new Omarchy migrations and hooks before accepting update-related behavior. Decide which packaged changes belong in the tracked replacement, then repeat strict validation and the focused prompt tests. When the repository changes its supported Omarchy target, also audit the new migration behavior and repeat the complete package lifecycle checks.
 

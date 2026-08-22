@@ -3,8 +3,8 @@
 source "$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)/support/test_helper.sh"
 
 readonly STARSHIP_SOURCE_RELATIVE=config/starship/.config/starship.toml
-readonly STARSHIP_SELECTED_FEATURE_BYTES=802
-readonly STARSHIP_SELECTED_FEATURE_SHA256=ee73c1233ede848f06996ff364d550ad19fd9837bc7acb408d014da9d54bbc65
+readonly STARSHIP_SELECTED_FEATURE_BYTES=814
+readonly STARSHIP_SELECTED_FEATURE_SHA256=2c9712750b5534b2340c2d66b1236833bf29eb604b47389a8d0117befabb02d6
 readonly STARSHIP_SUCCESS_PROMPT=$'\n\\[\033[1;36m\\]/fixture/project\\[\033[0m\\] \\[\033[1;36m\\]\342\235\257\\[\033[0m\\] '
 readonly STARSHIP_FAILURE_PROMPT=$'\n\\[\033[1;36m\\]/fixture/project\\[\033[0m\\] \\[\033[1;36m\\]\342\234\227\\[\033[0m\\] '
 readonly STARSHIP_DEEP_PROMPT=$'\n\\[\033[1;36m\\]\342\200\246/beta/gamma\\[\033[0m\\] \\[\033[1;36m\\]\342\235\257\\[\033[0m\\] '
@@ -329,6 +329,45 @@ test_staged_git_module_renders_one_multiple_and_mixed_states() {
 	assert_render_cache_removed
 }
 
+test_deleted_git_module_renders_one_multiple_and_mixed_states() {
+	local git_status
+
+	setup_starship_git_runtime || return 1
+	rm -- "$STARSHIP_GIT_REPO/tracked.txt" || return 1
+	git_status=$(fixture_git status --short) || return 1
+	assert_eq ' D tracked.txt' "$git_status" \
+		'the one-deleted fixture should contain exactly one unstaged deletion' || return 1
+	render_module git_status /mnt/repository /fixture/project 0
+	assert_eq 0 "$COMMAND_STATUS" 'the one-deleted Git status module should render' || return 1
+	assert_eq $'\033[36m\342\234\2301 \033[0m' "$COMMAND_OUTPUT" \
+		'the Git status module should render the exact one-file deleted count' || return 1
+	assert_render_cache_removed || return 1
+
+	setup_starship_git_runtime || return 1
+	rm -- "$STARSHIP_GIT_REPO/tracked.txt" "$STARSHIP_GIT_REPO/tracked2.txt" || return 1
+	git_status=$(fixture_git status --short) || return 1
+	assert_eq $' D tracked.txt\n D tracked2.txt' "$git_status" \
+		'the multi-deleted fixture should contain exactly two unstaged deletions' || return 1
+	render_module git_status /mnt/repository /fixture/project 0
+	assert_eq 0 "$COMMAND_STATUS" 'the multi-deleted Git status module should render' || return 1
+	assert_eq $'\033[36m\342\234\2302 \033[0m' "$COMMAND_OUTPUT" \
+		'the Git status module should render the exact multi-file deleted count' || return 1
+	assert_render_cache_removed || return 1
+
+	setup_starship_git_runtime || return 1
+	rm -- "$STARSHIP_GIT_REPO/tracked.txt" || return 1
+	printf 'staged\n' >"$STARSHIP_GIT_REPO/tracked2.txt" || return 1
+	fixture_git add -- tracked2.txt || return 1
+	git_status=$(fixture_git status --short) || return 1
+	assert_eq $' D tracked.txt\nM  tracked2.txt' "$git_status" \
+		'the mixed fixture should contain one unstaged deletion and one staged modification' || return 1
+	render_module git_status /mnt/repository /fixture/project 0
+	assert_eq 0 "$COMMAND_STATUS" 'the mixed deleted and staged Git status module should render' || return 1
+	assert_eq $'\033[36m\342\234\2301 +1 \033[0m' "$COMMAND_OUTPUT" \
+		'the mixed Git status module should render deleted before staged with exact bytes' || return 1
+	assert_render_cache_removed
+}
+
 test_focused_modules_render_exact_selected_configuration_output() {
 	setup_starship_git_runtime || return 1
 	render_module directory /mnt/deep/alpha/beta/gamma /fixture/deep/alpha/beta/gamma 0
@@ -395,6 +434,8 @@ if [[ -f $SOURCE_REPO/$STARSHIP_SOURCE_RELATIVE && ! -L $SOURCE_REPO/$STARSHIP_S
 		'conflicted Git module renders one- and multi-file counts'
 	run_test test_staged_git_module_renders_one_multiple_and_mixed_states \
 		'staged Git module renders one-file, multi-file, and mixed states'
+	run_test test_deleted_git_module_renders_one_multiple_and_mixed_states \
+		'deleted Git module renders one-file, multi-file, and mixed states'
 	run_test test_focused_modules_render_exact_selected_configuration_output \
 		'focused modules render exact selected-configuration output'
 fi
