@@ -1,6 +1,6 @@
 add_newline = true
 command_timeout = 200
-format = "[╭─ ](cyan)[$directory$c$rust$golang$nodejs$php$java$kotlin$haskell$python$git_branch$git_status]($style)$line_break[╰─](cyan)$character"
+format = "[╭─ ](cyan)[$directory$c$rust$golang$nodejs$php$java$kotlin$haskell$python$docker_context$conda$pixi$git_branch$git_status]($style)$line_break[╰─](cyan)$character"
 
 [character]
 error_symbol = "[✗](bold cyan)"
@@ -55,6 +55,21 @@ style = "cyan"
 [python]
 symbol = " "
 format = "[$symbol($version )]($style)"
+style = "cyan"
+
+[docker_context]
+symbol = " "
+format = "[$symbol$context]($style) "
+style = "cyan"
+
+[conda]
+symbol = "🅒 "
+format = "[$symbol$environment]($style) "
+style = "cyan"
+
+[pixi]
+symbol = "🧚 "
+format = "[$symbol($version )($environment )]($style)"
 style = "cyan"
 
 [git_branch]

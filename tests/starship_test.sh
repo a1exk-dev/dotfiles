@@ -3,8 +3,8 @@
 source "$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)/support/test_helper.sh"
 
 readonly STARSHIP_SOURCE_RELATIVE=config/starship/.config/starship.toml
-readonly STARSHIP_SELECTED_FEATURE_BYTES=1670
-readonly STARSHIP_SELECTED_FEATURE_SHA256=86a97972f58717a18acf3bfd746a140f457de4b8ba30735addca1e9d563b7ca4
+readonly STARSHIP_SELECTED_FEATURE_BYTES=1961
+readonly STARSHIP_SELECTED_FEATURE_SHA256=299c5e18c6f3e75d7bef63f7ade03b6257c7e4c389d66a4af448ceb23c131634
 readonly STARSHIP_SUCCESS_PROMPT=$'\n\\[\033[36m\\]\342\225\255\342\224\200 \\[\033[1m\\]/fixture/project\\[\033[0m\\] \n\\[\033[36m\\]\342\225\260\342\224\200\\[\033[1m\\]\342\235\257\\[\033[0m\\] '
 readonly STARSHIP_FAILURE_PROMPT=$'\n\\[\033[36m\\]\342\225\255\342\224\200 \\[\033[1m\\]/fixture/project\\[\033[0m\\] \n\\[\033[36m\\]\342\225\260\342\224\200\\[\033[1m\\]\342\234\227\\[\033[0m\\] '
 readonly STARSHIP_DEEP_PROMPT=$'\n\\[\033[36m\\]\342\225\255\342\224\200 \\[\033[1m\\]\342\200\246/beta/gamma\\[\033[0m\\] \n\\[\033[36m\\]\342\225\260\342\224\200\\[\033[1m\\]\342\235\257\\[\033[0m\\] '
@@ -13,6 +13,8 @@ readonly STARSHIP_CLEAN_GIT_PROMPT=$'\n\\[\033[36m\\]\342\225\255\342\224\200 \\
 readonly STARSHIP_MODIFIED_GIT_PROMPT=$'\n\\[\033[36m\\]\342\225\255\342\224\200 \\[\033[3m\\]\357\220\230 baseline\\[\033[0m\\] \\[\033[36m\\]\356\251\2611 \\[\033[0m\\]\n\\[\033[36m\\]\342\225\260\342\224\200\\[\033[1m\\]\342\235\257\\[\033[0m\\] '
 readonly STARSHIP_UNTRACKED_GIT_PROMPT=$'\n\\[\033[36m\\]\342\225\255\342\224\200 \\[\033[3m\\]\357\220\230 baseline\\[\033[0m\\] \\[\033[36m\\]?1 \\[\033[0m\\]\n\\[\033[36m\\]\342\225\260\342\224\200\\[\033[1m\\]\342\235\257\\[\033[0m\\] '
 readonly STARSHIP_LANGUAGE_POLYGLOT_PROMPT=$'\n\\[\033[36m\\]\342\225\255\342\224\200 \\[\033[1m\\]/fixture/project\\[\033[0m\\] \\[\033[36m\\]\356\230\236 v13.2.1 \356\236\250 v1.80.1 \356\230\247 v1.23.4 \356\234\230 v22.12.0 \356\230\210 v8.3.14 \356\211\226 v21.0.4 \356\230\264 v2.0.21 \356\230\237 9.10.1 \356\230\206 v3.13.1 \\[\033[0m\\]\n\\[\033[36m\\]\342\225\260\342\224\200\\[\033[1m\\]\342\235\257\\[\033[0m\\] '
+readonly STARSHIP_ENVIRONMENT_CONTEXT_PROMPT=$'\n\\[\033[36m\\]\342\225\255\342\224\200 \356\230\206 v3.13.1 \357\214\210 remote-builder\\[\033[0m\\] \\[\033[36m\\]\360\237\205\222 research\\[\033[0m\\] \\[\033[36m\\]\360\237\247\232 v0.41.4 \\[\033[3m\\]\357\220\230 baseline\\[\033[0m\\] \n\\[\033[36m\\]\342\225\260\342\224\200\\[\033[1m\\]\342\235\257\\[\033[0m\\] '
+readonly STARSHIP_PIXI_ENVIRONMENT_CONTEXT_PROMPT=$'\n\\[\033[36m\\]\342\225\255\342\224\200 \356\230\206 v3.13.1 \357\214\210 remote-builder\\[\033[0m\\] \\[\033[36m\\]\360\237\247\232 v0.41.4 dev \\[\033[3m\\]\357\220\230 baseline\\[\033[0m\\] \n\\[\033[36m\\]\342\225\260\342\224\200\\[\033[1m\\]\342\235\257\\[\033[0m\\] '
 readonly -a STARSHIP_LANGUAGE_MODULES=(c rust golang nodejs php java kotlin haskell python)
 readonly -a STARSHIP_LANGUAGE_OUTPUTS=(
 	$'\033[36m\356\230\236 v13.2.1 \033[0m'
@@ -42,7 +44,9 @@ setup_starship_runtime() {
 	STARSHIP_FIXTURE_CONFIG=$FIXTURE_REPO/$STARSHIP_SOURCE_RELATIVE
 	STARSHIP_RUNTIME=$FIXTURE_ROOT/starship-runtime
 	STARSHIP_RUNTIME_PATH=/usr/bin:/bin
+	STARSHIP_COMMAND_PATH=$STARSHIP_RUNTIME_PATH
 	STARSHIP_RUNTIME_CALL_LOG=
+	STARSHIP_RUNTIME_ENV=()
 	mkdir -p \
 		"$STARSHIP_RUNTIME/home" \
 		"$STARSHIP_RUNTIME/project" \
@@ -52,27 +56,29 @@ setup_starship_runtime() {
 	BWRAP_EXTRA_ARGS+=(--bind "$STARSHIP_RUNTIME" /mnt)
 }
 
-setup_starship_language_runtime() {
+setup_starship_controlled_tool_runtime() {
 	setup_starship_runtime || return 1
 	STARSHIP_LANGUAGE_ROOT=$STARSHIP_RUNTIME/languages
-	STARSHIP_LANGUAGE_BIN=$STARSHIP_RUNTIME/language-bin
-	STARSHIP_LANGUAGE_CALL_LOG=$STARSHIP_RUNTIME/language-calls
-	STARSHIP_RUNTIME_PATH=/mnt/language-bin:/usr/bin:/bin
-	STARSHIP_RUNTIME_CALL_LOG=/mnt/language-calls
-	mkdir -p "$STARSHIP_LANGUAGE_ROOT" "$STARSHIP_LANGUAGE_BIN" || return 1
-	: >"$STARSHIP_LANGUAGE_CALL_LOG" || return 1
-	cat >"$STARSHIP_LANGUAGE_BIN/fake-language-tool" <<'EOF' || return 1
+	STARSHIP_ENVIRONMENT_ROOT=$STARSHIP_RUNTIME/environments
+	STARSHIP_TOOL_BIN=$STARSHIP_RUNTIME/tool-bin
+	STARSHIP_TOOL_CALL_LOG=$STARSHIP_RUNTIME/tool-calls
+	STARSHIP_RUNTIME_PATH=/mnt/tool-bin:/usr/bin:/bin
+	STARSHIP_COMMAND_PATH=$STARSHIP_RUNTIME_PATH
+	STARSHIP_RUNTIME_CALL_LOG=/mnt/tool-calls
+	mkdir -p "$STARSHIP_LANGUAGE_ROOT" "$STARSHIP_ENVIRONMENT_ROOT" "$STARSHIP_TOOL_BIN" || return 1
+	: >"$STARSHIP_TOOL_CALL_LOG" || return 1
+	cat >"$STARSHIP_TOOL_BIN/fake-starship-tool" <<'EOF' || return 1
 #!/usr/bin/env bash
 
 set -u
 
 tool=${0##*/}
-if [[ -n ${DOTFILES_TEST_STARSHIP_LANGUAGE_CALL_LOG-} ]]; then
+if [[ -n ${DOTFILES_TEST_STARSHIP_TOOL_CALL_LOG-} ]]; then
 	invocation=$tool
 	for arg in "$@"; do
 		invocation+=" <$arg>"
 	done
-	printf '%s\n' "$invocation" >>"$DOTFILES_TEST_STARSHIP_LANGUAGE_CALL_LOG"
+	printf '%s\n' "$invocation" >>"$DOTFILES_TEST_STARSHIP_TOOL_CALL_LOG"
 fi
 
 invalid_args() {
@@ -124,6 +130,14 @@ case $tool in
 		[[ $# -eq 1 && $1 == --version ]] || invalid_args
 		printf '%s\n' 'Python 3.13.1'
 		;;
+	pixi)
+		[[ $# -eq 1 && $1 == --version ]] || invalid_args
+		printf '%s\n' 'pixi 0.41.4'
+		;;
+	docker | conda)
+		printf 'unexpected Starship %s command invocation\n' "$tool" >&2
+		exit 64
+		;;
 	c++)
 		[[ $# -eq 1 && $1 == --version ]] || invalid_args
 		printf '%s\n' \
@@ -136,11 +150,15 @@ case $tool in
 		;;
 esac
 EOF
-	chmod 0755 "$STARSHIP_LANGUAGE_BIN/fake-language-tool" || return 1
+	chmod 0755 "$STARSHIP_TOOL_BIN/fake-starship-tool" || return 1
 	local tool
-	for tool in cc rustup rustc go node php java kotlin ghc python 'c++'; do
-		ln -s fake-language-tool "$STARSHIP_LANGUAGE_BIN/$tool" || return 1
+	for tool in cc rustup rustc go node php java kotlin ghc python pixi docker conda 'c++'; do
+		ln -s fake-starship-tool "$STARSHIP_TOOL_BIN/$tool" || return 1
 	done
+}
+
+setup_starship_language_runtime() {
+	setup_starship_controlled_tool_runtime
 }
 
 create_starship_language_marker() {
@@ -161,10 +179,10 @@ create_starship_language_marker() {
 	esac
 }
 
-assert_starship_language_call_logged() {
+assert_starship_call_logged() {
 	local expected=$1
-	if ! grep -Fqx -- "$expected" "$STARSHIP_LANGUAGE_CALL_LOG"; then
-		printf '  missing controlled Starship language call: %s\n' "$expected" >&2
+	if ! grep -Fqx -- "$expected" "$STARSHIP_TOOL_CALL_LOG"; then
+		printf '  missing controlled Starship tool call: %s\n' "$expected" >&2
 		return 1
 	fi
 }
@@ -183,8 +201,7 @@ fixture_git() {
 		git -C "$STARSHIP_GIT_REPO" "$@"
 }
 
-setup_starship_git_runtime() {
-	setup_starship_runtime || return 1
+setup_starship_git_repository() {
 	STARSHIP_GIT_REPO=$STARSHIP_RUNTIME/repository
 	STARSHIP_GIT_REMOTE=$STARSHIP_RUNTIME/remote.git
 	mkdir -p "$STARSHIP_GIT_REPO" || return 1
@@ -202,6 +219,11 @@ setup_starship_git_runtime() {
 		commit -m baseline >/dev/null 2>&1 || return 1
 	fixture_git remote add origin "$STARSHIP_GIT_REMOTE" || return 1
 	fixture_git push --set-upstream origin baseline >/dev/null 2>&1 || return 1
+}
+
+setup_starship_git_runtime() {
+	setup_starship_runtime || return 1
+	setup_starship_git_repository
 }
 
 create_fixture_git_commit() {
@@ -285,9 +307,15 @@ run_starship() {
 	run_in_sandbox "$STARSHIP_RUNTIME" "$STARSHIP_RUNTIME_PATH" bash -c '
 		set -u
 		config=$1
-		runtime_path=$2
-		language_call_log=$3
-		shift 3
+		starship_path=$2
+		tool_call_log=$3
+		runtime_env_count=$4
+		shift 4
+		runtime_env=()
+		for ((index = 0; index < runtime_env_count; index++)); do
+			runtime_env+=("$1")
+			shift
+		done
 		work=$(mktemp -d "${TMPDIR:-/tmp}/dotfiles-starship-render.XXXXXX") || exit 1
 		cleanup() { rm -rf -- "$work"; }
 		trap cleanup EXIT
@@ -300,7 +328,7 @@ run_starship() {
 				HOME=/mnt/home \
 				USER=fixture \
 				SHELL=/usr/bin/bash \
-				PATH="$runtime_path" \
+				PATH="$starship_path" \
 				LANG=C \
 				LC_ALL=C \
 				TZ=UTC \
@@ -311,8 +339,9 @@ run_starship() {
 				STARSHIP_SESSION_KEY=dotfiles-starship-render \
 				GIT_CONFIG_NOSYSTEM=1 \
 				GIT_CONFIG_GLOBAL=/dev/null \
-				DOTFILES_TEST_STARSHIP_LANGUAGE_CALL_LOG="$language_call_log" \
-				starship "$@"
+				"${runtime_env[@]}" \
+				DOTFILES_TEST_STARSHIP_TOOL_CALL_LOG="$tool_call_log" \
+				/usr/bin/starship "$@"
 		) >"$work/stdout" 2>"$work/stderr" || status=$?
 		if ((status != 0)); then
 			cat -- "$work/stderr" >&2
@@ -323,7 +352,8 @@ run_starship() {
 			exit 1
 		fi
 		cat -- "$work/stdout"
-	' bash "$STARSHIP_FIXTURE_CONFIG" "$STARSHIP_RUNTIME_PATH" "$STARSHIP_RUNTIME_CALL_LOG" "$@"
+	' bash "$STARSHIP_FIXTURE_CONFIG" "$STARSHIP_COMMAND_PATH" \
+		"$STARSHIP_RUNTIME_CALL_LOG" "${#STARSHIP_RUNTIME_ENV[@]}" "${STARSHIP_RUNTIME_ENV[@]}" "$@"
 }
 
 render_with_context() {
@@ -431,14 +461,14 @@ test_language_modules_render_exact_controlled_versions() {
 		module=${STARSHIP_LANGUAGE_MODULES[index]}
 		project=$STARSHIP_LANGUAGE_ROOT/$module
 		create_starship_language_marker "$module" "$project" || return 1
-		: >"$STARSHIP_LANGUAGE_CALL_LOG" || return 1
+		: >"$STARSHIP_TOOL_CALL_LOG" || return 1
 		render_module "$module" "/mnt/languages/$module" /fixture/project 0 || return 1
 		assert_eq 0 "$COMMAND_STATUS" "the controlled $module module should render" || return 1
 		assert_eq "${STARSHIP_LANGUAGE_OUTPUTS[index]}" "$COMMAND_OUTPUT" \
 			"the controlled $module module should render exact selected bytes" || return 1
-		assert_starship_language_call_logged "${STARSHIP_LANGUAGE_VERSION_CALLS[index]}" || return 1
+		assert_starship_call_logged "${STARSHIP_LANGUAGE_VERSION_CALLS[index]}" || return 1
 		if [[ $module == rust ]]; then
-			assert_starship_language_call_logged 'rustup <default>' || return 1
+			assert_starship_call_logged 'rustup <default>' || return 1
 		fi
 		assert_render_cache_removed || return 1
 	done
@@ -450,44 +480,44 @@ test_polyglot_prompt_renders_languages_in_selected_order() {
 	for module in "${STARSHIP_LANGUAGE_MODULES[@]}"; do
 		create_starship_language_marker "$module" "$project" || return 1
 	done
-	: >"$STARSHIP_LANGUAGE_CALL_LOG" || return 1
+	: >"$STARSHIP_TOOL_CALL_LOG" || return 1
 	render_prompt /mnt/languages/polyglot /fixture/project 0 || return 1
 	assert_eq 0 "$COMMAND_STATUS" 'the controlled polyglot prompt should render' || return 1
 	assert_eq "$STARSHIP_LANGUAGE_POLYGLOT_PROMPT" "$COMMAND_OUTPUT" \
 		'the polyglot prompt should render exact C-to-Python bytes before Git context' || return 1
 	for expected_call in "${STARSHIP_LANGUAGE_VERSION_CALLS[@]}" 'rustup <default>'; do
-		assert_starship_language_call_logged "$expected_call" || return 1
+		assert_starship_call_logged "$expected_call" || return 1
 	done
-	assert_eq 10 "$(wc -l <"$STARSHIP_LANGUAGE_CALL_LOG")" \
+	assert_eq 10 "$(wc -l <"$STARSHIP_TOOL_CALL_LOG")" \
 		'the polyglot render should make each controlled tool call exactly once' || return 1
 	assert_render_cache_removed || return 1
 }
 
 test_language_detection_preserves_empty_and_disabled_cpp_prompts() {
 	setup_starship_language_runtime || return 1
-	: >"$STARSHIP_LANGUAGE_CALL_LOG" || return 1
+	: >"$STARSHIP_TOOL_CALL_LOG" || return 1
 	render_prompt /mnt/project /fixture/project 0 || return 1
 	assert_eq 0 "$COMMAND_STATUS" 'the no-language prompt should render' || return 1
 	assert_eq "$STARSHIP_SUCCESS_PROMPT" "$COMMAND_OUTPUT" \
 		'the no-language prompt should retain its exact pre-feature bytes' || return 1
-	assert_eq '' "$(<"$STARSHIP_LANGUAGE_CALL_LOG")" \
+	assert_eq '' "$(<"$STARSHIP_TOOL_CALL_LOG")" \
 		'the no-language prompt should not invoke controlled language tools' || return 1
 	assert_render_cache_removed || return 1
 
 	local cpp_project=$STARSHIP_LANGUAGE_ROOT/cpp
 	create_starship_language_marker cpp "$cpp_project" || return 1
 	run_in_sandbox "$STARSHIP_RUNTIME" "$STARSHIP_RUNTIME_PATH" \
-		/mnt/language-bin/c++ --version
+		/mnt/tool-bin/c++ --version
 	assert_eq 0 "$COMMAND_STATUS" 'the controlled C++ compiler should be executable' || return 1
 	assert_eq $'c++ (GCC) 14.2.1 20240801\nCopyright (C) 2024 Free Software Foundation, Inc.' \
 		"$COMMAND_OUTPUT" 'the controlled C++ compiler should return its parser-valid version' || return 1
-	assert_eq '' "$(<"$STARSHIP_LANGUAGE_CALL_LOG")" \
+	assert_eq '' "$(<"$STARSHIP_TOOL_CALL_LOG")" \
 		'the direct C++ availability check should not contaminate the Starship call log' || return 1
 
 	render_module cpp /mnt/languages/cpp /fixture/project 0 || return 1
 	assert_eq 0 "$COMMAND_STATUS" 'the disabled C++ module check should complete' || return 1
 	assert_eq '' "$COMMAND_OUTPUT" 'the disabled C++ module should remain exactly empty' || return 1
-	assert_eq '' "$(<"$STARSHIP_LANGUAGE_CALL_LOG")" \
+	assert_eq '' "$(<"$STARSHIP_TOOL_CALL_LOG")" \
 		'the disabled C++ module should not invoke the controlled C++ compiler' || return 1
 	assert_render_cache_removed || return 1
 
@@ -495,8 +525,166 @@ test_language_detection_preserves_empty_and_disabled_cpp_prompts() {
 	assert_eq 0 "$COMMAND_STATUS" 'the C++-only prompt should render' || return 1
 	assert_eq "$STARSHIP_SUCCESS_PROMPT" "$COMMAND_OUTPUT" \
 		'the C++-only prompt should retain exact no-language bytes' || return 1
-	assert_eq '' "$(<"$STARSHIP_LANGUAGE_CALL_LOG")" \
+	assert_eq '' "$(<"$STARSHIP_TOOL_CALL_LOG")" \
 		'the C++-only prompt should not invoke the controlled C++ compiler' || return 1
+	assert_render_cache_removed || return 1
+}
+
+test_environment_context_modules_render_and_suppress_exact_states() {
+	setup_starship_controlled_tool_runtime || return 1
+	local docker_project=$STARSHIP_ENVIRONMENT_ROOT/docker
+	local conda_project=$STARSHIP_ENVIRONMENT_ROOT/conda
+	mkdir -p "$docker_project" "$conda_project" || return 1
+	printf 'FROM scratch\n' >"$docker_project/Dockerfile" || return 1
+
+	STARSHIP_RUNTIME_ENV=(DOCKER_CONTEXT=remote-builder)
+	: >"$STARSHIP_TOOL_CALL_LOG" || return 1
+	render_module docker_context /mnt/environments/docker /fixture/project 0 || return 1
+	assert_eq 0 "$COMMAND_STATUS" 'the controlled non-default Docker context should render' || return 1
+	assert_eq $'\033[36m\357\214\210 remote-builder\033[0m ' "$COMMAND_OUTPUT" \
+		'the Docker context should render the exact selected symbol, context, and style' || return 1
+	assert_eq '' "$(<"$STARSHIP_TOOL_CALL_LOG")" \
+		'the Docker context module should not invoke Docker or another controlled tool' || return 1
+	assert_render_cache_removed || return 1
+
+	STARSHIP_RUNTIME_ENV=(DOCKER_CONTEXT=default)
+	: >"$STARSHIP_TOOL_CALL_LOG" || return 1
+	render_module docker_context /mnt/environments/docker /fixture/project 0 || return 1
+	assert_eq 0 "$COMMAND_STATUS" 'the controlled default Docker context check should complete' || return 1
+	assert_eq '' "$COMMAND_OUTPUT" 'the default Docker context should remain suppressed' || return 1
+	assert_eq '' "$(<"$STARSHIP_TOOL_CALL_LOG")" \
+		'the suppressed Docker context should not invoke Docker or another controlled tool' || return 1
+	assert_render_cache_removed || return 1
+
+	STARSHIP_RUNTIME_ENV=(CONDA_DEFAULT_ENV=research)
+	: >"$STARSHIP_TOOL_CALL_LOG" || return 1
+	render_module conda /mnt/environments/conda /fixture/project 0 || return 1
+	assert_eq 0 "$COMMAND_STATUS" 'the controlled non-base Conda environment should render' || return 1
+	assert_eq $'\033[36m\360\237\205\222 research\033[0m ' "$COMMAND_OUTPUT" \
+		'the Conda environment should render the exact selected symbol, name, and style' || return 1
+	assert_eq '' "$(<"$STARSHIP_TOOL_CALL_LOG")" \
+		'the Conda module should not invoke Conda or another controlled tool' || return 1
+	assert_render_cache_removed || return 1
+
+	STARSHIP_RUNTIME_ENV=(CONDA_DEFAULT_ENV=base)
+	: >"$STARSHIP_TOOL_CALL_LOG" || return 1
+	render_module conda /mnt/environments/conda /fixture/project 0 || return 1
+	assert_eq 0 "$COMMAND_STATUS" 'the controlled base Conda environment check should complete' || return 1
+	assert_eq '' "$COMMAND_OUTPUT" 'the base Conda environment should remain suppressed' || return 1
+	assert_eq '' "$(<"$STARSHIP_TOOL_CALL_LOG")" \
+		'the suppressed base environment should not invoke Conda or another controlled tool' || return 1
+	assert_render_cache_removed || return 1
+
+	STARSHIP_RUNTIME_ENV=(CONDA_DEFAULT_ENV=research PIXI_ENVIRONMENT_NAME=dev)
+	: >"$STARSHIP_TOOL_CALL_LOG" || return 1
+	render_module conda /mnt/environments/conda /fixture/project 0 || return 1
+	assert_eq 0 "$COMMAND_STATUS" 'the controlled Conda-under-Pixi check should complete' || return 1
+	assert_eq '' "$COMMAND_OUTPUT" 'Conda should remain suppressed under an active Pixi environment' || return 1
+	assert_eq '' "$(<"$STARSHIP_TOOL_CALL_LOG")" \
+		'the suppressed Conda-under-Pixi state should not invoke a controlled tool' || return 1
+	assert_render_cache_removed || return 1
+
+	STARSHIP_RUNTIME_ENV=()
+	: >"$STARSHIP_TOOL_CALL_LOG" || return 1
+	render_prompt /mnt/project /fixture/project 0 || return 1
+	assert_eq 0 "$COMMAND_STATUS" 'the no-environment prompt should render' || return 1
+	assert_eq "$STARSHIP_SUCCESS_PROMPT" "$COMMAND_OUTPUT" \
+		'the no-environment prompt should retain its exact pre-feature bytes' || return 1
+	assert_eq '' "$(<"$STARSHIP_TOOL_CALL_LOG")" \
+		'the no-environment prompt should not invoke any controlled tool' || return 1
+	assert_render_cache_removed || return 1
+}
+
+test_pixi_module_renders_markers_environment_and_missing_binary() {
+	setup_starship_controlled_tool_runtime || return 1
+	local toml_project=$STARSHIP_ENVIRONMENT_ROOT/pixi-toml
+	local lock_project=$STARSHIP_ENVIRONMENT_ROOT/pixi-lock
+	mkdir -p "$toml_project" "$lock_project" || return 1
+	printf '[project]\nname = "fixture"\n' >"$toml_project/pixi.toml" || return 1
+	printf '# controlled lock marker\n' >"$lock_project/pixi.lock" || return 1
+
+	STARSHIP_RUNTIME_ENV=()
+	: >"$STARSHIP_TOOL_CALL_LOG" || return 1
+	render_module pixi /mnt/environments/pixi-toml /fixture/project 0 || return 1
+	assert_eq 0 "$COMMAND_STATUS" 'the controlled pixi.toml project should render' || return 1
+	assert_eq $'\033[36m\360\237\247\232 v0.41.4 \033[0m' "$COMMAND_OUTPUT" \
+		'the pixi.toml project should render the exact selected version-only output' || return 1
+	assert_eq 'pixi <--version>' "$(<"$STARSHIP_TOOL_CALL_LOG")" \
+		'the pixi.toml project should invoke exactly pixi --version once' || return 1
+	assert_render_cache_removed || return 1
+
+	: >"$STARSHIP_TOOL_CALL_LOG" || return 1
+	render_module pixi /mnt/environments/pixi-lock /fixture/project 0 || return 1
+	assert_eq 0 "$COMMAND_STATUS" 'the controlled pixi.lock project should render' || return 1
+	assert_eq $'\033[36m\360\237\247\232 v0.41.4 \033[0m' "$COMMAND_OUTPUT" \
+		'the pixi.lock project should render the exact selected version-only output' || return 1
+	assert_eq 'pixi <--version>' "$(<"$STARSHIP_TOOL_CALL_LOG")" \
+		'the pixi.lock project should invoke exactly pixi --version once' || return 1
+	assert_render_cache_removed || return 1
+
+	STARSHIP_RUNTIME_ENV=(PIXI_ENVIRONMENT_NAME=dev)
+	: >"$STARSHIP_TOOL_CALL_LOG" || return 1
+	render_module pixi /mnt/project /fixture/project 0 || return 1
+	assert_eq 0 "$COMMAND_STATUS" 'the controlled active Pixi environment should render' || return 1
+	assert_eq $'\033[36m\360\237\247\232 v0.41.4 dev \033[0m' "$COMMAND_OUTPUT" \
+		'the active Pixi environment should render the exact selected version and name' || return 1
+	assert_eq 'pixi <--version>' "$(<"$STARSHIP_TOOL_CALL_LOG")" \
+		'the active Pixi environment should invoke exactly pixi --version once' || return 1
+	assert_render_cache_removed || return 1
+
+	STARSHIP_RUNTIME_ENV=()
+	rm -- "$STARSHIP_TOOL_BIN/pixi" || return 1
+	STARSHIP_COMMAND_PATH=/mnt/tool-bin
+	: >"$STARSHIP_TOOL_CALL_LOG" || return 1
+	render_module pixi /mnt/environments/pixi-toml /fixture/project 0 || return 1
+	assert_eq 0 "$COMMAND_STATUS" 'the controlled Pixi marker without a binary should render' || return 1
+	assert_eq $'\033[36m\360\237\247\232 \033[0m' "$COMMAND_OUTPUT" \
+		'the Pixi marker without a binary should retain the exact selected symbol-only output' || return 1
+	assert_eq '' "$(<"$STARSHIP_TOOL_CALL_LOG")" \
+		'the missing Pixi binary should produce no controlled command call' || return 1
+	assert_render_cache_removed || return 1
+}
+
+test_environment_context_prompts_render_exact_order_and_pixi_suppression() {
+	setup_starship_controlled_tool_runtime || return 1
+	setup_starship_git_repository || return 1
+	create_starship_language_marker python "$STARSHIP_GIT_REPO" || return 1
+	printf 'FROM scratch\n' >"$STARSHIP_GIT_REPO/Dockerfile" || return 1
+	printf '[project]\nname = "fixture"\n' >"$STARSHIP_GIT_REPO/pixi.toml" || return 1
+	fixture_git add -- Dockerfile pixi.toml pyproject.toml || return 1
+	fixture_git -c user.name=Fixture -c user.email=fixture@example.invalid \
+		commit -m environment-contexts >/dev/null 2>&1 || return 1
+	fixture_git push origin baseline >/dev/null 2>&1 || return 1
+	assert_eq '' "$(fixture_git status --short)" \
+		'the combined environment fixture should be clean after committing every marker' || return 1
+	assert_git_upstream_distance $'0\t0' || return 1
+
+	STARSHIP_RUNTIME_ENV=(DOCKER_CONTEXT=remote-builder CONDA_DEFAULT_ENV=research)
+	: >"$STARSHIP_TOOL_CALL_LOG" || return 1
+	render_prompt /mnt/repository /fixture/project 0 || return 1
+	assert_eq 0 "$COMMAND_STATUS" 'the combined environment-context prompt should render' || return 1
+	assert_eq "$STARSHIP_ENVIRONMENT_CONTEXT_PROMPT" "$COMMAND_OUTPUT" \
+		'the combined prompt should render Python, Docker, Conda, Pixi, and Git in exact order' || return 1
+	assert_starship_call_logged 'python <--version>' || return 1
+	assert_starship_call_logged 'pixi <--version>' || return 1
+	assert_eq 2 "$(wc -l <"$STARSHIP_TOOL_CALL_LOG")" \
+		'the combined prompt should invoke exactly Python and Pixi once without relying on call order' || return 1
+	assert_render_cache_removed || return 1
+
+	STARSHIP_RUNTIME_ENV=(
+		DOCKER_CONTEXT=remote-builder
+		CONDA_DEFAULT_ENV=research
+		PIXI_ENVIRONMENT_NAME=dev
+	)
+	: >"$STARSHIP_TOOL_CALL_LOG" || return 1
+	render_prompt /mnt/repository /fixture/project 0 || return 1
+	assert_eq 0 "$COMMAND_STATUS" 'the combined active-Pixi prompt should render' || return 1
+	assert_eq "$STARSHIP_PIXI_ENVIRONMENT_CONTEXT_PROMPT" "$COMMAND_OUTPUT" \
+		'the active-Pixi prompt should suppress Conda while preserving language, Docker, Pixi, and Git order' || return 1
+	assert_starship_call_logged 'python <--version>' || return 1
+	assert_starship_call_logged 'pixi <--version>' || return 1
+	assert_eq 2 "$(wc -l <"$STARSHIP_TOOL_CALL_LOG")" \
+		'the active-Pixi prompt should invoke exactly Python and Pixi once without relying on call order' || return 1
 	assert_render_cache_removed || return 1
 }
 
@@ -852,6 +1040,12 @@ if [[ -f $SOURCE_REPO/$STARSHIP_SOURCE_RELATIVE && ! -L $SOURCE_REPO/$STARSHIP_S
 		'polyglot prompt renders languages in selected order'
 	run_test test_language_detection_preserves_empty_and_disabled_cpp_prompts \
 		'language detection preserves empty and disabled C++ prompts'
+	run_test test_environment_context_modules_render_and_suppress_exact_states \
+		'environment-context modules render and suppress exact controlled states'
+	run_test test_pixi_module_renders_markers_environment_and_missing_binary \
+		'Pixi module renders markers, active environment, and missing-binary state'
+	run_test test_environment_context_prompts_render_exact_order_and_pixi_suppression \
+		'environment-context prompts render exact order and active-Pixi suppression'
 	run_test test_git_prompts_retain_clean_modified_and_untracked_behavior \
 		'Git prompts retain clean, modified, and untracked behavior'
 	run_test test_git_upstream_counts_render_synchronized_ahead_behind_diverged_and_mixed_states \
