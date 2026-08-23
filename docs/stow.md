@@ -1,3 +1,5 @@
+[Back to README](../README.md)
+
 # Stow workflow
 
 A Stow package manages one application or one closely related configuration concern. Packages use lowercase names and live under `config/<name>/`. Each package directory has the same relative paths as its targets below the user's home directory.

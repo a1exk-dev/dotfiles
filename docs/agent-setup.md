@@ -1,3 +1,5 @@
+[Back to README](../README.md)
+
 # Agent setup
 
 The Dotfiles wizard installs pinned global agent skills from the official Humanizer and Matt Pocock repositories. Each repository's official installer controls skill discovery and supporting files. This repository adds version tracking, difference review, confirmation, backup, verification, and recovery.

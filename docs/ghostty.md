@@ -1,3 +1,5 @@
+[Back to README](../README.md)
+
 # Ghostty
 
 The `ghostty` Stow package owns `~/.config/ghostty/config` and `~/.config/ghostty/tab-bar.css`. GNU Stow links them to the matching paths under `config/ghostty/` in this repository. The tracked main config replaces Omarchy's main Ghostty config because Omarchy has no separate user override for persistent opacity. See [Stow workflow](stow.md) for behavior shared by all packages.

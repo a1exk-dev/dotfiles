@@ -1,3 +1,5 @@
+[Back to README](../README.md)
+
 # Tmux
 
 The `tmux` Stow package owns two leaf targets:

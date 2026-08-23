@@ -1,3 +1,5 @@
+[Back to README](../README.md)
+
 # Application cleanup
 
 The Dotfiles wizard can remove selected Arch packages, Omarchy web apps, and Omarchy TUI launchers. Cleanup is phase 3 of `Guided setup`. It is also available as the standalone `Clean up Omarchy applications` action.

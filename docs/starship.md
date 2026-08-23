@@ -1,3 +1,5 @@
+[Back to README](../README.md)
+
 # Starship
 
 The `starship` Stow package owns one leaf target:
