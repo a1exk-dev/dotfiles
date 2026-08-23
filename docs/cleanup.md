@@ -20,6 +20,7 @@ The package defaults are:
 The web app defaults are:
 
 - `Basecamp`
+- `ChatGPT`
 - `Discord`
 - `Figma`
 - `Fizzy`
