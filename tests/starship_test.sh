@@ -3,8 +3,8 @@
 source "$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)/support/test_helper.sh"
 
 readonly STARSHIP_SOURCE_RELATIVE=config/starship/.config/starship.toml
-readonly STARSHIP_SELECTED_FEATURE_BYTES=891
-readonly STARSHIP_SELECTED_FEATURE_SHA256=db9aa46c3e8678a12b33d93c4d02d7b86f708e5690e2cd203607d48d080854f7
+readonly STARSHIP_SELECTED_FEATURE_BYTES=900
+readonly STARSHIP_SELECTED_FEATURE_SHA256=7d62fdc10b1c42b35aa48645f0e003dbf715b598a1235963a5f7502c7f93460e
 readonly STARSHIP_SUCCESS_PROMPT=$'\n\\[\033[36m\\]\342\225\255\342\224\200 \\[\033[1m\\]/fixture/project\\[\033[0m\\] \n\\[\033[36m\\]\342\225\260\342\224\200\\[\033[1m\\]\342\235\257\\[\033[0m\\] '
 readonly STARSHIP_FAILURE_PROMPT=$'\n\\[\033[36m\\]\342\225\255\342\224\200 \\[\033[1m\\]/fixture/project\\[\033[0m\\] \n\\[\033[36m\\]\342\225\260\342\224\200\\[\033[1m\\]\342\234\227\\[\033[0m\\] '
 readonly STARSHIP_DEEP_PROMPT=$'\n\\[\033[36m\\]\342\225\255\342\224\200 \\[\033[1m\\]\342\200\246/beta/gamma\\[\033[0m\\] \n\\[\033[36m\\]\342\225\260\342\224\200\\[\033[1m\\]\342\235\257\\[\033[0m\\] '
@@ -59,6 +59,29 @@ setup_starship_git_runtime() {
 		commit -m baseline >/dev/null 2>&1 || return 1
 	fixture_git remote add origin "$STARSHIP_GIT_REMOTE" || return 1
 	fixture_git push --set-upstream origin baseline >/dev/null 2>&1 || return 1
+}
+
+create_fixture_git_commit() {
+	local label=$1
+
+	printf '%s\n' "$label" >"$STARSHIP_GIT_REPO/tracked.txt" || return 1
+	fixture_git add -- tracked.txt || return 1
+	fixture_git -c user.name=Fixture -c user.email=fixture@example.invalid \
+		commit -m "$label" >/dev/null 2>&1 || return 1
+}
+
+assert_git_upstream_distance() {
+	local expected=$1 upstream remote distance
+
+	upstream=$(fixture_git rev-parse --abbrev-ref --symbolic-full-name '@{upstream}') || return 1
+	assert_eq origin/baseline "$upstream" \
+		'the controlled Git branch should have a real configured upstream' || return 1
+	remote=$(fixture_git remote get-url origin) || return 1
+	assert_eq "$STARSHIP_GIT_REMOTE" "$remote" \
+		'the controlled upstream should use only the local bare fixture remote' || return 1
+	distance=$(fixture_git rev-list --left-right --count 'HEAD...@{upstream}') || return 1
+	assert_eq "$expected" "$distance" \
+		'the controlled branch should have the exact asserted upstream distance' || return 1
 }
 
 create_conflicted_git_state() {
@@ -283,6 +306,72 @@ test_git_prompts_retain_clean_modified_and_untracked_behavior() {
 	assert_eq "$STARSHIP_UNTRACKED_GIT_PROMPT" "$COMMAND_OUTPUT" \
 		'the untracked Git prompt should retain its exact marker and styling' || return 1
 	assert_render_cache_removed
+}
+
+test_git_upstream_counts_render_synchronized_ahead_behind_diverged_and_mixed_states() {
+	local base git_status index_paths worktree_paths
+
+	setup_starship_git_runtime || return 1
+	assert_git_upstream_distance $'0\t0' || return 1
+	render_module git_status /mnt/repository /fixture/project 0
+	assert_eq 0 "$COMMAND_STATUS" 'the synchronized Git status module should render' || return 1
+	assert_eq '' "$COMMAND_OUTPUT" \
+		'the synchronized Git status module should remain exactly empty' || return 1
+	assert_render_cache_removed || return 1
+
+	setup_starship_git_runtime || return 1
+	create_fixture_git_commit ahead-one || return 1
+	assert_git_upstream_distance $'1\t0' || return 1
+	render_module git_status /mnt/repository /fixture/project 0
+	assert_eq 0 "$COMMAND_STATUS" 'the ahead Git status module should render' || return 1
+	assert_eq $'\033[36m\342\207\2411 \033[0m' "$COMMAND_OUTPUT" \
+		'the Git status module should render the exact ahead count' || return 1
+	assert_render_cache_removed || return 1
+
+	setup_starship_git_runtime || return 1
+	base=$(fixture_git rev-parse HEAD) || return 1
+	create_fixture_git_commit behind-one || return 1
+	create_fixture_git_commit behind-two || return 1
+	fixture_git push origin baseline >/dev/null 2>&1 || return 1
+	fixture_git reset --hard "$base" >/dev/null 2>&1 || return 1
+	assert_git_upstream_distance $'0\t2' || return 1
+	render_module git_status /mnt/repository /fixture/project 0
+	assert_eq 0 "$COMMAND_STATUS" 'the behind Git status module should render' || return 1
+	assert_eq $'\033[36m\342\207\2432 \033[0m' "$COMMAND_OUTPUT" \
+		'the Git status module should render the exact nontrivial behind count' || return 1
+	assert_render_cache_removed || return 1
+
+	setup_starship_git_runtime || return 1
+	base=$(fixture_git rev-parse HEAD) || return 1
+	create_fixture_git_commit diverged-upstream-one || return 1
+	create_fixture_git_commit diverged-upstream-two || return 1
+	fixture_git push origin baseline >/dev/null 2>&1 || return 1
+	fixture_git reset --hard "$base" >/dev/null 2>&1 || return 1
+	create_fixture_git_commit diverged-local || return 1
+	assert_git_upstream_distance $'1\t2' || return 1
+	render_module git_status /mnt/repository /fixture/project 0
+	assert_eq 0 "$COMMAND_STATUS" 'the diverged Git status module should render' || return 1
+	assert_eq $'\033[36m\342\207\225\342\207\2411\342\207\2432 \033[0m' "$COMMAND_OUTPUT" \
+		'the Git status module should render independent ahead and behind counts' || return 1
+	assert_render_cache_removed || return 1
+
+	setup_starship_git_runtime || return 1
+	create_fixture_git_commit mixed-ahead || return 1
+	printf 'modified\n' >"$STARSHIP_GIT_REPO/tracked2.txt" || return 1
+	git_status=$(fixture_git status --short) || return 1
+	assert_eq ' M tracked2.txt' "$git_status" \
+		'the mixed fixture should contain one controlled worktree modification' || return 1
+	index_paths=$(fixture_git diff --cached --name-only) || return 1
+	assert_eq '' "$index_paths" 'the mixed fixture index should remain clean' || return 1
+	worktree_paths=$(fixture_git diff --name-only) || return 1
+	assert_eq tracked2.txt "$worktree_paths" \
+		'the mixed fixture should modify exactly one tracked worktree file' || return 1
+	assert_git_upstream_distance $'1\t0' || return 1
+	render_module git_status /mnt/repository /fixture/project 0
+	assert_eq 0 "$COMMAND_STATUS" 'the mixed Git status module should render' || return 1
+	assert_eq $'\033[36m\356\251\2611 \342\207\2411 \033[0m' "$COMMAND_OUTPUT" \
+		'the mixed Git status module should render modified before ahead with exact bytes' || return 1
+	assert_render_cache_removed || return 1
 }
 
 test_conflicted_git_module_renders_one_and_multiple_file_counts() {
@@ -537,6 +626,8 @@ if [[ -f $SOURCE_REPO/$STARSHIP_SOURCE_RELATIVE && ! -L $SOURCE_REPO/$STARSHIP_S
 		'non-repository prompts retain success, failure, deep-path, and read-only behavior'
 	run_test test_git_prompts_retain_clean_modified_and_untracked_behavior \
 		'Git prompts retain clean, modified, and untracked behavior'
+	run_test test_git_upstream_counts_render_synchronized_ahead_behind_diverged_and_mixed_states \
+		'Git upstream counts render synchronized, ahead, behind, diverged, and mixed states'
 	run_test test_conflicted_git_module_renders_one_and_multiple_file_counts \
 		'conflicted Git module renders one- and multi-file counts'
 	run_test test_staged_git_module_renders_one_multiple_and_mixed_states \

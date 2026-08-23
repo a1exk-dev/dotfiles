@@ -44,7 +44,15 @@ Stash state is presence-only:
 
 - Stash present: `\$ `
 
-Starship replaces `${count}` at runtime and treats `\$` as a literal dollar sign. Multiple stashes still render one `$ ` marker. Ahead, behind, diverged, status order, and colors are unchanged. No other archived setting is active.
+Branches with a configured upstream report commit distance when local and upstream refs differ:
+
+- Ahead: `⇡${count} `
+- Behind: `⇣${count} `
+- Diverged: `⇕⇡${ahead_count}⇣${behind_count} `
+
+A synchronized branch shows no upstream marker. Starship reads local refs only; prompt rendering does not fetch or contact a remote.
+
+Starship replaces the count variables at runtime and treats `\$` as a literal dollar sign. Multiple stashes still render one `$ ` marker. File-state and stash markers render before upstream distance; colors are unchanged. No other archived setting is active.
 
 ## Apply
 
@@ -247,7 +255,7 @@ An equivalent manual check is:
 
 ## Controlled prompt tests
 
-Computed-config validation does not prove prompt behavior or appearance. The focused suite runs real `starship prompt` and `starship module` commands in a fixed, isolated environment. It checks exact ANSI and glyph output for normal prompts, path handling, read-only directories, Git states, and one-file and multi-file counts. It checks the connected frame for success, failure, repository, deep-path, and read-only prompts. It also checks the branch icon in clean and dirty repositories. It verifies mixed staged and unstaged changes, mixed deleted and staged changes, and mixed renamed and deleted changes. It also checks one stash, multiple stashes, and mixed stash and rename state. Any Starship diagnostic fails the test.
+Computed-config validation does not prove prompt behavior or appearance. The focused suite runs real `starship prompt` and `starship module` commands in a fixed, isolated environment. It checks exact ANSI and glyph output for normal prompts, path handling, read-only directories, Git states, and one-file and multi-file counts. It checks the connected frame for success, failure, repository, deep-path, and read-only prompts. It also checks the branch icon in clean and dirty repositories. It checks synchronized, ahead, behind, diverged, and mixed file-state-plus-upstream branches using local Git refs. It verifies mixed staged and unstaged changes, mixed deleted and staged changes, and mixed renamed and deleted changes. It also checks one stash, multiple stashes, and mixed stash and rename state. Any Starship diagnostic fails the test.
 
 The focused suite requires Starship 1.26.0:
 
@@ -275,7 +283,7 @@ diff -u -- \
 	config/starship/.config/starship.toml
 ```
 
-The expected diff is limited to the global prompt `format`, the Git branch `symbol` and `format`, and the seven marker settings under [Git status](#git-status). Stop and investigate any other difference.
+The expected diff is limited to the global prompt `format`, the Git branch `symbol` and `format`, the Git status `format` and `up_to_date`, and the seven Git status marker settings above. Stop and investigate any other difference.
 
 Review relevant new Omarchy migrations and hooks before accepting update-related behavior. Decide which packaged changes belong in the tracked replacement, then repeat strict validation and the focused prompt tests. When the repository changes its supported Omarchy target, also audit the new migration behavior and repeat the complete package lifecycle checks.
 
