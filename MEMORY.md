@@ -4,9 +4,9 @@
 
 Applies when: Updating `README.md` or human documentation under `docs/`.
 
-Guidance: Explain setup and usage without relying on maintainer-only context.
+Guidance: Describe only currently implemented setup, requirements, and usage without relying on maintainer-only context. Keep support and contribution policy unstated until an explicit human decision.
 
-Reason: The human documentation is intended for users of the currently supported Omarchy version. Leave support and contribution policy unstated until it is explicitly decided.
+Reason: Human documentation should match what users can run on the supported Omarchy target without implying an undecided project promise.
 
 ## Exclude archived files from current decisions
 
@@ -16,21 +16,13 @@ Guidance: Treat `__old_files/` as outside the active repository and base decisio
 
 Reason: The archived files do not represent the intended repository.
 
-## Deploy through GNU Stow
-
-Applies when: Organizing or applying tracked configuration.
-
-Guidance: Use Stow packages and symlink their files into the user's home directory. Keep tracked files in the repository instead of copying them into place.
-
-Reason: Symlink deployment keeps the repository and active configuration synchronized.
-
 ## Support one Omarchy version
 
-Applies when: Omarchy releases or compatibility questions affect configuration or documentation.
+Applies when: Checking Omarchy compatibility, detecting a version mismatch, changing the supported target, or maintaining a full replacement.
 
-Guidance: Maintain one explicit current target and change it only through a deliberate repository decision.
+Guidance: Maintain one explicit current target and change it only through a deliberate repository decision. Before any mutation under a detected mismatch, show the target and detected versions and obtain an explicit human decision to continue. Compare every full replacement with the applicable packaged defaults and accept or reject each difference deliberately. Surface managed-path conflicts for a human decision and prefer stable Omarchy overrides. After a target change, run structural checks, all affected validators and focused tests, and the complete suite.
 
-Reason: Multi-version compatibility is outside the current repository promise.
+Reason: One target keeps compatibility bounded; version differences can invalidate full replacements and managed-path assumptions before ordinary validation exposes them.
 
 ## Keep archived shell migration on Bash
 
@@ -47,6 +39,22 @@ Applies when: Changing or reloading `config/bash/.bashrc`.
 Guidance: Source Omarchy's packaged Bash `rc` once per Bash process. Keep custom aliases outside the guard so each `.bashrc` source reapplies them. Start a new Bash shell to load updated packaged defaults.
 
 Reason: Repeated packaged initialization duplicates Starship and zoxide `PROMPT_COMMAND` hooks under the current Arch/Omarchy stack.
+
+## Verify Bash PATH in fresh shell modes
+
+Applies when: Changing Bash PATH or startup-environment behavior, or changing ownership of an executable provider.
+
+Guidance: Verify Bash from a scrubbed environment in login, interactive non-login, and non-interactive modes. Repeat startup-file sourcing in each mode where it applies. Assert the count and order of managed PATH components and the provider resolved for each affected executable. Treat a long-lived shell's PATH as inherited process state and use fresh-shell results as configuration evidence.
+
+Reason: Parent-process history can retain stale PATH entries even when fresh Omarchy and Mise initialization is idempotent.
+
+## Keep repository-owned Bash startup offline
+
+Applies when: Adding a Bash startup dependency, plugin, or generated initializer.
+
+Guidance: Keep repository-owned startup deterministic and offline by loading installed, reviewed code. Decide each user-visible capability separately from its startup integration. Prefer a reviewed static integration when it preserves exact semantics. When generation is necessary, require it to succeed before evaluating its output, and place runtime evaluation behind the user action that requests it.
+
+Reason: Startup-time generation or network access adds latency and supply-chain risk. The proven static command-correction approach retains exact semantics while keeping startup offline.
 
 ## Keep Omarchy editor selection
 
@@ -84,9 +92,9 @@ Reason: Omarchy should continue to own its packaged defaults wherever its custom
 
 Applies when: Implementing or maintaining tmux configuration.
 
-Guidance: Use the existing `tmux` Stow package to own a complete `config/tmux/.config/tmux/tmux.conf` for `~/.config/tmux/tmux.conf`. Seed it from the packaged Omarchy 4 baseline; inspect and back up the prior live file without adopting it. Track neither a pristine baseline snapshot nor a sourced drop-in. Removal leaves the active config absent and reports `omarchy refresh tmux` as the explicit baseline-restoration step.
+Guidance: Use the `tmux` Stow package to own a complete replacement for the active tmux configuration. Seed it from the packaged Omarchy baseline; inspect and back up the prior live file without adopting it. Track one self-contained replacement rather than a pristine baseline snapshot or sourced drop-in. Removal leaves the active configuration absent and reports restoration of the packaged baseline as a separate Omarchy-owned recovery action.
 
-Reason: Omarchy 4 has no stable tmux override seam; a sourced drop-in loses its include on refresh, while direct live edits are not portable or repository-owned.
+Reason: Omarchy has no stable tmux override seam; a sourced drop-in loses its include on refresh, while direct live edits are not portable or repository-owned.
 
 ## Stop before tracking sensitive values
 
@@ -127,14 +135,6 @@ Applies when: Tracked source or a script can generate an active configuration fi
 Guidance: Decide whether Git stores source, output, or both after reviewing that generator's reproducibility and user value.
 
 Reason: The repository has no single generated-file policy that fits every configuration concern.
-
-## Revalidate after Omarchy target changes
-
-Applies when: Changing the repository's supported Omarchy version or maintaining a full tracked replacement.
-
-Guidance: Compare full replacements with the new packaged defaults, update them deliberately, and repeat package verification. Prefer stable Omarchy override paths and notify the human when an update conflicts with a managed path.
-
-Reason: Full replacements and directly managed paths can become stale when Omarchy changes.
 
 ## Review Omarchy writes through Stow links
 
@@ -194,9 +194,9 @@ Reason: Migration backups are local recovery data, not repository content.
 
 ## Prepare wizard prerequisites through Omarchy
 
-Applies when: Prerequisite preparation finds GNU Stow missing or finds Node.js, npm, or npx missing or below the supported version.
+Applies when: Any repository-declared core prerequisite is missing or outside its supported constraint.
 
-Guidance: Show one complete prerequisite plan and ask for confirmation. Use `omarchy pkg add stow` to install GNU Stow. Use `omarchy install dev-env node` to install the Node.js toolchain. Let Omarchy manage privilege prompts. Verify GNU Stow, Node.js 22.20.0 or newer, npm, and npx in the same run. In guided setup, stop before later phases if the user declines required prerequisites or if installation or verification fails.
+Guidance: Show one complete prerequisite plan and ask for confirmation. Delegate installation and privilege handling to Omarchy. In the same run, verify every repository-declared prerequisite command and version constraint. In guided setup, stop before later phases if the user declines required prerequisites or if installation or verification fails.
 
 Reason: Guided setup must establish and verify its required tools without implementing Omarchy package management or privilege handling.
 
@@ -208,19 +208,11 @@ Guidance: Declare the edge in the package catalog and make the wizard show wheth
 
 Reason: Hidden package dependencies would make package selection and removal unpredictable.
 
-## Handle Omarchy mismatch before changes
-
-Applies when: The wizard detects an Omarchy version different from the repository's current target.
-
-Guidance: Show both versions and ask the human whether to continue before changing packages.
-
-Reason: Compatibility outside the current target is not guaranteed, but inspection and an explicit human decision remain useful.
-
 ## Install global agent skills conservatively
 
-Applies when: Running the wizard's agent-skill action or `make skills`.
+Applies when: Running the wizard's agent-skill action or updating manifest-declared global skills.
 
-Guidance: Install every skill exposed by the official installers at pinned revisions from `https://github.com/blader/humanizer` and `https://github.com/mattpocock/skills` under `~/.agents/skills/`. Delegate draft exclusion, skill discovery, and supporting-file installation to each repository's documented installer; this repository adds only version pinning, difference preview, confirmation, and backup. Show recursive differences before approval. Before a mutating source installer runs, back up every existing skill it can rewrite, including currently unchanged skills, then verify its output against the approved preview. `make skills-update` previews upstream and installed-skill differences, then updates `skills.json` and global skills together after one approval. A failed update restores both the old manifest and global skill backups.
+Guidance: Install every skill exposed by the source installers at the revisions pinned in the manifest. Delegate draft exclusion, skill discovery, and supporting-file installation to each source's documented installer; this repository adds only manifest pinning, complete recursive difference preview, confirmation, comprehensive pre-mutation backup, and verification. Before a mutating source installer runs, back up every existing skill it can rewrite, including currently unchanged skills, then verify its output against the approved preview. The skill update operation previews upstream and installed-skill differences, then atomically updates the manifest and installed skills after one approval. A failed update restores both the prior manifest and skill backups.
 
 Reason: Future agents need reproducible repository skills without silently overwriting global customizations.
 
@@ -231,14 +223,6 @@ Applies when: The wizard prepares any package change.
 Guidance: Before mutation, inspect the Omarchy version, determine dependencies and conflicts, check core and package-specific tools at the points when their package set is known, show the complete plan, and request confirmation. Block removal when another linked package depends on the selected package and name each dependent.
 
 Reason: The human must see version, prerequisite, and dependency effects before the first mutation.
-
-## Document current behavior
-
-Applies when: Writing `README.md`, `docs/stow.md`, `docs/cleanup.md`, or `docs/agent-setup.md`.
-
-Guidance: Present working wizard actions and Make targets as human usage. Keep README as the purpose, complete requirements, quick start, and documentation index. Keep Stow package operations in `docs/stow.md`, application cleanup in `docs/cleanup.md`, and global skill operations in `docs/agent-setup.md`. State separate requirements for core wizard use, application cleanup, Stow operations, global skills, and tests.
-
-Reason: Human documentation must match the implemented command engine without duplicating topic-guide detail.
 
 ## Keep the command engine modular
 
