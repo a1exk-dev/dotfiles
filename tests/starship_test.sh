@@ -3,8 +3,8 @@
 source "$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)/support/test_helper.sh"
 
 readonly STARSHIP_SOURCE_RELATIVE=config/starship/.config/starship.toml
-readonly STARSHIP_SELECTED_FEATURE_BYTES=1961
-readonly STARSHIP_SELECTED_FEATURE_SHA256=299c5e18c6f3e75d7bef63f7ade03b6257c7e4c389d66a4af448ceb23c131634
+readonly STARSHIP_SELECTED_FEATURE_BYTES=2825
+readonly STARSHIP_SELECTED_FEATURE_SHA256=ecfc03d9fc76f8faa9308227eb9d22708d336f17eb449a448bfc7ad5ae7b3117
 readonly STARSHIP_SUCCESS_PROMPT=$'\n\\[\033[36m\\]\342\225\255\342\224\200 \\[\033[1m\\]/fixture/project\\[\033[0m\\] \n\\[\033[36m\\]\342\225\260\342\224\200\\[\033[1m\\]\342\235\257\\[\033[0m\\] '
 readonly STARSHIP_FAILURE_PROMPT=$'\n\\[\033[36m\\]\342\225\255\342\224\200 \\[\033[1m\\]/fixture/project\\[\033[0m\\] \n\\[\033[36m\\]\342\225\260\342\224\200\\[\033[1m\\]\342\234\227\\[\033[0m\\] '
 readonly STARSHIP_DEEP_PROMPT=$'\n\\[\033[36m\\]\342\225\255\342\224\200 \\[\033[1m\\]\342\200\246/beta/gamma\\[\033[0m\\] \n\\[\033[36m\\]\342\225\260\342\224\200\\[\033[1m\\]\342\235\257\\[\033[0m\\] '
@@ -15,6 +15,8 @@ readonly STARSHIP_UNTRACKED_GIT_PROMPT=$'\n\\[\033[36m\\]\342\225\255\342\224\20
 readonly STARSHIP_LANGUAGE_POLYGLOT_PROMPT=$'\n\\[\033[36m\\]\342\225\255\342\224\200 \\[\033[1m\\]/fixture/project\\[\033[0m\\] \\[\033[36m\\]\356\230\236 v13.2.1 \356\236\250 v1.80.1 \356\230\247 v1.23.4 \356\234\230 v22.12.0 \356\230\210 v8.3.14 \356\211\226 v21.0.4 \356\230\264 v2.0.21 \356\230\237 9.10.1 \356\230\206 v3.13.1 \\[\033[0m\\]\n\\[\033[36m\\]\342\225\260\342\224\200\\[\033[1m\\]\342\235\257\\[\033[0m\\] '
 readonly STARSHIP_ENVIRONMENT_CONTEXT_PROMPT=$'\n\\[\033[36m\\]\342\225\255\342\224\200 \356\230\206 v3.13.1 \357\214\210 remote-builder\\[\033[0m\\] \\[\033[36m\\]\360\237\205\222 research\\[\033[0m\\] \\[\033[36m\\]\360\237\247\232 v0.41.4 \\[\033[3m\\]\357\220\230 baseline\\[\033[0m\\] \n\\[\033[36m\\]\342\225\260\342\224\200\\[\033[1m\\]\342\235\257\\[\033[0m\\] '
 readonly STARSHIP_PIXI_ENVIRONMENT_CONTEXT_PROMPT=$'\n\\[\033[36m\\]\342\225\255\342\224\200 \356\230\206 v3.13.1 \357\214\210 remote-builder\\[\033[0m\\] \\[\033[36m\\]\360\237\247\232 v0.41.4 dev \\[\033[3m\\]\357\220\230 baseline\\[\033[0m\\] \n\\[\033[36m\\]\342\225\260\342\224\200\\[\033[1m\\]\342\235\257\\[\033[0m\\] '
+readonly -a STARSHIP_DIRECTORY_COMPONENTS=(Documents Downloads Music Pictures Projects)
+readonly -a STARSHIP_DIRECTORY_GLYPHS=('󰈙' '' '󰝚' '' '')
 readonly -a STARSHIP_LANGUAGE_MODULES=(c rust golang nodejs php java kotlin haskell python)
 readonly -a STARSHIP_LANGUAGE_OUTPUTS=(
 	$'\033[36m\356\230\236 v13.2.1 \033[0m'
@@ -54,6 +56,25 @@ setup_starship_runtime() {
 		"$STARSHIP_RUNTIME/readonly" || return 1
 	chmod 0555 "$STARSHIP_RUNTIME/readonly" || return 1
 	BWRAP_EXTRA_ARGS+=(--bind "$STARSHIP_RUNTIME" /mnt)
+}
+
+setup_starship_directory_runtime() {
+	setup_starship_runtime || return 1
+	STARSHIP_DIRECTORY_ROOT=$STARSHIP_RUNTIME/home
+	local component
+	for component in "${STARSHIP_DIRECTORY_COMPONENTS[@]}" MyDocuments DocumentsArchive; do
+		mkdir -p "$STARSHIP_DIRECTORY_ROOT/$component/child" || return 1
+	done
+	for component in "${STARSHIP_DIRECTORY_COMPONENTS[@]}"; do
+		mkdir -p \
+			"$STARSHIP_DIRECTORY_ROOT/repeated/$component/hidden/$component/child" \
+			"$STARSHIP_DIRECTORY_ROOT/repeated/$component/$component" || return 1
+	done
+	mkdir -p \
+		"$STARSHIP_DIRECTORY_ROOT/Documents/readonly" \
+		"$STARSHIP_DIRECTORY_ROOT/Projects/repository/child" \
+		"$STARSHIP_DIRECTORY_ROOT/Workspace/repository" || return 1
+	chmod 0555 "$STARSHIP_DIRECTORY_ROOT/Documents/readonly" || return 1
 }
 
 setup_starship_controlled_tool_runtime() {
@@ -202,8 +223,10 @@ fixture_git() {
 }
 
 setup_starship_git_repository() {
-	STARSHIP_GIT_REPO=$STARSHIP_RUNTIME/repository
-	STARSHIP_GIT_REMOTE=$STARSHIP_RUNTIME/remote.git
+	local repository=${1:-$STARSHIP_RUNTIME/repository}
+	local remote=${2:-$STARSHIP_RUNTIME/remote.git}
+	STARSHIP_GIT_REPO=$repository
+	STARSHIP_GIT_REMOTE=$remote
 	mkdir -p "$STARSHIP_GIT_REPO" || return 1
 	printf 'baseline\n' >"$STARSHIP_GIT_REPO/tracked.txt" || return 1
 	printf 'baseline\n' >"$STARSHIP_GIT_REPO/tracked2.txt" || return 1
@@ -451,6 +474,164 @@ test_non_repository_prompts_retain_success_failure_deep_and_read_only_behavior()
 	assert_eq 0 "$COMMAND_STATUS" 'the controlled read-only prompt should render' || return 1
 	assert_eq "$STARSHIP_READ_ONLY_PROMPT" "$COMMAND_OUTPUT" \
 		'the read-only path should retain its exact indicator and styling' || return 1
+	assert_render_cache_removed
+}
+
+test_directory_context_icons_render_exact_components_and_boundaries() {
+	setup_starship_directory_runtime || return 1
+	local component display_path expected_module expected_prompt glyph index near_match physical_path
+
+	for index in "${!STARSHIP_DIRECTORY_COMPONENTS[@]}"; do
+		component=${STARSHIP_DIRECTORY_COMPONENTS[index]}
+		glyph=${STARSHIP_DIRECTORY_GLYPHS[index]}
+		physical_path=/mnt/home/$component/child
+		if [[ $component == Projects ]]; then
+			display_path="$glyph/child"
+		else
+			display_path=$'\342\200\246/'"$glyph/child"
+		fi
+		expected_module=$'\033[1;36m'"$display_path"$'\033[0m '
+		expected_prompt=$'\n\\[\033[36m\\]\342\225\255\342\224\200 \\[\033[1m\\]'"$display_path"$'\\[\033[0m\\] \n\\[\033[36m\\]\342\225\260\342\224\200\\[\033[1m\\]\342\235\257\\[\033[0m\\] '
+
+		render_module directory "$physical_path" "$physical_path" 0
+		assert_eq 0 "$COMMAND_STATUS" "the controlled $component directory module should render" || return 1
+		assert_eq "$expected_module" "$COMMAND_OUTPUT" \
+			"the complete $component component should render its exact tight-spaced icon bytes" || return 1
+		assert_render_cache_removed || return 1
+
+		render_prompt "$physical_path" "$physical_path" 0
+		assert_eq 0 "$COMMAND_STATUS" "the controlled $component prompt should render" || return 1
+		assert_eq "$expected_prompt" "$COMMAND_OUTPUT" \
+			"the complete $component component should retain exact full-prompt composition" || return 1
+		assert_render_cache_removed || return 1
+
+		physical_path=/mnt/home/repeated/$component/hidden/$component/child
+		expected_module=$'\033[1;36m\342\200\246/'"$glyph"$'/child\033[0m '
+		render_module directory "$physical_path" "$physical_path" 0
+		assert_eq 0 "$COMMAND_STATUS" "the controlled hidden-repeat $component path should render" || return 1
+		assert_eq "$expected_module" "$COMMAND_OUTPUT" \
+			"an earlier hidden $component component should not consume the visible replacement" || return 1
+		assert_render_cache_removed || return 1
+
+		physical_path=/mnt/home/repeated/$component/$component
+		expected_module=$'\033[1;36m\342\200\246/'"$glyph/$glyph"$'\033[0m '
+		render_module directory "$physical_path" "$physical_path" 0
+		assert_eq 0 "$COMMAND_STATUS" "the controlled adjacent-repeat $component path should render" || return 1
+		assert_eq "$expected_module" "$COMMAND_OUTPUT" \
+			"both adjacent visible $component components should render their exact glyphs" || return 1
+		assert_render_cache_removed || return 1
+	done
+
+	for near_match in MyDocuments DocumentsArchive; do
+		physical_path=/mnt/home/$near_match/child
+		expected_module=$'\033[1;36m\342\200\246/'"$near_match"$'/child\033[0m '
+		expected_prompt=$'\n\\[\033[36m\\]\342\225\255\342\224\200 \\[\033[1m\\]\342\200\246/'"$near_match"$'/child\\[\033[0m\\] \n\\[\033[36m\\]\342\225\260\342\224\200\\[\033[1m\\]\342\235\257\\[\033[0m\\] '
+
+		render_module directory "$physical_path" "$physical_path" 0
+		assert_eq 0 "$COMMAND_STATUS" "the controlled $near_match directory module should render" || return 1
+		assert_eq "$expected_module" "$COMMAND_OUTPUT" \
+			"the near-match $near_match component should remain literal" || return 1
+		assert_render_cache_removed || return 1
+
+		render_prompt "$physical_path" "$physical_path" 0
+		assert_eq 0 "$COMMAND_STATUS" "the controlled $near_match prompt should render" || return 1
+		assert_eq "$expected_prompt" "$COMMAND_OUTPUT" \
+			"the near-match $near_match prompt should remain byte-for-byte literal" || return 1
+		assert_render_cache_removed || return 1
+	done
+}
+
+test_directory_context_repositories_and_read_only_path_render_exact_output() {
+	setup_starship_directory_runtime || return 1
+	local branch git_status
+
+	setup_starship_git_repository \
+		"$STARSHIP_DIRECTORY_ROOT/Projects/repository" \
+		"$STARSHIP_RUNTIME/projects-remote.git" || return 1
+	branch=$(fixture_git branch --show-current) || return 1
+	assert_eq baseline "$branch" \
+		'the Projects-hosted fixture should use the controlled baseline branch' || return 1
+	git_status=$(fixture_git status --short) || return 1
+	assert_eq '' "$git_status" \
+		'the Projects-hosted fixture should start as a clean real Git repository' || return 1
+
+	setup_starship_git_repository \
+		"$STARSHIP_DIRECTORY_ROOT/Workspace/repository" \
+		"$STARSHIP_RUNTIME/workspace-remote.git" || return 1
+	branch=$(fixture_git branch --show-current) || return 1
+	assert_eq baseline "$branch" \
+		'the nonmatching-parent fixture should use the controlled baseline branch' || return 1
+	git_status=$(fixture_git status --short) || return 1
+	assert_eq '' "$git_status" \
+		'the nonmatching-parent fixture should start as a clean real Git repository' || return 1
+
+	render_module directory \
+		/mnt/home/Projects/repository \
+		/mnt/home/Projects/repository 0
+	assert_eq 0 "$COMMAND_STATUS" 'the Projects-hosted repository directory module should render' || return 1
+	assert_eq $'\033[1;36m/repository\033[0m ' "$COMMAND_OUTPUT" \
+		'the repository should render one tight-spaced Projects icon before its bold root' || return 1
+	assert_render_cache_removed || return 1
+
+	render_prompt \
+		/mnt/home/Projects/repository \
+		/mnt/home/Projects/repository 0
+	assert_eq 0 "$COMMAND_STATUS" 'the Projects-hosted repository prompt should render' || return 1
+	assert_eq $'\n\\[\033[36m\\]\342\225\255\342\224\200 \\[\033[1m\\]/repository\\[\033[0m\\] \\[\033[3;36m\\]\357\220\230 baseline\\[\033[0m\\] \n\\[\033[36m\\]\342\225\260\342\224\200\\[\033[1m\\]\342\235\257\\[\033[0m\\] ' \
+		"$COMMAND_OUTPUT" \
+		'the Projects-hosted repository should retain exact directory, Git, frame, and character composition' || return 1
+	assert_render_cache_removed || return 1
+
+	render_module directory \
+		/mnt/home/Projects/repository/child \
+		/mnt/home/Projects/repository/child 0
+	assert_eq 0 "$COMMAND_STATUS" 'the Projects-hosted repository child directory module should render' || return 1
+	assert_eq $'\033[1;36m\342\200\246/repository/child\033[0m ' "$COMMAND_OUTPUT" \
+		'the repository child should retain exactly two components and the truncation marker' || return 1
+	assert_render_cache_removed || return 1
+
+	render_prompt \
+		/mnt/home/Projects/repository/child \
+		/mnt/home/Projects/repository/child 0
+	assert_eq 0 "$COMMAND_STATUS" 'the Projects-hosted repository child prompt should render' || return 1
+	assert_eq $'\n\\[\033[36m\\]\342\225\255\342\224\200 \\[\033[1m\\]\342\200\246/repository/child\\[\033[0m\\] \\[\033[3;36m\\]\357\220\230 baseline\\[\033[0m\\] \n\\[\033[36m\\]\342\225\260\342\224\200\\[\033[1m\\]\342\235\257\\[\033[0m\\] ' \
+		"$COMMAND_OUTPUT" \
+		'the repository child should retain exact truncated directory and full-prompt composition' || return 1
+	assert_render_cache_removed || return 1
+
+	render_module directory \
+		/mnt/home/Workspace/repository \
+		/mnt/home/Workspace/repository 0
+	assert_eq 0 "$COMMAND_STATUS" 'the nonmatching-parent repository directory module should render' || return 1
+	assert_eq $'\033[1;36m\342\200\246/Workspace/repository\033[0m ' "$COMMAND_OUTPUT" \
+		'the nonmatching repository parent should remain literal beside its bold root' || return 1
+	assert_render_cache_removed || return 1
+
+	render_prompt \
+		/mnt/home/Workspace/repository \
+		/mnt/home/Workspace/repository 0
+	assert_eq 0 "$COMMAND_STATUS" 'the nonmatching-parent repository prompt should render' || return 1
+	assert_eq $'\n\\[\033[36m\\]\342\225\255\342\224\200 \\[\033[1m\\]\342\200\246/Workspace/repository\\[\033[0m\\] \\[\033[3;36m\\]\357\220\230 baseline\\[\033[0m\\] \n\\[\033[36m\\]\342\225\260\342\224\200\\[\033[1m\\]\342\235\257\\[\033[0m\\] ' \
+		"$COMMAND_OUTPUT" \
+		'the nonmatching repository parent should remain literal in the full prompt' || return 1
+	assert_render_cache_removed || return 1
+
+	render_module directory \
+		/mnt/home/Documents/readonly \
+		/mnt/home/Documents/readonly 0
+	assert_eq 0 "$COMMAND_STATUS" 'the selected read-only directory module should render' || return 1
+	assert_eq $'\033[1;36m\342\200\246/󰈙/readonly\033[0m\033[31m\360\237\224\222\033[0m ' \
+		"$COMMAND_OUTPUT" \
+		'the selected read-only path should retain its exact icon, depth, and red lock bytes' || return 1
+	assert_render_cache_removed || return 1
+
+	render_prompt \
+		/mnt/home/Documents/readonly \
+		/mnt/home/Documents/readonly 0
+	assert_eq 0 "$COMMAND_STATUS" 'the selected read-only prompt should render' || return 1
+	assert_eq $'\n\\[\033[36m\\]\342\225\255\342\224\200 \\[\033[1m\\]\342\200\246/󰈙/readonly\\[\033[0m\\]\\[\033[31m\\]\360\237\224\222\\[\033[0m\\] \n\\[\033[36m\\]\342\225\260\342\224\200\\[\033[1m\\]\342\235\257\\[\033[0m\\] ' \
+		"$COMMAND_OUTPUT" \
+		'the selected read-only path should retain its red lock in the full prompt' || return 1
 	assert_render_cache_removed
 }
 
@@ -1034,6 +1215,10 @@ if [[ -f $SOURCE_REPO/$STARSHIP_SOURCE_RELATIVE && ! -L $SOURCE_REPO/$STARSHIP_S
 		'real Starship accepts the tracked config without diagnostics'
 	run_test test_non_repository_prompts_retain_success_failure_deep_and_read_only_behavior \
 		'non-repository prompts retain success, failure, deep-path, and read-only behavior'
+	run_test test_directory_context_icons_render_exact_components_and_boundaries \
+		'directory-context icons render exact components and preserve boundaries'
+	run_test test_directory_context_repositories_and_read_only_path_render_exact_output \
+		'directory-context repositories and selected read-only path render exact output'
 	run_test test_language_modules_render_exact_controlled_versions \
 		'language modules render exact controlled versions'
 	run_test test_polyglot_prompt_renders_languages_in_selected_order \

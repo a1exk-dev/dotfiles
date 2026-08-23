@@ -4,7 +4,7 @@ The `starship` Stow package owns one leaf target:
 
 - `~/.config/starship.toml`, linked from `config/starship/.config/starship.toml`
 
-The tracked config started as a byte-for-byte capture of Omarchy 4's `/usr/share/omarchy/config/starship.toml`. Its only intentional differences are the connected two-line frame, compact language and environment context modules, Git branch icon, and Git status markers described below. Keep packaged files under `/usr/share/omarchy/` read-only; they are comparison and recovery inputs.
+The tracked config started as a byte-for-byte capture of Omarchy 4's `/usr/share/omarchy/config/starship.toml`. Its only intentional differences are the connected two-line frame, exact directory context icons, compact language and environment context modules, Git branch icon, and Git status markers described below. Keep packaged files under `/usr/share/omarchy/` read-only; they are comparison and recovery inputs.
 
 The package does not own:
 
@@ -23,7 +23,21 @@ The `bash` and `starship` Stow packages are independent. Omarchy's packaged Bash
 
 ## Prompt behavior
 
-The prompt still uses a 200 ms command timeout, two directory components, and the read-only lock. It uses a connected two-line frame. The first line starts with `╭─ ` and shows the directory, detected language versions, environment context, and Git context in that order. The second line starts with `╰─`, followed immediately by the existing success `❯` or error `✗` character. Typing starts after the character's existing trailing space. The frame uses terminal `cyan`; all other module spacing, glyphs, and text styles are unchanged.
+The prompt still uses a 200 ms command timeout, two directory components, and the read-only lock. At a Git repository root, the directory keeps one visible parent component before the bold repository name. It uses a connected two-line frame. The first line starts with `╭─ ` and shows the directory, detected language versions, environment context, and Git context in that order. The second line starts with `╰─`, followed immediately by the existing success `❯` or error `✗` character. Typing starts after the character's existing trailing space. The frame uses terminal `cyan`; all other module spacing, glyphs, and text styles are unchanged.
+
+## Directory context
+
+Five complete path components use compact icons:
+
+- Documents: `󰈙`
+- Downloads: ``
+- Music: `󰝚`
+- Pictures: ``
+- Projects: ``
+
+Matches are exact. Names such as `MyDocuments` and `DocumentsArchive` remain unchanged. Icons touch adjacent `/` separators, so a Git repository at `~/Projects/dotfiles` renders as `/dotfiles` under the existing two-component limit.
+
+Directory text keeps its current terminal `cyan` style, and the repository name remains bold. The `…/` truncation marker and red read-only lock are unchanged.
 
 ## Language versions
 
@@ -100,7 +114,7 @@ Choose `Apply Stow packages` and select `starship`. The wizard checks the suppor
 
 The repository used `Migrate existing target` once, while `config/starship/.config/starship.toml` was empty. Before migration, the live file was a regular file inside the home directory and matched Omarchy's packaged baseline byte for byte. Migration backed it up to XDG state, moved it into the Stow package, linked it, and validated it.
 
-At that checkpoint, the live file, backup, initial tracked source, and packaged baseline shared one byte count and digest. The backup remains unchanged. The current tracked config differs only by the connected two-line frame, compact language and environment context modules, Git branch icon, and Git status markers above.
+At that checkpoint, the live file, backup, initial tracked source, and packaged baseline shared one byte count and digest. The backup remains unchanged. The current tracked config differs only by the connected two-line frame, directory context rules, compact language and environment context modules, Git branch icon, and Git status markers above.
 
 In a normal clone, the tracked destination already exists. Do not use `Migrate existing target` or `stow --adopt` for a regular `~/.config/starship.toml`. Use the procedure below.
 
@@ -289,7 +303,7 @@ An equivalent manual check is:
 
 ## Controlled prompt tests
 
-Computed-config validation does not prove prompt behavior or appearance. The focused suite runs real `starship prompt` and `starship module` commands in a fixed, isolated environment. It checks exact ANSI and glyph output for normal prompts, path handling, read-only directories, Git states, and one-file and multi-file counts. It checks the connected frame for success, failure, repository, deep-path, and read-only prompts. It supplies controlled project markers and tool versions for every selected language, verifies each module and their combined order, and confirms that no-language and C++-only prompts remain unchanged. It verifies Docker, Conda, and Pixi output and suppression rules, missing-Pixi-binary behavior, combined environment order, and unchanged no-environment prompts. It also checks the branch icon in clean and dirty repositories. It checks synchronized, ahead, behind, diverged, and mixed file-state-plus-upstream branches using local Git refs. It verifies mixed staged and unstaged changes, mixed deleted and staged changes, and mixed renamed and deleted changes. It also checks one stash, multiple stashes, and mixed stash and rename state. Any Starship diagnostic fails the test.
+Computed-config validation does not prove prompt behavior or appearance. The focused suite runs real `starship prompt` and `starship module` commands in a fixed, isolated environment. It checks exact ANSI and glyph output for normal prompts, path handling, read-only directories, Git states, and one-file and multi-file counts. It checks exact directory icons, near-match names, tight separators, visible Git repository parents, and the existing two-component limit. It checks the connected frame for success, failure, repository, deep-path, and read-only prompts. It supplies controlled project markers and tool versions for every selected language, verifies each module and their combined order, and confirms that no-language and C++-only prompts remain unchanged. It verifies Docker, Conda, and Pixi output and suppression rules, missing-Pixi-binary behavior, combined environment order, and unchanged no-environment prompts. It also checks the branch icon in clean and dirty repositories. It checks synchronized, ahead, behind, diverged, and mixed file-state-plus-upstream branches using local Git refs. It verifies mixed staged and unstaged changes, mixed deleted and staged changes, and mixed renamed and deleted changes. It also checks one stash, multiple stashes, and mixed stash and rename state. Any Starship diagnostic fails the test.
 
 The focused suite requires Starship 1.26.0:
 
@@ -317,7 +331,7 @@ diff -u -- \
 	config/starship/.config/starship.toml
 ```
 
-The expected diff is limited to the global prompt `format`; the `symbol`, `format`, and `style` of the nine language modules and three environment modules; the Git branch `symbol` and `format`; the Git status `format` and `up_to_date`; and the seven Git status marker settings above. Stop and investigate any other difference.
+The expected diff is limited to the global prompt `format`; the directory `truncate_to_repo`, `repo_root_format`, and `substitutions` settings; the `symbol`, `format`, and `style` of the nine language modules and three environment modules; the Git branch `symbol` and `format`; the Git status `format` and `up_to_date`; and the seven Git status marker settings above. Stop and investigate any other difference.
 
 Review relevant new Omarchy migrations and hooks before accepting update-related behavior. Decide which packaged changes belong in the tracked replacement, then repeat strict validation and the focused prompt tests. When the repository changes its supported Omarchy target, also audit the new migration behavior and repeat the complete package lifecycle checks.
 

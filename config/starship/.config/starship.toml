@@ -8,9 +8,23 @@ success_symbol = "[❯](bold cyan)"
 
 [directory]
 truncation_length = 2
+truncate_to_repo = false
 truncation_symbol = "…/"
 repo_root_style = "bold cyan"
-repo_root_format = "[$repo_root]($repo_root_style)[$path]($style)[$read_only]($read_only_style) "
+repo_root_format = "[$before_root_path]($before_repo_root_style)[$repo_root]($repo_root_style)[$path]($style)[$read_only]($read_only_style) "
+substitutions = [
+  { from = '^~/Projects(/|$)', to = '${1}', regex = true },
+  { from = '(^|.*/)Documents(/|$)', to = '${1}󰈙${2}', regex = true },
+  { from = '(^|.*/)Documents(/|$)', to = '${1}󰈙${2}', regex = true },
+  { from = '(^|.*/)Downloads(/|$)', to = '${1}${2}', regex = true },
+  { from = '(^|.*/)Downloads(/|$)', to = '${1}${2}', regex = true },
+  { from = '(^|.*/)Music(/|$)', to = '${1}󰝚${2}', regex = true },
+  { from = '(^|.*/)Music(/|$)', to = '${1}󰝚${2}', regex = true },
+  { from = '(^|.*/)Pictures(/|$)', to = '${1}${2}', regex = true },
+  { from = '(^|.*/)Pictures(/|$)', to = '${1}${2}', regex = true },
+  { from = '(^|.*/)Projects(/|$)', to = '${1}${2}', regex = true },
+  { from = '(^|.*/)Projects(/|$)', to = '${1}${2}', regex = true },
+]
 
 [c]
 symbol = " "

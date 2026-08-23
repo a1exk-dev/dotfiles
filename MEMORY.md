@@ -152,6 +152,14 @@ Guidance: Run `starship print-config` with a fresh isolated `STARSHIP_CACHE` and
 
 Reason: Starship 1.26.0 can report malformed TOML or invalid values on standard error, fall back to defaults, and still return status 0; its cache can also suppress repeated diagnostics.
 
+## Test Starship directory substitutions with absolute paths
+
+Applies when: Changing Starship directory substitutions or their focused tests.
+
+Guidance: Starship 1.26.0 applies each regex substitution entry to one match before directory truncation. Use equivalent absolute physical and logical fixture paths below an isolated home. Cover earlier hidden matches, repeated visible components, repository roots, and truncated repository children. Use ordered rightmost passes when every visible repeated component must change.
+
+Reason: Relative fixtures skip home contraction and can skip truncation. A single regex entry can also replace a hidden component while leaving the visible occurrence unchanged.
+
 ## Write safe Bash installers
 
 Applies when: A package-specific installer is approved.
