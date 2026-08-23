@@ -1,7 +1,9 @@
 {
 	"packages": [
 		"chromium",
-		"moonlight-qt"
+		"foot",
+		"moonlight-qt",
+		"signal-desktop"
 	],
 	"web_apps": [
 		"Basecamp",

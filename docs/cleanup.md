@@ -15,7 +15,9 @@ The root `cleanup.json` file is the application cleanup profile. It has separate
 The package defaults are:
 
 - `chromium`
+- `foot`
 - `moonlight-qt`
+- `signal-desktop`
 
 The web app defaults are:
 

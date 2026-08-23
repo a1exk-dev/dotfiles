@@ -4,7 +4,7 @@ source "$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)/support/test_helper.
 
 test_cleanup_manifest_has_agreed_defaults() {
 	new_fixture
-	local expected='{"packages":["chromium","moonlight-qt"],"web_apps":["Basecamp","ChatGPT","Discord","Figma","Fizzy","GitHub","Google Contacts","Google Messages","Google Photos","HEY","X","YouTube","Zoom"],"tuis":[]}'
+	local expected='{"packages":["chromium","foot","moonlight-qt","signal-desktop"],"web_apps":["Basecamp","ChatGPT","Discord","Figma","Fizzy","GitHub","Google Contacts","Google Messages","Google Photos","HEY","X","YouTube","Zoom"],"tuis":[]}'
 	assert_eq "$expected" "$(jq -c . "$FIXTURE_REPO/cleanup.json")" 'cleanup profile should contain exactly the agreed defaults'
 }
 
