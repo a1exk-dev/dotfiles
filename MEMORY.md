@@ -80,6 +80,14 @@ Guidance: Edit tracked files inside the repository. Run every Stow operation wit
 
 Reason: Repository-owned links must not replace user files or claim parent directories shared with other packages.
 
+## Deploy shared Brave policy outside Stow
+
+Applies when: Implementing or maintaining the shared Brave configuration.
+
+Guidance: Keep one canonical managed-policy source and deploy a root-owned regular copy through a dedicated Dotfiles wizard operation. Keep it out of `config/` and `packages.json`; preserve Omarchy's color policy and launch flags, browser profiles, themes, and fonts. Apply one shared policy to every supported installed Brave consumer, block overlapping foreign policy, and use the approved preview, backup, verification, rollback, and removal lifecycle.
+
+Reason: Both Brave products consume one privileged system policy path. A Stow link would make active policy user-writable through the repository, while taking ownership of Omarchy's color policy would break browser recoloring.
+
 ## Escalate full Omarchy replacements
 
 Applies when: An Omarchy customization might require tracking a complete configuration file.
@@ -180,9 +188,9 @@ Reason: A package must remain recoverable across its full lifecycle, not only du
 
 Applies when: Designing or running the dotfiles wizard.
 
-Guidance: Use `make` and guided setup as the intended human workflow. Keep every operation available as a standalone wizard action. Run prerequisite preparation, pinned global skill installation, application cleanup, and Stow package application in that order. Use Gum with a Bash fallback. Start Stow package selection with no package selected. Continue after a skipped nonessential phase. Stop after an operational failure and name the related standalone action for recovery. Preserve public action preselection and noninteractive operation functions for Make targets, agents, scripts, and tests, but keep them out of normal human instructions.
+Guidance: Use `make` and guided setup as the intended human workflow. Keep every operation available as a standalone wizard action. The current sequence is prerequisite preparation, pinned global skill installation, application cleanup, and Stow package application. When shared Brave policy support is implemented, append its optional preview as the fifth phase; call the same apply function as the standalone action and skip successfully when no supported browser is installed or the human declines. Use Gum with a Bash fallback. Start Stow package selection with no package selected. Continue after a skipped nonessential phase. Stop after an operational failure and name the related standalone action for recovery. Preserve public action preselection and noninteractive operation functions for Make targets, agents, scripts, and tests, but keep them out of normal human instructions.
 
-Reason: The wizard is the normal user interface and must make each system change visible and recoverable.
+Reason: The wizard is the normal user interface and must make each system change visible and recoverable; the privileged Brave policy remains optional and reuses one tested lifecycle.
 
 ## Store migration backups in XDG state
 

@@ -12,6 +12,10 @@ A lowercase-named deployment unit under `config/<name>/` for one application or 
 
 The intended human interface for repository setup and operations. Guided setup runs prerequisite preparation, pinned global agent-skill installation, application cleanup, and Stow package application. Standalone actions provide each operation separately. Public routes provide the same operations to Make targets, agents, scripts, and tests.
 
+## Shared Brave configuration
+
+One repository-owned managed-policy intent for Brave Browser and Brave Origin. Both products consume the same system policy, while browser profiles, Omarchy-owned launch flags and color policy, theme state, and font settings remain outside this boundary. Product differences belong to installed-consumer detection and manual guidance rather than duplicated policy sources.
+
 ## Application cleanup profile
 
 The root `cleanup.json` file that contains saved selection defaults for removable Arch packages, Omarchy web apps, and Omarchy TUI launchers. Available defaults start selected during application cleanup. A selection change applies only to the current run. The profile does not record installed state and does not continuously suppress applications.
