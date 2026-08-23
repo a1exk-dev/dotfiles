@@ -3,31 +3,37 @@
 source "$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)/support/test_helper.sh"
 
 readonly STARSHIP_SOURCE_RELATIVE=config/starship/.config/starship.toml
-readonly STARSHIP_SELECTED_FEATURE_BYTES=2825
-readonly STARSHIP_SELECTED_FEATURE_SHA256=ecfc03d9fc76f8faa9308227eb9d22708d336f17eb449a448bfc7ad5ae7b3117
-readonly STARSHIP_SUCCESS_PROMPT=$'\n\\[\033[36m\\]\342\225\255\342\224\200 \\[\033[1m\\]/fixture/project\\[\033[0m\\] \n\\[\033[36m\\]\342\225\260\342\224\200\\[\033[1m\\]\342\235\257\\[\033[0m\\] '
-readonly STARSHIP_FAILURE_PROMPT=$'\n\\[\033[36m\\]\342\225\255\342\224\200 \\[\033[1m\\]/fixture/project\\[\033[0m\\] \n\\[\033[36m\\]\342\225\260\342\224\200\\[\033[1m\\]\342\234\227\\[\033[0m\\] '
-readonly STARSHIP_DEEP_PROMPT=$'\n\\[\033[36m\\]\342\225\255\342\224\200 \\[\033[1m\\]\342\200\246/beta/gamma\\[\033[0m\\] \n\\[\033[36m\\]\342\225\260\342\224\200\\[\033[1m\\]\342\235\257\\[\033[0m\\] '
-readonly STARSHIP_READ_ONLY_PROMPT=$'\n\\[\033[36m\\]\342\225\255\342\224\200 \\[\033[1m\\]/fixture/readonly\\[\033[0m\\]\\[\033[31m\\]\360\237\224\222\\[\033[0m\\] \n\\[\033[36m\\]\342\225\260\342\224\200\\[\033[1m\\]\342\235\257\\[\033[0m\\] '
-readonly STARSHIP_CLEAN_GIT_PROMPT=$'\n\\[\033[36m\\]\342\225\255\342\224\200 \\[\033[3m\\]\357\220\230 baseline\\[\033[0m\\] \n\\[\033[36m\\]\342\225\260\342\224\200\\[\033[1m\\]\342\235\257\\[\033[0m\\] '
-readonly STARSHIP_MODIFIED_GIT_PROMPT=$'\n\\[\033[36m\\]\342\225\255\342\224\200 \\[\033[3m\\]\357\220\230 baseline\\[\033[0m\\] \\[\033[36m\\]\356\251\2611 \\[\033[0m\\]\n\\[\033[36m\\]\342\225\260\342\224\200\\[\033[1m\\]\342\235\257\\[\033[0m\\] '
-readonly STARSHIP_UNTRACKED_GIT_PROMPT=$'\n\\[\033[36m\\]\342\225\255\342\224\200 \\[\033[3m\\]\357\220\230 baseline\\[\033[0m\\] \\[\033[36m\\]?1 \\[\033[0m\\]\n\\[\033[36m\\]\342\225\260\342\224\200\\[\033[1m\\]\342\235\257\\[\033[0m\\] '
-readonly STARSHIP_LANGUAGE_POLYGLOT_PROMPT=$'\n\\[\033[36m\\]\342\225\255\342\224\200 \\[\033[1m\\]/fixture/project\\[\033[0m\\] \\[\033[36m\\]\356\230\236 v13.2.1 \356\236\250 v1.80.1 \356\230\247 v1.23.4 \356\234\230 v22.12.0 \356\230\210 v8.3.14 \356\211\226 v21.0.4 \356\230\264 v2.0.21 \356\230\237 9.10.1 \356\230\206 v3.13.1 \\[\033[0m\\]\n\\[\033[36m\\]\342\225\260\342\224\200\\[\033[1m\\]\342\235\257\\[\033[0m\\] '
-readonly STARSHIP_ENVIRONMENT_CONTEXT_PROMPT=$'\n\\[\033[36m\\]\342\225\255\342\224\200 \356\230\206 v3.13.1 \357\214\210 remote-builder\\[\033[0m\\] \\[\033[36m\\]\360\237\205\222 research\\[\033[0m\\] \\[\033[36m\\]\360\237\247\232 v0.41.4 \\[\033[3m\\]\357\220\230 baseline\\[\033[0m\\] \n\\[\033[36m\\]\342\225\260\342\224\200\\[\033[1m\\]\342\235\257\\[\033[0m\\] '
-readonly STARSHIP_PIXI_ENVIRONMENT_CONTEXT_PROMPT=$'\n\\[\033[36m\\]\342\225\255\342\224\200 \356\230\206 v3.13.1 \357\214\210 remote-builder\\[\033[0m\\] \\[\033[36m\\]\360\237\247\232 v0.41.4 dev \\[\033[3m\\]\357\220\230 baseline\\[\033[0m\\] \n\\[\033[36m\\]\342\225\260\342\224\200\\[\033[1m\\]\342\235\257\\[\033[0m\\] '
+readonly STARSHIP_SELECTED_FEATURE_BYTES=3203
+readonly STARSHIP_SELECTED_FEATURE_SHA256=d6e2aa02b4dd42062e2930255182d819a0495b948a5ff65c36ecc873eabe20f2
+readonly STARSHIP_SUCCESS_PROMPT=$'\n\\[\033[36m\\]\342\224\214\342\224\200\\[\033[1;44;30m\\] /fixture/project \\[\033[0m\\]\n\\[\033[36m\\]\342\224\224\342\224\200\\[\033[1m\\]\342\235\257\\[\033[0m\\] '
+readonly STARSHIP_FAILURE_PROMPT=$'\n\\[\033[36m\\]\342\224\214\342\224\200\\[\033[1;44;30m\\] /fixture/project \\[\033[0m\\]\n\\[\033[36m\\]\342\224\224\342\224\200\\[\033[1m\\]\342\234\227\\[\033[0m\\] '
+readonly STARSHIP_DEEP_PROMPT=$'\n\\[\033[36m\\]\342\224\214\342\224\200\\[\033[1;44;30m\\] \342\200\246/beta/gamma \\[\033[0m\\]\n\\[\033[36m\\]\342\224\224\342\224\200\\[\033[1m\\]\342\235\257\\[\033[0m\\] '
+readonly STARSHIP_READ_ONLY_PROMPT=$'\n\\[\033[36m\\]\342\224\214\342\224\200\\[\033[1;44;30m\\] /fixture/readonly\\[\033[0m\\]\\[\033[44;31m\\]\360\237\224\222\\[\033[1;30m\\] \\[\033[0m\\]\n\\[\033[36m\\]\342\224\224\342\224\200\\[\033[1m\\]\342\235\257\\[\033[0m\\] '
+readonly STARSHIP_CLEAN_GIT_PROMPT=$'\n\\[\033[36m\\]\342\224\214\342\224\200\\[\033[45;30m\\] \\[\033[3m\\]\357\220\230 baseline \\[\033[0m\\]\n\\[\033[36m\\]\342\224\224\342\224\200\\[\033[1m\\]\342\235\257\\[\033[0m\\] '
+readonly STARSHIP_MODIFIED_GIT_PROMPT=$'\n\\[\033[36m\\]\342\224\214\342\224\200\\[\033[45;30m\\] \\[\033[3m\\]\357\220\230 baseline \\[\033[0m\\]\\[\033[45;30m\\]\356\251\2611 \\[\033[0m\\]\n\\[\033[36m\\]\342\224\224\342\224\200\\[\033[1m\\]\342\235\257\\[\033[0m\\] '
+readonly STARSHIP_UNTRACKED_GIT_PROMPT=$'\n\\[\033[36m\\]\342\224\214\342\224\200\\[\033[45;30m\\] \\[\033[3m\\]\357\220\230 baseline \\[\033[0m\\]\\[\033[45;30m\\]?1 \\[\033[0m\\]\n\\[\033[36m\\]\342\224\224\342\224\200\\[\033[1m\\]\342\235\257\\[\033[0m\\] '
+readonly STARSHIP_LANGUAGE_POLYGLOT_PROMPT=$'\n\\[\033[36m\\]\342\224\214\342\224\200\\[\033[1;44;30m\\] /fixture/project \\[\033[0m\\]\\[\033[46;30m\\] \356\230\236 v13.2.1 \356\236\250 v1.80.1 \356\230\247 v1.23.4 \356\234\230 v22.12.0 \356\230\210 v8.3.14 \356\211\226 v21.0.4 \356\230\264 v2.0.21 \356\230\237 9.10.1 \356\230\206 v3.13.1 \\[\033[0m\\]\n\\[\033[36m\\]\342\224\224\342\224\200\\[\033[1m\\]\342\235\257\\[\033[0m\\] '
+readonly STARSHIP_ENVIRONMENT_CONTEXT_PROMPT=$'\n\\[\033[36m\\]\342\224\214\342\224\200\\[\033[46;30m\\] \356\230\206 v3.13.1 \\[\033[42m\\] \357\214\210 remote-builder \360\237\205\222 research \360\237\247\232 v0.41.4 \\[\033[45m\\] \\[\033[3m\\]\357\220\230 baseline \\[\033[0m\\]\n\\[\033[36m\\]\342\224\224\342\224\200\\[\033[1m\\]\342\235\257\\[\033[0m\\] '
+readonly STARSHIP_PIXI_ENVIRONMENT_CONTEXT_PROMPT=$'\n\\[\033[36m\\]\342\224\214\342\224\200\\[\033[46;30m\\] \356\230\206 v3.13.1 \\[\033[42m\\] \357\214\210 remote-builder \360\237\247\232 v0.41.4 dev \\[\033[45m\\] \\[\033[3m\\]\357\220\230 baseline \\[\033[0m\\]\n\\[\033[36m\\]\342\224\224\342\224\200\\[\033[1m\\]\342\235\257\\[\033[0m\\] '
+readonly STARSHIP_ENVIRONMENT_ONLY_PROMPT=$'\n\\[\033[36m\\]\342\224\214\342\224\200\\[\033[1;44;30m\\] /environment \\[\033[0m\\]\\[\033[42;30m\\] \357\214\210 remote-builder \\[\033[0m\\]\n\\[\033[36m\\]\342\224\224\342\224\200\\[\033[1m\\]\342\235\257\\[\033[0m\\] '
+readonly STARSHIP_LANGUAGE_ENVIRONMENT_PROMPT=$'\n\\[\033[36m\\]\342\224\214\342\224\200\\[\033[1;44;30m\\] /language-environment \\[\033[0m\\]\\[\033[46;30m\\] \356\234\230 v22.12.0 \\[\033[42m\\] \357\214\210 remote-builder \\[\033[0m\\]\n\\[\033[36m\\]\342\224\224\342\224\200\\[\033[1m\\]\342\235\257\\[\033[0m\\] '
+readonly STARSHIP_LANGUAGE_GIT_PROMPT=$'\n\\[\033[36m\\]\342\224\214\342\224\200\\[\033[1;44;30m\\] /language-git \\[\033[0m\\]\\[\033[46;30m\\] \356\234\230 v22.12.0 \\[\033[45m\\] \\[\033[3m\\]\357\220\230 baseline \\[\033[0m\\]\n\\[\033[36m\\]\342\224\224\342\224\200\\[\033[1m\\]\342\235\257\\[\033[0m\\] '
+readonly STARSHIP_ENVIRONMENT_GIT_PROMPT=$'\n\\[\033[36m\\]\342\224\214\342\224\200\\[\033[1;44;30m\\] /all-groups \\[\033[0m\\]\\[\033[42;30m\\] \357\214\210 remote-builder \\[\033[45m\\] \\[\033[3m\\]\357\220\230 baseline \\[\033[0m\\]\n\\[\033[36m\\]\342\224\224\342\224\200\\[\033[1m\\]\342\235\257\\[\033[0m\\] '
+readonly STARSHIP_ALL_GROUPS_PROMPT=$'\n\\[\033[36m\\]\342\224\214\342\224\200\\[\033[1;44;30m\\] /all-groups \\[\033[0m\\]\\[\033[46;30m\\] \356\234\230 v22.12.0 \\[\033[42m\\] \357\214\210 remote-builder \\[\033[45m\\] \\[\033[3m\\]\357\220\230 baseline \\[\033[0m\\]\\[\033[45;30m\\]?1 \\[\033[0m\\]\n\\[\033[36m\\]\342\224\224\342\224\200\\[\033[1m\\]\342\235\257\\[\033[0m\\] '
+readonly STARSHIP_ALL_GROUPS_FAILURE_PROMPT=$'\n\\[\033[36m\\]\342\224\214\342\224\200\\[\033[1;44;30m\\] /all-groups \\[\033[0m\\]\\[\033[46;30m\\] \356\234\230 v22.12.0 \\[\033[42m\\] \357\214\210 remote-builder \\[\033[45m\\] \\[\033[3m\\]\357\220\230 baseline \\[\033[0m\\]\\[\033[45;30m\\]?1 \\[\033[0m\\]\n\\[\033[36m\\]\342\224\224\342\224\200\\[\033[1m\\]\342\234\227\\[\033[0m\\] '
 readonly -a STARSHIP_DIRECTORY_COMPONENTS=(Documents Downloads Music Pictures Projects)
 readonly -a STARSHIP_DIRECTORY_GLYPHS=('󰈙' '' '󰝚' '' '')
 readonly -a STARSHIP_LANGUAGE_MODULES=(c rust golang nodejs php java kotlin haskell python)
 readonly -a STARSHIP_LANGUAGE_OUTPUTS=(
-	$'\033[36m\356\230\236 v13.2.1 \033[0m'
-	$'\033[36m\356\236\250 v1.80.1 \033[0m'
-	$'\033[36m\356\230\247 v1.23.4 \033[0m'
-	$'\033[36m\356\234\230 v22.12.0 \033[0m'
-	$'\033[36m\356\230\210 v8.3.14 \033[0m'
-	$'\033[36m\356\211\226 v21.0.4 \033[0m'
-	$'\033[36m\356\230\264 v2.0.21 \033[0m'
-	$'\033[36m\356\230\237 9.10.1 \033[0m'
-	$'\033[36m\356\230\206 v3.13.1 \033[0m'
+	$'\033[46;30m\356\230\236 v13.2.1 \033[0m'
+	$'\033[46;30m\356\236\250 v1.80.1 \033[0m'
+	$'\033[46;30m\356\230\247 v1.23.4 \033[0m'
+	$'\033[46;30m\356\234\230 v22.12.0 \033[0m'
+	$'\033[46;30m\356\230\210 v8.3.14 \033[0m'
+	$'\033[46;30m\356\211\226 v21.0.4 \033[0m'
+	$'\033[46;30m\356\230\264 v2.0.21 \033[0m'
+	$'\033[46;30m\356\230\237 9.10.1 \033[0m'
+	$'\033[46;30m\356\230\206 v3.13.1 \033[0m'
 )
 readonly -a STARSHIP_LANGUAGE_VERSION_CALLS=(
 	'cc <--version>'
@@ -404,6 +410,193 @@ render_module() {
 	render_with_context "$physical_path" "$logical_path" "$status" module "$module"
 }
 
+parse_starship_ansi_line() {
+	local line=$1 remaining parameters code character
+	local fg=default bg=default bold=0 italic=0 index=0
+	local sgr_pattern=$'^\033\\[([0-9;]*)m'
+	local -a codes=()
+	STARSHIP_CELL_CHARACTERS=()
+	STARSHIP_CELL_FOREGROUNDS=()
+	STARSHIP_CELL_BACKGROUNDS=()
+	STARSHIP_CELL_BOLD=()
+	STARSHIP_CELL_ITALIC=()
+
+	while ((index < ${#line})); do
+		if [[ ${line:index:2} == '\[' || ${line:index:2} == '\]' ]]; then
+			index=$((index + 2))
+			continue
+		fi
+		remaining=${line:index}
+		if [[ $remaining =~ $sgr_pattern ]]; then
+			parameters=${BASH_REMATCH[1]}
+			if [[ -z $parameters ]]; then
+				codes=(0)
+			else
+				IFS=';' read -r -a codes <<<"$parameters"
+			fi
+			for code in "${codes[@]}"; do
+				case $code in
+					0) fg=default; bg=default; bold=0; italic=0 ;;
+					1) bold=1 ;;
+					3) italic=1 ;;
+					22) bold=0 ;;
+					23) italic=0 ;;
+					39) fg=default ;;
+					49) bg=default ;;
+					*)
+						if ((code >= 30 && code <= 37)); then
+							fg=$code
+						elif ((code >= 40 && code <= 47)); then
+							bg=$code
+						else
+							printf '  unsupported Starship SGR code: %s\n' "$code" >&2
+							return 1
+						fi
+						;;
+				esac
+			done
+			index=$((index + ${#BASH_REMATCH[0]}))
+			continue
+		fi
+
+		character=${line:index:1}
+		STARSHIP_CELL_CHARACTERS+=("$character")
+		STARSHIP_CELL_FOREGROUNDS+=("$fg")
+		STARSHIP_CELL_BACKGROUNDS+=("$bg")
+		STARSHIP_CELL_BOLD+=("$bold")
+		STARSHIP_CELL_ITALIC+=("$italic")
+		index=$((index + 1))
+	done
+}
+
+assert_starship_prompt_cells() {
+	local LC_ALL=C.UTF-8
+	local expected_runs=$1 expected_character=$2 expect_lock=$3 description=$4
+	local prompt first_line second_line first_text= second_text= actual_runs= run_text= lock_count=0
+	local background previous_background= character foreground bold italic index non_space
+
+	if [[ $COMMAND_OUTPUT != $'\n'* ]]; then
+		printf '  %s should retain the leading blank line\n' "$description" >&2
+		return 1
+	fi
+	prompt=${COMMAND_OUTPUT#$'\n'}
+	if [[ $prompt != *$'\n'* ]]; then
+		printf '  %s should contain two prompt lines\n' "$description" >&2
+		return 1
+	fi
+	first_line=${prompt%%$'\n'*}
+	second_line=${prompt#*$'\n'}
+	if [[ $second_line == *$'\n'* ]]; then
+		printf '  %s should contain exactly two prompt lines\n' "$description" >&2
+		return 1
+	fi
+
+	parse_starship_ansi_line "$first_line" || return 1
+	for character in "${STARSHIP_CELL_CHARACTERS[@]}"; do
+		first_text+=$character
+	done
+	assert_eq '┌─' "${first_text:0:2}" \
+		"$description should start with the exact square first-line frame" || return 1
+	for index in 0 1; do
+		assert_eq 36 "${STARSHIP_CELL_FOREGROUNDS[index]}" \
+			"$description first-line frame cell should be cyan" || return 1
+		assert_eq default "${STARSHIP_CELL_BACKGROUNDS[index]}" \
+			"$description first-line frame cell should use the default background" || return 1
+	done
+
+	for ((index = 2; index < ${#STARSHIP_CELL_CHARACTERS[@]}; index++)); do
+		character=${STARSHIP_CELL_CHARACTERS[index]}
+		foreground=${STARSHIP_CELL_FOREGROUNDS[index]}
+		background=${STARSHIP_CELL_BACKGROUNDS[index]}
+		bold=${STARSHIP_CELL_BOLD[index]}
+		italic=${STARSHIP_CELL_ITALIC[index]}
+		case $background in
+			44 | 46 | 42 | 45) ;;
+			*)
+				printf '  %s printed first-line cell %q on background %s\n' \
+					"$description" "$character" "$background" >&2
+				return 1
+				;;
+		esac
+		if [[ $character == '🔒' ]]; then
+			lock_count=$((lock_count + 1))
+			assert_eq 31 "$foreground" \
+				"$description read-only lock should be red" || return 1
+			assert_eq 44 "$background" \
+				"$description read-only lock should stay on blue" || return 1
+		else
+			assert_eq 30 "$foreground" \
+				"$description content and padding cells should use black text" || return 1
+			if [[ $background == 44 ]]; then
+				assert_eq 1 "$bold" \
+					"$description directory cells should remain bold" || return 1
+			fi
+			if [[ $character == '' ]]; then
+				assert_eq 1 "$italic" \
+					"$description Git branch should remain italic" || return 1
+			fi
+		fi
+		if [[ $background != "$previous_background" ]]; then
+			if [[ -n $previous_background ]]; then
+				assert_eq ' ' "${run_text:0:1}" \
+					"$description background run should start with conditional padding" || return 1
+				assert_eq ' ' "${run_text: -1}" \
+					"$description background run should end with styled module padding" || return 1
+				non_space=${run_text// /}
+				[[ -n $non_space ]] || {
+					printf '  %s emitted an orphan background %s run\n' \
+						"$description" "$previous_background" >&2
+					return 1
+				}
+			fi
+			actual_runs+="${actual_runs:+,}$background"
+			previous_background=$background
+			run_text=
+		fi
+		run_text+=$character
+	done
+	if [[ -n $previous_background ]]; then
+		assert_eq ' ' "${run_text:0:1}" \
+			"$description final background run should start with conditional padding" || return 1
+		assert_eq ' ' "${run_text: -1}" \
+			"$description final background run should end with styled module padding" || return 1
+		non_space=${run_text// /}
+		[[ -n $non_space ]] || {
+			printf '  %s emitted an orphan final background %s run\n' \
+				"$description" "$previous_background" >&2
+			return 1
+		}
+	fi
+	assert_eq "$expected_runs" "$actual_runs" \
+		"$description should render exactly the selected nonempty background groups" || return 1
+	if [[ $expect_lock == true ]]; then
+		assert_eq 1 "$lock_count" "$description should render one read-only lock" || return 1
+	else
+		assert_eq 0 "$lock_count" "$description should not render a read-only lock" || return 1
+	fi
+
+	parse_starship_ansi_line "$second_line" || return 1
+	for character in "${STARSHIP_CELL_CHARACTERS[@]}"; do
+		second_text+=$character
+	done
+	assert_eq "└─$expected_character " "$second_text" \
+		"$description should retain the exact square second-line frame and status shape" || return 1
+	for index in 0 1; do
+		assert_eq 36 "${STARSHIP_CELL_FOREGROUNDS[index]}" \
+			"$description second-line frame cell should be cyan" || return 1
+		assert_eq default "${STARSHIP_CELL_BACKGROUNDS[index]}" \
+			"$description second-line frame cell should use the default background" || return 1
+	done
+	assert_eq 36 "${STARSHIP_CELL_FOREGROUNDS[2]}" \
+		"$description status character should be cyan" || return 1
+	assert_eq 1 "${STARSHIP_CELL_BOLD[2]}" \
+		"$description status character should remain bold" || return 1
+	assert_eq default "${STARSHIP_CELL_BACKGROUNDS[2]}" \
+		"$description status character should use the default background" || return 1
+	assert_eq default "${STARSHIP_CELL_BACKGROUNDS[3]}" \
+		"$description input padding should use the default background"
+}
+
 assert_render_cache_removed() {
 	if compgen -G "$FIXTURE_TMP/dotfiles-starship-render.*" >/dev/null; then
 		printf '  Starship render should remove its fresh cache root\n' >&2
@@ -450,6 +643,7 @@ test_non_repository_prompts_retain_success_failure_deep_and_read_only_behavior()
 	assert_eq 0 "$COMMAND_STATUS" 'the controlled success prompt should render' || return 1
 	assert_eq "$STARSHIP_SUCCESS_PROMPT" "$COMMAND_OUTPUT" \
 		'the non-repository success prompt should retain exact raw bytes' || return 1
+	assert_starship_prompt_cells 44 '❯' false 'the directory-only success prompt' || return 1
 	assert_render_cache_removed || return 1
 	local first_success=$COMMAND_OUTPUT
 
@@ -462,18 +656,21 @@ test_non_repository_prompts_retain_success_failure_deep_and_read_only_behavior()
 	assert_eq 0 "$COMMAND_STATUS" 'the controlled failure prompt should render' || return 1
 	assert_eq "$STARSHIP_FAILURE_PROMPT" "$COMMAND_OUTPUT" \
 		'the non-repository failure prompt should retain the exact error character' || return 1
+	assert_starship_prompt_cells 44 '✗' false 'the directory-only failure prompt' || return 1
 	assert_render_cache_removed || return 1
 
 	render_prompt /mnt/deep/alpha/beta/gamma /fixture/deep/alpha/beta/gamma 0
 	assert_eq 0 "$COMMAND_STATUS" 'the controlled deep-path prompt should render' || return 1
 	assert_eq "$STARSHIP_DEEP_PROMPT" "$COMMAND_OUTPUT" \
 		'the deep path should retain two-component truncation and exact styling' || return 1
+	assert_starship_prompt_cells 44 '❯' false 'the deep-path prompt' || return 1
 	assert_render_cache_removed || return 1
 
 	render_prompt /mnt/readonly /fixture/readonly 0
 	assert_eq 0 "$COMMAND_STATUS" 'the controlled read-only prompt should render' || return 1
 	assert_eq "$STARSHIP_READ_ONLY_PROMPT" "$COMMAND_OUTPUT" \
 		'the read-only path should retain its exact indicator and styling' || return 1
+	assert_starship_prompt_cells 44 '❯' true 'the read-only prompt' || return 1
 	assert_render_cache_removed
 }
 
@@ -490,8 +687,8 @@ test_directory_context_icons_render_exact_components_and_boundaries() {
 		else
 			display_path=$'\342\200\246/'"$glyph/child"
 		fi
-		expected_module=$'\033[1;36m'"$display_path"$'\033[0m '
-		expected_prompt=$'\n\\[\033[36m\\]\342\225\255\342\224\200 \\[\033[1m\\]'"$display_path"$'\\[\033[0m\\] \n\\[\033[36m\\]\342\225\260\342\224\200\\[\033[1m\\]\342\235\257\\[\033[0m\\] '
+		expected_module=$'\033[1;44;30m '"$display_path"$' \033[0m'
+		expected_prompt=$'\n\\[\033[36m\\]\342\224\214\342\224\200\\[\033[1;44;30m\\] '"$display_path"$' \\[\033[0m\\]\n\\[\033[36m\\]\342\224\224\342\224\200\\[\033[1m\\]\342\235\257\\[\033[0m\\] '
 
 		render_module directory "$physical_path" "$physical_path" 0
 		assert_eq 0 "$COMMAND_STATUS" "the controlled $component directory module should render" || return 1
@@ -503,10 +700,12 @@ test_directory_context_icons_render_exact_components_and_boundaries() {
 		assert_eq 0 "$COMMAND_STATUS" "the controlled $component prompt should render" || return 1
 		assert_eq "$expected_prompt" "$COMMAND_OUTPUT" \
 			"the complete $component component should retain exact full-prompt composition" || return 1
+		assert_starship_prompt_cells 44 '❯' false \
+			"the complete $component component prompt" || return 1
 		assert_render_cache_removed || return 1
 
 		physical_path=/mnt/home/repeated/$component/hidden/$component/child
-		expected_module=$'\033[1;36m\342\200\246/'"$glyph"$'/child\033[0m '
+		expected_module=$'\033[1;44;30m \342\200\246/'"$glyph"$'/child \033[0m'
 		render_module directory "$physical_path" "$physical_path" 0
 		assert_eq 0 "$COMMAND_STATUS" "the controlled hidden-repeat $component path should render" || return 1
 		assert_eq "$expected_module" "$COMMAND_OUTPUT" \
@@ -514,7 +713,7 @@ test_directory_context_icons_render_exact_components_and_boundaries() {
 		assert_render_cache_removed || return 1
 
 		physical_path=/mnt/home/repeated/$component/$component
-		expected_module=$'\033[1;36m\342\200\246/'"$glyph/$glyph"$'\033[0m '
+		expected_module=$'\033[1;44;30m \342\200\246/'"$glyph/$glyph"$' \033[0m'
 		render_module directory "$physical_path" "$physical_path" 0
 		assert_eq 0 "$COMMAND_STATUS" "the controlled adjacent-repeat $component path should render" || return 1
 		assert_eq "$expected_module" "$COMMAND_OUTPUT" \
@@ -524,8 +723,8 @@ test_directory_context_icons_render_exact_components_and_boundaries() {
 
 	for near_match in MyDocuments DocumentsArchive; do
 		physical_path=/mnt/home/$near_match/child
-		expected_module=$'\033[1;36m\342\200\246/'"$near_match"$'/child\033[0m '
-		expected_prompt=$'\n\\[\033[36m\\]\342\225\255\342\224\200 \\[\033[1m\\]\342\200\246/'"$near_match"$'/child\\[\033[0m\\] \n\\[\033[36m\\]\342\225\260\342\224\200\\[\033[1m\\]\342\235\257\\[\033[0m\\] '
+		expected_module=$'\033[1;44;30m \342\200\246/'"$near_match"$'/child \033[0m'
+		expected_prompt=$'\n\\[\033[36m\\]\342\224\214\342\224\200\\[\033[1;44;30m\\] \342\200\246/'"$near_match"$'/child \\[\033[0m\\]\n\\[\033[36m\\]\342\224\224\342\224\200\\[\033[1m\\]\342\235\257\\[\033[0m\\] '
 
 		render_module directory "$physical_path" "$physical_path" 0
 		assert_eq 0 "$COMMAND_STATUS" "the controlled $near_match directory module should render" || return 1
@@ -537,6 +736,8 @@ test_directory_context_icons_render_exact_components_and_boundaries() {
 		assert_eq 0 "$COMMAND_STATUS" "the controlled $near_match prompt should render" || return 1
 		assert_eq "$expected_prompt" "$COMMAND_OUTPUT" \
 			"the near-match $near_match prompt should remain byte-for-byte literal" || return 1
+		assert_starship_prompt_cells 44 '❯' false \
+			"the near-match $near_match prompt" || return 1
 		assert_render_cache_removed || return 1
 	done
 }
@@ -569,7 +770,7 @@ test_directory_context_repositories_and_read_only_path_render_exact_output() {
 		/mnt/home/Projects/repository \
 		/mnt/home/Projects/repository 0
 	assert_eq 0 "$COMMAND_STATUS" 'the Projects-hosted repository directory module should render' || return 1
-	assert_eq $'\033[1;36m/repository\033[0m ' "$COMMAND_OUTPUT" \
+	assert_eq $'\033[1;44;30m /repository \033[0m' "$COMMAND_OUTPUT" \
 		'the repository should render one tight-spaced Projects icon before its bold root' || return 1
 	assert_render_cache_removed || return 1
 
@@ -577,16 +778,18 @@ test_directory_context_repositories_and_read_only_path_render_exact_output() {
 		/mnt/home/Projects/repository \
 		/mnt/home/Projects/repository 0
 	assert_eq 0 "$COMMAND_STATUS" 'the Projects-hosted repository prompt should render' || return 1
-	assert_eq $'\n\\[\033[36m\\]\342\225\255\342\224\200 \\[\033[1m\\]/repository\\[\033[0m\\] \\[\033[3;36m\\]\357\220\230 baseline\\[\033[0m\\] \n\\[\033[36m\\]\342\225\260\342\224\200\\[\033[1m\\]\342\235\257\\[\033[0m\\] ' \
+	assert_eq $'\n\\[\033[36m\\]\342\224\214\342\224\200\\[\033[1;44;30m\\] /repository \\[\033[0m\\]\\[\033[45;30m\\] \\[\033[3m\\]\357\220\230 baseline \\[\033[0m\\]\n\\[\033[36m\\]\342\224\224\342\224\200\\[\033[1m\\]\342\235\257\\[\033[0m\\] ' \
 		"$COMMAND_OUTPUT" \
 		'the Projects-hosted repository should retain exact directory, Git, frame, and character composition' || return 1
+	assert_starship_prompt_cells 44,45 '❯' false \
+		'the Projects-hosted repository prompt' || return 1
 	assert_render_cache_removed || return 1
 
 	render_module directory \
 		/mnt/home/Projects/repository/child \
 		/mnt/home/Projects/repository/child 0
 	assert_eq 0 "$COMMAND_STATUS" 'the Projects-hosted repository child directory module should render' || return 1
-	assert_eq $'\033[1;36m\342\200\246/repository/child\033[0m ' "$COMMAND_OUTPUT" \
+	assert_eq $'\033[1;44;30m \342\200\246/repository/child \033[0m' "$COMMAND_OUTPUT" \
 		'the repository child should retain exactly two components and the truncation marker' || return 1
 	assert_render_cache_removed || return 1
 
@@ -594,16 +797,18 @@ test_directory_context_repositories_and_read_only_path_render_exact_output() {
 		/mnt/home/Projects/repository/child \
 		/mnt/home/Projects/repository/child 0
 	assert_eq 0 "$COMMAND_STATUS" 'the Projects-hosted repository child prompt should render' || return 1
-	assert_eq $'\n\\[\033[36m\\]\342\225\255\342\224\200 \\[\033[1m\\]\342\200\246/repository/child\\[\033[0m\\] \\[\033[3;36m\\]\357\220\230 baseline\\[\033[0m\\] \n\\[\033[36m\\]\342\225\260\342\224\200\\[\033[1m\\]\342\235\257\\[\033[0m\\] ' \
+	assert_eq $'\n\\[\033[36m\\]\342\224\214\342\224\200\\[\033[1;44;30m\\] \342\200\246/repository/child \\[\033[0m\\]\\[\033[45;30m\\] \\[\033[3m\\]\357\220\230 baseline \\[\033[0m\\]\n\\[\033[36m\\]\342\224\224\342\224\200\\[\033[1m\\]\342\235\257\\[\033[0m\\] ' \
 		"$COMMAND_OUTPUT" \
 		'the repository child should retain exact truncated directory and full-prompt composition' || return 1
+	assert_starship_prompt_cells 44,45 '❯' false \
+		'the Projects-hosted repository child prompt' || return 1
 	assert_render_cache_removed || return 1
 
 	render_module directory \
 		/mnt/home/Workspace/repository \
 		/mnt/home/Workspace/repository 0
 	assert_eq 0 "$COMMAND_STATUS" 'the nonmatching-parent repository directory module should render' || return 1
-	assert_eq $'\033[1;36m\342\200\246/Workspace/repository\033[0m ' "$COMMAND_OUTPUT" \
+	assert_eq $'\033[1;44;30m \342\200\246/Workspace/repository \033[0m' "$COMMAND_OUTPUT" \
 		'the nonmatching repository parent should remain literal beside its bold root' || return 1
 	assert_render_cache_removed || return 1
 
@@ -611,16 +816,18 @@ test_directory_context_repositories_and_read_only_path_render_exact_output() {
 		/mnt/home/Workspace/repository \
 		/mnt/home/Workspace/repository 0
 	assert_eq 0 "$COMMAND_STATUS" 'the nonmatching-parent repository prompt should render' || return 1
-	assert_eq $'\n\\[\033[36m\\]\342\225\255\342\224\200 \\[\033[1m\\]\342\200\246/Workspace/repository\\[\033[0m\\] \\[\033[3;36m\\]\357\220\230 baseline\\[\033[0m\\] \n\\[\033[36m\\]\342\225\260\342\224\200\\[\033[1m\\]\342\235\257\\[\033[0m\\] ' \
+	assert_eq $'\n\\[\033[36m\\]\342\224\214\342\224\200\\[\033[1;44;30m\\] \342\200\246/Workspace/repository \\[\033[0m\\]\\[\033[45;30m\\] \\[\033[3m\\]\357\220\230 baseline \\[\033[0m\\]\n\\[\033[36m\\]\342\224\224\342\224\200\\[\033[1m\\]\342\235\257\\[\033[0m\\] ' \
 		"$COMMAND_OUTPUT" \
 		'the nonmatching repository parent should remain literal in the full prompt' || return 1
+	assert_starship_prompt_cells 44,45 '❯' false \
+		'the nonmatching-parent repository prompt' || return 1
 	assert_render_cache_removed || return 1
 
 	render_module directory \
 		/mnt/home/Documents/readonly \
 		/mnt/home/Documents/readonly 0
 	assert_eq 0 "$COMMAND_STATUS" 'the selected read-only directory module should render' || return 1
-	assert_eq $'\033[1;36m\342\200\246/󰈙/readonly\033[0m\033[31m\360\237\224\222\033[0m ' \
+	assert_eq $'\033[1;44;30m \342\200\246/󰈙/readonly\033[0m\033[44;31m\360\237\224\222\033[1;30m \033[0m' \
 		"$COMMAND_OUTPUT" \
 		'the selected read-only path should retain its exact icon, depth, and red lock bytes' || return 1
 	assert_render_cache_removed || return 1
@@ -629,9 +836,10 @@ test_directory_context_repositories_and_read_only_path_render_exact_output() {
 		/mnt/home/Documents/readonly \
 		/mnt/home/Documents/readonly 0
 	assert_eq 0 "$COMMAND_STATUS" 'the selected read-only prompt should render' || return 1
-	assert_eq $'\n\\[\033[36m\\]\342\225\255\342\224\200 \\[\033[1m\\]\342\200\246/󰈙/readonly\\[\033[0m\\]\\[\033[31m\\]\360\237\224\222\\[\033[0m\\] \n\\[\033[36m\\]\342\225\260\342\224\200\\[\033[1m\\]\342\235\257\\[\033[0m\\] ' \
+	assert_eq $'\n\\[\033[36m\\]\342\224\214\342\224\200\\[\033[1;44;30m\\] \342\200\246/󰈙/readonly\\[\033[0m\\]\\[\033[44;31m\\]\360\237\224\222\\[\033[1;30m\\] \\[\033[0m\\]\n\\[\033[36m\\]\342\224\224\342\224\200\\[\033[1m\\]\342\235\257\\[\033[0m\\] ' \
 		"$COMMAND_OUTPUT" \
 		'the selected read-only path should retain its red lock in the full prompt' || return 1
+	assert_starship_prompt_cells 44 '❯' true 'the selected read-only prompt' || return 1
 	assert_render_cache_removed
 }
 
@@ -666,6 +874,7 @@ test_polyglot_prompt_renders_languages_in_selected_order() {
 	assert_eq 0 "$COMMAND_STATUS" 'the controlled polyglot prompt should render' || return 1
 	assert_eq "$STARSHIP_LANGUAGE_POLYGLOT_PROMPT" "$COMMAND_OUTPUT" \
 		'the polyglot prompt should render exact C-to-Python bytes before Git context' || return 1
+	assert_starship_prompt_cells 44,46 '❯' false 'the polyglot language-group prompt' || return 1
 	for expected_call in "${STARSHIP_LANGUAGE_VERSION_CALLS[@]}" 'rustup <default>'; do
 		assert_starship_call_logged "$expected_call" || return 1
 	done
@@ -680,7 +889,7 @@ test_language_detection_preserves_empty_and_disabled_cpp_prompts() {
 	render_prompt /mnt/project /fixture/project 0 || return 1
 	assert_eq 0 "$COMMAND_STATUS" 'the no-language prompt should render' || return 1
 	assert_eq "$STARSHIP_SUCCESS_PROMPT" "$COMMAND_OUTPUT" \
-		'the no-language prompt should retain its exact pre-feature bytes' || return 1
+		'the no-language prompt should retain its exact square-segment bytes' || return 1
 	assert_eq '' "$(<"$STARSHIP_TOOL_CALL_LOG")" \
 		'the no-language prompt should not invoke controlled language tools' || return 1
 	assert_render_cache_removed || return 1
@@ -722,7 +931,7 @@ test_environment_context_modules_render_and_suppress_exact_states() {
 	: >"$STARSHIP_TOOL_CALL_LOG" || return 1
 	render_module docker_context /mnt/environments/docker /fixture/project 0 || return 1
 	assert_eq 0 "$COMMAND_STATUS" 'the controlled non-default Docker context should render' || return 1
-	assert_eq $'\033[36m\357\214\210 remote-builder\033[0m ' "$COMMAND_OUTPUT" \
+	assert_eq $'\033[42;30m\357\214\210 remote-builder \033[0m' "$COMMAND_OUTPUT" \
 		'the Docker context should render the exact selected symbol, context, and style' || return 1
 	assert_eq '' "$(<"$STARSHIP_TOOL_CALL_LOG")" \
 		'the Docker context module should not invoke Docker or another controlled tool' || return 1
@@ -741,7 +950,7 @@ test_environment_context_modules_render_and_suppress_exact_states() {
 	: >"$STARSHIP_TOOL_CALL_LOG" || return 1
 	render_module conda /mnt/environments/conda /fixture/project 0 || return 1
 	assert_eq 0 "$COMMAND_STATUS" 'the controlled non-base Conda environment should render' || return 1
-	assert_eq $'\033[36m\360\237\205\222 research\033[0m ' "$COMMAND_OUTPUT" \
+	assert_eq $'\033[42;30m\360\237\205\222 research \033[0m' "$COMMAND_OUTPUT" \
 		'the Conda environment should render the exact selected symbol, name, and style' || return 1
 	assert_eq '' "$(<"$STARSHIP_TOOL_CALL_LOG")" \
 		'the Conda module should not invoke Conda or another controlled tool' || return 1
@@ -770,7 +979,7 @@ test_environment_context_modules_render_and_suppress_exact_states() {
 	render_prompt /mnt/project /fixture/project 0 || return 1
 	assert_eq 0 "$COMMAND_STATUS" 'the no-environment prompt should render' || return 1
 	assert_eq "$STARSHIP_SUCCESS_PROMPT" "$COMMAND_OUTPUT" \
-		'the no-environment prompt should retain its exact pre-feature bytes' || return 1
+		'the no-environment prompt should retain its exact square-segment bytes' || return 1
 	assert_eq '' "$(<"$STARSHIP_TOOL_CALL_LOG")" \
 		'the no-environment prompt should not invoke any controlled tool' || return 1
 	assert_render_cache_removed || return 1
@@ -788,7 +997,7 @@ test_pixi_module_renders_markers_environment_and_missing_binary() {
 	: >"$STARSHIP_TOOL_CALL_LOG" || return 1
 	render_module pixi /mnt/environments/pixi-toml /fixture/project 0 || return 1
 	assert_eq 0 "$COMMAND_STATUS" 'the controlled pixi.toml project should render' || return 1
-	assert_eq $'\033[36m\360\237\247\232 v0.41.4 \033[0m' "$COMMAND_OUTPUT" \
+	assert_eq $'\033[42;30m\360\237\247\232 v0.41.4 \033[0m' "$COMMAND_OUTPUT" \
 		'the pixi.toml project should render the exact selected version-only output' || return 1
 	assert_eq 'pixi <--version>' "$(<"$STARSHIP_TOOL_CALL_LOG")" \
 		'the pixi.toml project should invoke exactly pixi --version once' || return 1
@@ -797,7 +1006,7 @@ test_pixi_module_renders_markers_environment_and_missing_binary() {
 	: >"$STARSHIP_TOOL_CALL_LOG" || return 1
 	render_module pixi /mnt/environments/pixi-lock /fixture/project 0 || return 1
 	assert_eq 0 "$COMMAND_STATUS" 'the controlled pixi.lock project should render' || return 1
-	assert_eq $'\033[36m\360\237\247\232 v0.41.4 \033[0m' "$COMMAND_OUTPUT" \
+	assert_eq $'\033[42;30m\360\237\247\232 v0.41.4 \033[0m' "$COMMAND_OUTPUT" \
 		'the pixi.lock project should render the exact selected version-only output' || return 1
 	assert_eq 'pixi <--version>' "$(<"$STARSHIP_TOOL_CALL_LOG")" \
 		'the pixi.lock project should invoke exactly pixi --version once' || return 1
@@ -807,7 +1016,7 @@ test_pixi_module_renders_markers_environment_and_missing_binary() {
 	: >"$STARSHIP_TOOL_CALL_LOG" || return 1
 	render_module pixi /mnt/project /fixture/project 0 || return 1
 	assert_eq 0 "$COMMAND_STATUS" 'the controlled active Pixi environment should render' || return 1
-	assert_eq $'\033[36m\360\237\247\232 v0.41.4 dev \033[0m' "$COMMAND_OUTPUT" \
+	assert_eq $'\033[42;30m\360\237\247\232 v0.41.4 dev \033[0m' "$COMMAND_OUTPUT" \
 		'the active Pixi environment should render the exact selected version and name' || return 1
 	assert_eq 'pixi <--version>' "$(<"$STARSHIP_TOOL_CALL_LOG")" \
 		'the active Pixi environment should invoke exactly pixi --version once' || return 1
@@ -819,7 +1028,7 @@ test_pixi_module_renders_markers_environment_and_missing_binary() {
 	: >"$STARSHIP_TOOL_CALL_LOG" || return 1
 	render_module pixi /mnt/environments/pixi-toml /fixture/project 0 || return 1
 	assert_eq 0 "$COMMAND_STATUS" 'the controlled Pixi marker without a binary should render' || return 1
-	assert_eq $'\033[36m\360\237\247\232 \033[0m' "$COMMAND_OUTPUT" \
+	assert_eq $'\033[42;30m\360\237\247\232 \033[0m' "$COMMAND_OUTPUT" \
 		'the Pixi marker without a binary should retain the exact selected symbol-only output' || return 1
 	assert_eq '' "$(<"$STARSHIP_TOOL_CALL_LOG")" \
 		'the missing Pixi binary should produce no controlled command call' || return 1
@@ -846,6 +1055,8 @@ test_environment_context_prompts_render_exact_order_and_pixi_suppression() {
 	assert_eq 0 "$COMMAND_STATUS" 'the combined environment-context prompt should render' || return 1
 	assert_eq "$STARSHIP_ENVIRONMENT_CONTEXT_PROMPT" "$COMMAND_OUTPUT" \
 		'the combined prompt should render Python, Docker, Conda, Pixi, and Git in exact order' || return 1
+	assert_starship_prompt_cells 46,42,45 '❯' false \
+		'the combined language, environment, and Git prompt' || return 1
 	assert_starship_call_logged 'python <--version>' || return 1
 	assert_starship_call_logged 'pixi <--version>' || return 1
 	assert_eq 2 "$(wc -l <"$STARSHIP_TOOL_CALL_LOG")" \
@@ -862,11 +1073,118 @@ test_environment_context_prompts_render_exact_order_and_pixi_suppression() {
 	assert_eq 0 "$COMMAND_STATUS" 'the combined active-Pixi prompt should render' || return 1
 	assert_eq "$STARSHIP_PIXI_ENVIRONMENT_CONTEXT_PROMPT" "$COMMAND_OUTPUT" \
 		'the active-Pixi prompt should suppress Conda while preserving language, Docker, Pixi, and Git order' || return 1
+	assert_starship_prompt_cells 46,42,45 '❯' false \
+		'the active-Pixi language, environment, and Git prompt' || return 1
 	assert_starship_call_logged 'python <--version>' || return 1
 	assert_starship_call_logged 'pixi <--version>' || return 1
 	assert_eq 2 "$(wc -l <"$STARSHIP_TOOL_CALL_LOG")" \
 		'the active-Pixi prompt should invoke exactly Python and Pixi once without relying on call order' || return 1
 	assert_render_cache_removed || return 1
+}
+
+test_square_segments_render_exact_optional_skipped_and_all_group_cells() {
+	setup_starship_controlled_tool_runtime || return 1
+	local environment_project=$STARSHIP_RUNTIME/home/Projects/environment
+	local language_environment_project=$STARSHIP_RUNTIME/home/Projects/language-environment
+	local prompt_status git_status
+	mkdir -p "$environment_project" "$language_environment_project" || return 1
+	printf 'FROM scratch\n' >"$environment_project/Dockerfile" || return 1
+	printf 'FROM scratch\n' >"$language_environment_project/Dockerfile" || return 1
+	create_starship_language_marker nodejs "$language_environment_project" || return 1
+
+	STARSHIP_RUNTIME_ENV=(DOCKER_CONTEXT=remote-builder)
+	: >"$STARSHIP_TOOL_CALL_LOG" || return 1
+	render_prompt /mnt/home/Projects/environment /mnt/home/Projects/environment 0 || return 1
+	assert_eq 0 "$COMMAND_STATUS" 'the environment-only square prompt should render' || return 1
+	assert_eq "$STARSHIP_ENVIRONMENT_ONLY_PROMPT" "$COMMAND_OUTPUT" \
+		'the environment-only prompt should render exact blue and green group bytes' || return 1
+	assert_starship_prompt_cells 44,42 '❯' false 'the environment-only square prompt' || return 1
+	assert_eq '' "$(<"$STARSHIP_TOOL_CALL_LOG")" \
+		'the environment-only render should not invoke Docker or another controlled tool' || return 1
+	assert_render_cache_removed || return 1
+
+	: >"$STARSHIP_TOOL_CALL_LOG" || return 1
+	render_prompt \
+		/mnt/home/Projects/language-environment \
+		/mnt/home/Projects/language-environment 0 || return 1
+	assert_eq 0 "$COMMAND_STATUS" 'the language-and-environment square prompt should render' || return 1
+	assert_eq "$STARSHIP_LANGUAGE_ENVIRONMENT_PROMPT" "$COMMAND_OUTPUT" \
+		'the prompt without Git should render exact blue, cyan, and green group bytes' || return 1
+	assert_starship_prompt_cells 44,46,42 '❯' false \
+		'the language-and-environment square prompt' || return 1
+	assert_eq 'node <--version>' "$(<"$STARSHIP_TOOL_CALL_LOG")" \
+		'the prompt without Git should invoke exactly the selected Node.js tool' || return 1
+	assert_render_cache_removed || return 1
+
+	setup_starship_git_repository \
+		"$STARSHIP_RUNTIME/home/Projects/language-git" \
+		"$STARSHIP_RUNTIME/language-git-remote.git" || return 1
+	create_starship_language_marker nodejs "$STARSHIP_GIT_REPO" || return 1
+	fixture_git add -- package.json || return 1
+	fixture_git -c user.name=Fixture -c user.email=fixture@example.invalid \
+		commit -m language-marker >/dev/null 2>&1 || return 1
+	fixture_git push origin baseline >/dev/null 2>&1 || return 1
+	git_status=$(fixture_git status --short) || return 1
+	assert_eq '' "$git_status" \
+		'the language-and-Git fixture should be clean after committing its marker' || return 1
+	assert_git_upstream_distance $'0\t0' || return 1
+	: >"$STARSHIP_TOOL_CALL_LOG" || return 1
+	render_prompt /mnt/home/Projects/language-git /mnt/home/Projects/language-git 0 || return 1
+	assert_eq 0 "$COMMAND_STATUS" 'the language-and-Git square prompt should render' || return 1
+	assert_eq "$STARSHIP_LANGUAGE_GIT_PROMPT" "$COMMAND_OUTPUT" \
+		'the prompt without environments should render exact blue, cyan, and purple group bytes' || return 1
+	assert_starship_prompt_cells 44,46,45 '❯' false \
+		'the language-and-Git square prompt' || return 1
+	assert_eq 'node <--version>' "$(<"$STARSHIP_TOOL_CALL_LOG")" \
+		'the prompt without environments should invoke exactly the selected Node.js tool' || return 1
+	assert_render_cache_removed || return 1
+
+	setup_starship_git_repository \
+		"$STARSHIP_RUNTIME/home/Projects/all-groups" \
+		"$STARSHIP_RUNTIME/all-groups-remote.git" || return 1
+	printf 'FROM scratch\n' >"$STARSHIP_GIT_REPO/Dockerfile" || return 1
+	fixture_git add -- Dockerfile || return 1
+	fixture_git -c user.name=Fixture -c user.email=fixture@example.invalid \
+		commit -m environment-marker >/dev/null 2>&1 || return 1
+	fixture_git push origin baseline >/dev/null 2>&1 || return 1
+	git_status=$(fixture_git status --short) || return 1
+	assert_eq '' "$git_status" \
+		'the environment-and-Git fixture should be clean after committing its marker' || return 1
+	assert_git_upstream_distance $'0\t0' || return 1
+	: >"$STARSHIP_TOOL_CALL_LOG" || return 1
+	render_prompt /mnt/home/Projects/all-groups /mnt/home/Projects/all-groups 0 || return 1
+	assert_eq 0 "$COMMAND_STATUS" 'the environment-and-Git square prompt should render' || return 1
+	assert_eq "$STARSHIP_ENVIRONMENT_GIT_PROMPT" "$COMMAND_OUTPUT" \
+		'the prompt without languages should render exact blue, green, and purple group bytes' || return 1
+	assert_starship_prompt_cells 44,42,45 '❯' false \
+		'the environment-and-Git square prompt' || return 1
+	assert_eq '' "$(<"$STARSHIP_TOOL_CALL_LOG")" \
+		'the prompt without languages should not invoke Docker or another controlled tool' || return 1
+	assert_render_cache_removed || return 1
+
+	create_starship_language_marker nodejs "$STARSHIP_GIT_REPO" || return 1
+	git_status=$(fixture_git status --short) || return 1
+	assert_eq '?? package.json' "$git_status" \
+		'the all-group fixture should contain one controlled untracked language marker' || return 1
+	for prompt_status in 0 1; do
+		: >"$STARSHIP_TOOL_CALL_LOG" || return 1
+		render_prompt /mnt/home/Projects/all-groups /mnt/home/Projects/all-groups "$prompt_status" || return 1
+		assert_eq 0 "$COMMAND_STATUS" 'the complete four-group square prompt should render' || return 1
+		if ((prompt_status == 0)); then
+			assert_eq "$STARSHIP_ALL_GROUPS_PROMPT" "$COMMAND_OUTPUT" \
+				'the complete success prompt should render exact four-group bytes' || return 1
+			assert_starship_prompt_cells 44,46,42,45 '❯' false \
+				'the complete success square prompt' || return 1
+		else
+			assert_eq "$STARSHIP_ALL_GROUPS_FAILURE_PROMPT" "$COMMAND_OUTPUT" \
+				'the complete failure prompt should retain all four groups and exact failure bytes' || return 1
+			assert_starship_prompt_cells 44,46,42,45 '✗' false \
+				'the complete failure square prompt' || return 1
+		fi
+		assert_eq 'node <--version>' "$(<"$STARSHIP_TOOL_CALL_LOG")" \
+			'the complete prompt should invoke exactly the selected Node.js tool' || return 1
+		assert_render_cache_removed || return 1
+	done
 }
 
 test_git_prompts_retain_clean_modified_and_untracked_behavior() {
@@ -877,6 +1195,7 @@ test_git_prompts_retain_clean_modified_and_untracked_behavior() {
 	assert_eq 0 "$COMMAND_STATUS" 'the controlled clean Git prompt should render' || return 1
 	assert_eq "$STARSHIP_CLEAN_GIT_PROMPT" "$COMMAND_OUTPUT" \
 		'the clean Git prompt should retain exact branch and character bytes' || return 1
+	assert_starship_prompt_cells 45 '❯' false 'the clean Git-only prompt' || return 1
 	assert_render_cache_removed || return 1
 
 	printf 'modified\n' >"$STARSHIP_GIT_REPO/tracked.txt" || return 1
@@ -886,6 +1205,7 @@ test_git_prompts_retain_clean_modified_and_untracked_behavior() {
 	assert_eq 0 "$COMMAND_STATUS" 'the controlled modified Git prompt should render' || return 1
 	assert_eq "$STARSHIP_MODIFIED_GIT_PROMPT" "$COMMAND_OUTPUT" \
 		'the modified Git prompt should retain its exact glyph and styling' || return 1
+	assert_starship_prompt_cells 45 '❯' false 'the modified Git-only prompt' || return 1
 	assert_render_cache_removed || return 1
 
 	printf 'baseline\n' >"$STARSHIP_GIT_REPO/tracked.txt" || return 1
@@ -896,6 +1216,7 @@ test_git_prompts_retain_clean_modified_and_untracked_behavior() {
 	assert_eq 0 "$COMMAND_STATUS" 'the controlled untracked Git prompt should render' || return 1
 	assert_eq "$STARSHIP_UNTRACKED_GIT_PROMPT" "$COMMAND_OUTPUT" \
 		'the untracked Git prompt should retain its exact marker and styling' || return 1
+	assert_starship_prompt_cells 45 '❯' false 'the untracked Git-only prompt' || return 1
 	assert_render_cache_removed
 }
 
@@ -915,7 +1236,7 @@ test_git_upstream_counts_render_synchronized_ahead_behind_diverged_and_mixed_sta
 	assert_git_upstream_distance $'1\t0' || return 1
 	render_module git_status /mnt/repository /fixture/project 0
 	assert_eq 0 "$COMMAND_STATUS" 'the ahead Git status module should render' || return 1
-	assert_eq $'\033[36m\342\207\2411 \033[0m' "$COMMAND_OUTPUT" \
+	assert_eq $'\033[45;30m\342\207\2411 \033[0m' "$COMMAND_OUTPUT" \
 		'the Git status module should render the exact ahead count' || return 1
 	assert_render_cache_removed || return 1
 
@@ -928,7 +1249,7 @@ test_git_upstream_counts_render_synchronized_ahead_behind_diverged_and_mixed_sta
 	assert_git_upstream_distance $'0\t2' || return 1
 	render_module git_status /mnt/repository /fixture/project 0
 	assert_eq 0 "$COMMAND_STATUS" 'the behind Git status module should render' || return 1
-	assert_eq $'\033[36m\342\207\2432 \033[0m' "$COMMAND_OUTPUT" \
+	assert_eq $'\033[45;30m\342\207\2432 \033[0m' "$COMMAND_OUTPUT" \
 		'the Git status module should render the exact nontrivial behind count' || return 1
 	assert_render_cache_removed || return 1
 
@@ -942,7 +1263,7 @@ test_git_upstream_counts_render_synchronized_ahead_behind_diverged_and_mixed_sta
 	assert_git_upstream_distance $'1\t2' || return 1
 	render_module git_status /mnt/repository /fixture/project 0
 	assert_eq 0 "$COMMAND_STATUS" 'the diverged Git status module should render' || return 1
-	assert_eq $'\033[36m\342\207\225\342\207\2411\342\207\2432 \033[0m' "$COMMAND_OUTPUT" \
+	assert_eq $'\033[45;30m\342\207\225\342\207\2411\342\207\2432 \033[0m' "$COMMAND_OUTPUT" \
 		'the Git status module should render independent ahead and behind counts' || return 1
 	assert_render_cache_removed || return 1
 
@@ -960,7 +1281,7 @@ test_git_upstream_counts_render_synchronized_ahead_behind_diverged_and_mixed_sta
 	assert_git_upstream_distance $'1\t0' || return 1
 	render_module git_status /mnt/repository /fixture/project 0
 	assert_eq 0 "$COMMAND_STATUS" 'the mixed Git status module should render' || return 1
-	assert_eq $'\033[36m\356\251\2611 \342\207\2411 \033[0m' "$COMMAND_OUTPUT" \
+	assert_eq $'\033[45;30m\356\251\2611 \342\207\2411 \033[0m' "$COMMAND_OUTPUT" \
 		'the mixed Git status module should render modified before ahead with exact bytes' || return 1
 	assert_render_cache_removed || return 1
 }
@@ -972,7 +1293,7 @@ test_conflicted_git_module_renders_one_and_multiple_file_counts() {
 		'the one-conflict fixture should contain exactly one unmerged file' || return 1
 	render_module git_status /mnt/repository /fixture/project 0
 	assert_eq 0 "$COMMAND_STATUS" 'the one-conflict Git status module should render' || return 1
-	assert_eq $'\033[36m\356\256\2531 \033[0m' "$COMMAND_OUTPUT" \
+	assert_eq $'\033[45;30m\356\256\2531 \033[0m' "$COMMAND_OUTPUT" \
 		'the Git status module should render the exact one-file conflict count' || return 1
 	assert_render_cache_removed || return 1
 
@@ -982,7 +1303,7 @@ test_conflicted_git_module_renders_one_and_multiple_file_counts() {
 		'the multi-conflict fixture should contain exactly two unmerged files' || return 1
 	render_module git_status /mnt/repository /fixture/project 0
 	assert_eq 0 "$COMMAND_STATUS" 'the multi-conflict Git status module should render' || return 1
-	assert_eq $'\033[36m\356\256\2532 \033[0m' "$COMMAND_OUTPUT" \
+	assert_eq $'\033[45;30m\356\256\2532 \033[0m' "$COMMAND_OUTPUT" \
 		'the Git status module should render the exact multi-file conflict count' || return 1
 	assert_render_cache_removed
 }
@@ -998,7 +1319,7 @@ test_staged_git_module_renders_one_multiple_and_mixed_states() {
 		'the one-staged fixture should contain exactly one index change' || return 1
 	render_module git_status /mnt/repository /fixture/project 0
 	assert_eq 0 "$COMMAND_STATUS" 'the one-staged Git status module should render' || return 1
-	assert_eq $'\033[36m+1 \033[0m' "$COMMAND_OUTPUT" \
+	assert_eq $'\033[45;30m+1 \033[0m' "$COMMAND_OUTPUT" \
 		'the Git status module should render the exact one-file staged count' || return 1
 	assert_render_cache_removed || return 1
 
@@ -1011,7 +1332,7 @@ test_staged_git_module_renders_one_multiple_and_mixed_states() {
 		'the multi-staged fixture should contain exactly two index changes' || return 1
 	render_module git_status /mnt/repository /fixture/project 0
 	assert_eq 0 "$COMMAND_STATUS" 'the multi-staged Git status module should render' || return 1
-	assert_eq $'\033[36m+2 \033[0m' "$COMMAND_OUTPUT" \
+	assert_eq $'\033[45;30m+2 \033[0m' "$COMMAND_OUTPUT" \
 		'the Git status module should render the exact multi-file staged count' || return 1
 	assert_render_cache_removed || return 1
 
@@ -1024,7 +1345,7 @@ test_staged_git_module_renders_one_multiple_and_mixed_states() {
 		'the mixed fixture should contain one index and one worktree change' || return 1
 	render_module git_status /mnt/repository /fixture/project 0
 	assert_eq 0 "$COMMAND_STATUS" 'the mixed Git status module should render' || return 1
-	assert_eq $'\033[36m\356\251\2611 +1 \033[0m' "$COMMAND_OUTPUT" \
+	assert_eq $'\033[45;30m\356\251\2611 +1 \033[0m' "$COMMAND_OUTPUT" \
 		'the mixed Git status module should render modified before staged with exact bytes' || return 1
 	assert_render_cache_removed
 }
@@ -1039,7 +1360,7 @@ test_deleted_git_module_renders_one_multiple_and_mixed_states() {
 		'the one-deleted fixture should contain exactly one unstaged deletion' || return 1
 	render_module git_status /mnt/repository /fixture/project 0
 	assert_eq 0 "$COMMAND_STATUS" 'the one-deleted Git status module should render' || return 1
-	assert_eq $'\033[36m\342\234\2301 \033[0m' "$COMMAND_OUTPUT" \
+	assert_eq $'\033[45;30m\342\234\2301 \033[0m' "$COMMAND_OUTPUT" \
 		'the Git status module should render the exact one-file deleted count' || return 1
 	assert_render_cache_removed || return 1
 
@@ -1050,7 +1371,7 @@ test_deleted_git_module_renders_one_multiple_and_mixed_states() {
 		'the multi-deleted fixture should contain exactly two unstaged deletions' || return 1
 	render_module git_status /mnt/repository /fixture/project 0
 	assert_eq 0 "$COMMAND_STATUS" 'the multi-deleted Git status module should render' || return 1
-	assert_eq $'\033[36m\342\234\2302 \033[0m' "$COMMAND_OUTPUT" \
+	assert_eq $'\033[45;30m\342\234\2302 \033[0m' "$COMMAND_OUTPUT" \
 		'the Git status module should render the exact multi-file deleted count' || return 1
 	assert_render_cache_removed || return 1
 
@@ -1063,7 +1384,7 @@ test_deleted_git_module_renders_one_multiple_and_mixed_states() {
 		'the mixed fixture should contain one unstaged deletion and one staged modification' || return 1
 	render_module git_status /mnt/repository /fixture/project 0
 	assert_eq 0 "$COMMAND_STATUS" 'the mixed deleted and staged Git status module should render' || return 1
-	assert_eq $'\033[36m\342\234\2301 +1 \033[0m' "$COMMAND_OUTPUT" \
+	assert_eq $'\033[45;30m\342\234\2301 +1 \033[0m' "$COMMAND_OUTPUT" \
 		'the mixed Git status module should render deleted before staged with exact bytes' || return 1
 	assert_render_cache_removed
 }
@@ -1078,7 +1399,7 @@ test_renamed_git_module_renders_one_multiple_and_mixed_states() {
 		'the one-renamed fixture should contain exactly one detected staged rename' || return 1
 	render_module git_status /mnt/repository /fixture/project 0
 	assert_eq 0 "$COMMAND_STATUS" 'the one-renamed Git status module should render' || return 1
-	assert_eq $'\033[36m\302\2731 \033[0m' "$COMMAND_OUTPUT" \
+	assert_eq $'\033[45;30m\302\2731 \033[0m' "$COMMAND_OUTPUT" \
 		'the Git status module should render the exact one-file renamed count' || return 1
 	assert_render_cache_removed || return 1
 
@@ -1090,7 +1411,7 @@ test_renamed_git_module_renders_one_multiple_and_mixed_states() {
 		'the multi-renamed fixture should contain exactly two detected staged renames' || return 1
 	render_module git_status /mnt/repository /fixture/project 0
 	assert_eq 0 "$COMMAND_STATUS" 'the multi-renamed Git status module should render' || return 1
-	assert_eq $'\033[36m\302\2732 \033[0m' "$COMMAND_OUTPUT" \
+	assert_eq $'\033[45;30m\302\2732 \033[0m' "$COMMAND_OUTPUT" \
 		'the Git status module should render the exact multi-file renamed count' || return 1
 	assert_render_cache_removed || return 1
 
@@ -1102,7 +1423,7 @@ test_renamed_git_module_renders_one_multiple_and_mixed_states() {
 		'the mixed fixture should contain one detected rename and one unstaged deletion' || return 1
 	render_module git_status /mnt/repository /fixture/project 0
 	assert_eq 0 "$COMMAND_STATUS" 'the mixed renamed and deleted Git status module should render' || return 1
-	assert_eq $'\033[36m\342\234\2301 \302\2731 \033[0m' "$COMMAND_OUTPUT" \
+	assert_eq $'\033[45;30m\342\234\2301 \302\2731 \033[0m' "$COMMAND_OUTPUT" \
 		'the mixed Git status module should render deleted before renamed with exact bytes' || return 1
 	assert_render_cache_removed
 }
@@ -1120,7 +1441,7 @@ test_stashed_git_module_renders_presence_for_one_multiple_and_mixed_states() {
 		'the one-stash fixture should have no index or worktree changes' || return 1
 	render_module git_status /mnt/repository /fixture/project 0
 	assert_eq 0 "$COMMAND_STATUS" 'the one-stash Git status module should render' || return 1
-	assert_eq $'\033[36m\\$ \033[0m' "$COMMAND_OUTPUT" \
+	assert_eq $'\033[45;30m\\$ \033[0m' "$COMMAND_OUTPUT" \
 		'the Git status module should render the exact one-stash presence marker' || return 1
 	assert_render_cache_removed || return 1
 
@@ -1135,7 +1456,7 @@ test_stashed_git_module_renders_presence_for_one_multiple_and_mixed_states() {
 		'the multi-stash fixture should have no index or worktree changes' || return 1
 	render_module git_status /mnt/repository /fixture/project 0
 	assert_eq 0 "$COMMAND_STATUS" 'the multi-stash Git status module should render' || return 1
-	assert_eq $'\033[36m\\$ \033[0m' "$COMMAND_OUTPUT" \
+	assert_eq $'\033[45;30m\\$ \033[0m' "$COMMAND_OUTPUT" \
 		'the Git status module should still render exactly one stash presence marker' || return 1
 	assert_render_cache_removed || return 1
 
@@ -1150,7 +1471,7 @@ test_stashed_git_module_renders_presence_for_one_multiple_and_mixed_states() {
 		'the mixed fixture should contain exactly one detected staged rename' || return 1
 	render_module git_status /mnt/repository /fixture/project 0
 	assert_eq 0 "$COMMAND_STATUS" 'the mixed stashed and renamed Git status module should render' || return 1
-	assert_eq $'\033[36m\\$ \302\2731 \033[0m' "$COMMAND_OUTPUT" \
+	assert_eq $'\033[45;30m\\$ \302\2731 \033[0m' "$COMMAND_OUTPUT" \
 		'the mixed Git status module should render stash presence before renamed with exact bytes' || return 1
 	assert_render_cache_removed || return 1
 }
@@ -1158,13 +1479,13 @@ test_stashed_git_module_renders_presence_for_one_multiple_and_mixed_states() {
 test_focused_modules_render_exact_selected_configuration_output() {
 	setup_starship_git_runtime || return 1
 	render_module directory /mnt/deep/alpha/beta/gamma /fixture/deep/alpha/beta/gamma 0
-	assert_eq $'\033[1;36m\342\200\246/beta/gamma\033[0m ' "$COMMAND_OUTPUT" \
+	assert_eq $'\033[1;44;30m \342\200\246/beta/gamma \033[0m' "$COMMAND_OUTPUT" \
 		'the directory module should retain exact deep-path bytes' || return 1
 	assert_render_cache_removed || return 1
 
 	render_module git_branch /mnt/repository /fixture/project 0
-	assert_eq $'\033[3;36m\357\220\230 baseline\033[0m ' "$COMMAND_OUTPUT" \
-		'the Git branch module should render the exact icon, one-space separator, and italic cyan bytes' || return 1
+	assert_eq $'\033[3;45;30m\357\220\230 baseline \033[0m' "$COMMAND_OUTPUT" \
+		'the Git branch module should render the exact icon, separator, and italic purple-block bytes' || return 1
 	assert_render_cache_removed || return 1
 
 	render_module git_status /mnt/repository /fixture/project 0
@@ -1173,14 +1494,14 @@ test_focused_modules_render_exact_selected_configuration_output() {
 
 	printf 'modified\n' >"$STARSHIP_GIT_REPO/tracked.txt" || return 1
 	render_module git_status /mnt/repository /fixture/project 0
-	assert_eq $'\033[36m\356\251\2611 \033[0m' "$COMMAND_OUTPUT" \
+	assert_eq $'\033[45;30m\356\251\2611 \033[0m' "$COMMAND_OUTPUT" \
 		'the modified Git status module should render the exact one-file count' || return 1
 	assert_render_cache_removed || return 1
 	printf 'modified\n' >"$STARSHIP_GIT_REPO/tracked2.txt" || return 1
 	assert_eq $' M tracked.txt\n M tracked2.txt' "$(fixture_git status --short)" \
 		'the multi-modified fixture should contain exactly two worktree changes' || return 1
 	render_module git_status /mnt/repository /fixture/project 0
-	assert_eq $'\033[36m\356\251\2612 \033[0m' "$COMMAND_OUTPUT" \
+	assert_eq $'\033[45;30m\356\251\2612 \033[0m' "$COMMAND_OUTPUT" \
 		'the modified Git status module should render the exact multi-file count' || return 1
 	assert_render_cache_removed || return 1
 
@@ -1188,14 +1509,14 @@ test_focused_modules_render_exact_selected_configuration_output() {
 	printf 'baseline\n' >"$STARSHIP_GIT_REPO/tracked2.txt" || return 1
 	printf 'untracked\n' >"$STARSHIP_GIT_REPO/untracked.txt" || return 1
 	render_module git_status /mnt/repository /fixture/project 0
-	assert_eq $'\033[36m?1 \033[0m' "$COMMAND_OUTPUT" \
+	assert_eq $'\033[45;30m?1 \033[0m' "$COMMAND_OUTPUT" \
 		'the untracked Git status module should render the exact one-file count' || return 1
 	assert_render_cache_removed || return 1
 	printf 'untracked\n' >"$STARSHIP_GIT_REPO/untracked2.txt" || return 1
 	assert_eq $'?? untracked.txt\n?? untracked2.txt' "$(fixture_git status --short)" \
 		'the multi-untracked fixture should contain exactly two untracked files' || return 1
 	render_module git_status /mnt/repository /fixture/project 0
-	assert_eq $'\033[36m?2 \033[0m' "$COMMAND_OUTPUT" \
+	assert_eq $'\033[45;30m?2 \033[0m' "$COMMAND_OUTPUT" \
 		'the untracked Git status module should render the exact multi-file count' || return 1
 	assert_render_cache_removed || return 1
 
@@ -1231,6 +1552,8 @@ if [[ -f $SOURCE_REPO/$STARSHIP_SOURCE_RELATIVE && ! -L $SOURCE_REPO/$STARSHIP_S
 		'Pixi module renders markers, active environment, and missing-binary state'
 	run_test test_environment_context_prompts_render_exact_order_and_pixi_suppression \
 		'environment-context prompts render exact order and active-Pixi suppression'
+	run_test test_square_segments_render_exact_optional_skipped_and_all_group_cells \
+		'square segments render exact optional, skipped-middle, and all-group cells'
 	run_test test_git_prompts_retain_clean_modified_and_untracked_behavior \
 		'Git prompts retain clean, modified, and untracked behavior'
 	run_test test_git_upstream_counts_render_synchronized_ahead_behind_diverged_and_mixed_states \
