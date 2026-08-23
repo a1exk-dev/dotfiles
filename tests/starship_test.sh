@@ -3,8 +3,8 @@
 source "$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)/support/test_helper.sh"
 
 readonly STARSHIP_SOURCE_RELATIVE=config/starship/.config/starship.toml
-readonly STARSHIP_SELECTED_FEATURE_BYTES=900
-readonly STARSHIP_SELECTED_FEATURE_SHA256=7d62fdc10b1c42b35aa48645f0e003dbf715b598a1235963a5f7502c7f93460e
+readonly STARSHIP_SELECTED_FEATURE_BYTES=1670
+readonly STARSHIP_SELECTED_FEATURE_SHA256=86a97972f58717a18acf3bfd746a140f457de4b8ba30735addca1e9d563b7ca4
 readonly STARSHIP_SUCCESS_PROMPT=$'\n\\[\033[36m\\]\342\225\255\342\224\200 \\[\033[1m\\]/fixture/project\\[\033[0m\\] \n\\[\033[36m\\]\342\225\260\342\224\200\\[\033[1m\\]\342\235\257\\[\033[0m\\] '
 readonly STARSHIP_FAILURE_PROMPT=$'\n\\[\033[36m\\]\342\225\255\342\224\200 \\[\033[1m\\]/fixture/project\\[\033[0m\\] \n\\[\033[36m\\]\342\225\260\342\224\200\\[\033[1m\\]\342\234\227\\[\033[0m\\] '
 readonly STARSHIP_DEEP_PROMPT=$'\n\\[\033[36m\\]\342\225\255\342\224\200 \\[\033[1m\\]\342\200\246/beta/gamma\\[\033[0m\\] \n\\[\033[36m\\]\342\225\260\342\224\200\\[\033[1m\\]\342\235\257\\[\033[0m\\] '
@@ -12,11 +12,37 @@ readonly STARSHIP_READ_ONLY_PROMPT=$'\n\\[\033[36m\\]\342\225\255\342\224\200 \\
 readonly STARSHIP_CLEAN_GIT_PROMPT=$'\n\\[\033[36m\\]\342\225\255\342\224\200 \\[\033[3m\\]\357\220\230 baseline\\[\033[0m\\] \n\\[\033[36m\\]\342\225\260\342\224\200\\[\033[1m\\]\342\235\257\\[\033[0m\\] '
 readonly STARSHIP_MODIFIED_GIT_PROMPT=$'\n\\[\033[36m\\]\342\225\255\342\224\200 \\[\033[3m\\]\357\220\230 baseline\\[\033[0m\\] \\[\033[36m\\]\356\251\2611 \\[\033[0m\\]\n\\[\033[36m\\]\342\225\260\342\224\200\\[\033[1m\\]\342\235\257\\[\033[0m\\] '
 readonly STARSHIP_UNTRACKED_GIT_PROMPT=$'\n\\[\033[36m\\]\342\225\255\342\224\200 \\[\033[3m\\]\357\220\230 baseline\\[\033[0m\\] \\[\033[36m\\]?1 \\[\033[0m\\]\n\\[\033[36m\\]\342\225\260\342\224\200\\[\033[1m\\]\342\235\257\\[\033[0m\\] '
+readonly STARSHIP_LANGUAGE_POLYGLOT_PROMPT=$'\n\\[\033[36m\\]\342\225\255\342\224\200 \\[\033[1m\\]/fixture/project\\[\033[0m\\] \\[\033[36m\\]\356\230\236 v13.2.1 \356\236\250 v1.80.1 \356\230\247 v1.23.4 \356\234\230 v22.12.0 \356\230\210 v8.3.14 \356\211\226 v21.0.4 \356\230\264 v2.0.21 \356\230\237 9.10.1 \356\230\206 v3.13.1 \\[\033[0m\\]\n\\[\033[36m\\]\342\225\260\342\224\200\\[\033[1m\\]\342\235\257\\[\033[0m\\] '
+readonly -a STARSHIP_LANGUAGE_MODULES=(c rust golang nodejs php java kotlin haskell python)
+readonly -a STARSHIP_LANGUAGE_OUTPUTS=(
+	$'\033[36m\356\230\236 v13.2.1 \033[0m'
+	$'\033[36m\356\236\250 v1.80.1 \033[0m'
+	$'\033[36m\356\230\247 v1.23.4 \033[0m'
+	$'\033[36m\356\234\230 v22.12.0 \033[0m'
+	$'\033[36m\356\230\210 v8.3.14 \033[0m'
+	$'\033[36m\356\211\226 v21.0.4 \033[0m'
+	$'\033[36m\356\230\264 v2.0.21 \033[0m'
+	$'\033[36m\356\230\237 9.10.1 \033[0m'
+	$'\033[36m\356\230\206 v3.13.1 \033[0m'
+)
+readonly -a STARSHIP_LANGUAGE_VERSION_CALLS=(
+	'cc <--version>'
+	'rustc <--version>'
+	'go <version>'
+	'node <--version>'
+	'php <-nr> <echo PHP_MAJOR_VERSION.".".PHP_MINOR_VERSION.".".PHP_RELEASE_VERSION;>'
+	'java <-Xinternalversion>'
+	'kotlin <-version>'
+	'ghc <--numeric-version>'
+	'python <--version>'
+)
 
 setup_starship_runtime() {
 	new_fixture || return 1
 	STARSHIP_FIXTURE_CONFIG=$FIXTURE_REPO/$STARSHIP_SOURCE_RELATIVE
 	STARSHIP_RUNTIME=$FIXTURE_ROOT/starship-runtime
+	STARSHIP_RUNTIME_PATH=/usr/bin:/bin
+	STARSHIP_RUNTIME_CALL_LOG=
 	mkdir -p \
 		"$STARSHIP_RUNTIME/home" \
 		"$STARSHIP_RUNTIME/project" \
@@ -24,6 +50,123 @@ setup_starship_runtime() {
 		"$STARSHIP_RUNTIME/readonly" || return 1
 	chmod 0555 "$STARSHIP_RUNTIME/readonly" || return 1
 	BWRAP_EXTRA_ARGS+=(--bind "$STARSHIP_RUNTIME" /mnt)
+}
+
+setup_starship_language_runtime() {
+	setup_starship_runtime || return 1
+	STARSHIP_LANGUAGE_ROOT=$STARSHIP_RUNTIME/languages
+	STARSHIP_LANGUAGE_BIN=$STARSHIP_RUNTIME/language-bin
+	STARSHIP_LANGUAGE_CALL_LOG=$STARSHIP_RUNTIME/language-calls
+	STARSHIP_RUNTIME_PATH=/mnt/language-bin:/usr/bin:/bin
+	STARSHIP_RUNTIME_CALL_LOG=/mnt/language-calls
+	mkdir -p "$STARSHIP_LANGUAGE_ROOT" "$STARSHIP_LANGUAGE_BIN" || return 1
+	: >"$STARSHIP_LANGUAGE_CALL_LOG" || return 1
+	cat >"$STARSHIP_LANGUAGE_BIN/fake-language-tool" <<'EOF' || return 1
+#!/usr/bin/env bash
+
+set -u
+
+tool=${0##*/}
+if [[ -n ${DOTFILES_TEST_STARSHIP_LANGUAGE_CALL_LOG-} ]]; then
+	invocation=$tool
+	for arg in "$@"; do
+		invocation+=" <$arg>"
+	done
+	printf '%s\n' "$invocation" >>"$DOTFILES_TEST_STARSHIP_LANGUAGE_CALL_LOG"
+fi
+
+invalid_args() {
+	printf 'unexpected %s arguments\n' "$tool" >&2
+	exit 64
+}
+
+case $tool in
+	cc)
+		[[ $# -eq 1 && $1 == --version ]] || invalid_args
+		printf '%s\n' \
+			'cc (GCC) 13.2.1 20230801' \
+			'Copyright (C) 2023 Free Software Foundation, Inc.'
+		;;
+	rustup)
+		[[ $# -eq 1 && $1 == default ]] || invalid_args
+		exit 1
+		;;
+	rustc)
+		[[ $# -eq 1 && $1 == --version ]] || invalid_args
+		printf '%s\n' 'rustc 1.80.1 (3f5fd8dd4 2024-08-06)'
+		;;
+	go)
+		[[ $# -eq 1 && $1 == version ]] || invalid_args
+		printf '%s\n' 'go version go1.23.4 linux/amd64'
+		;;
+	node)
+		[[ $# -eq 1 && $1 == --version ]] || invalid_args
+		printf '%s\n' 'v22.12.0'
+		;;
+	php)
+		[[ $# -eq 2 && $1 == -nr ]] || invalid_args
+		[[ $2 == 'echo PHP_MAJOR_VERSION.".".PHP_MINOR_VERSION.".".PHP_RELEASE_VERSION;' ]] || invalid_args
+		printf '%s' '8.3.14'
+		;;
+	java)
+		[[ $# -eq 1 && $1 == -Xinternalversion ]] || invalid_args
+		printf '%s\n' 'OpenJDK 64-Bit Server VM (21.0.4+7) for linux-amd64 JRE (21.0.4+7), built on Jul 16 2024 00:00:00 by "fixture" with gcc 13.2.1'
+		;;
+	kotlin)
+		[[ $# -eq 1 && $1 == -version ]] || invalid_args
+		printf '%s\n' 'Kotlin version 2.0.21-release-482 (JRE 21.0.4+7)'
+		;;
+	ghc)
+		[[ $# -eq 1 && $1 == --numeric-version ]] || invalid_args
+		printf '%s\n' '9.10.1'
+		;;
+	python)
+		[[ $# -eq 1 && $1 == --version ]] || invalid_args
+		printf '%s\n' 'Python 3.13.1'
+		;;
+	c++)
+		[[ $# -eq 1 && $1 == --version ]] || invalid_args
+		printf '%s\n' \
+			'c++ (GCC) 14.2.1 20240801' \
+			'Copyright (C) 2024 Free Software Foundation, Inc.'
+		;;
+	*)
+		printf 'unexpected fake tool name: %s\n' "$tool" >&2
+		exit 64
+		;;
+esac
+EOF
+	chmod 0755 "$STARSHIP_LANGUAGE_BIN/fake-language-tool" || return 1
+	local tool
+	for tool in cc rustup rustc go node php java kotlin ghc python 'c++'; do
+		ln -s fake-language-tool "$STARSHIP_LANGUAGE_BIN/$tool" || return 1
+	done
+}
+
+create_starship_language_marker() {
+	local module=$1 project=$2
+	mkdir -p "$project" || return 1
+	case $module in
+		c) printf 'int main(void) { return 0; }\n' >"$project/main.c" || return 1 ;;
+		rust) printf '[package]\nname = "fixture"\nversion = "0.0.0"\n' >"$project/Cargo.toml" || return 1 ;;
+		golang) printf 'module example.invalid/fixture\n' >"$project/go.mod" || return 1 ;;
+		nodejs) printf '{}\n' >"$project/package.json" || return 1 ;;
+		php) printf '{}\n' >"$project/composer.json" || return 1 ;;
+		java) printf 'final class Main {}\n' >"$project/Main.java" || return 1 ;;
+		kotlin) printf 'fun main() = Unit\n' >"$project/Main.kt" || return 1 ;;
+		haskell) printf 'packages: .\n' >"$project/cabal.project" || return 1 ;;
+		python) printf '[project]\nname = "fixture"\nversion = "0.0.0"\n' >"$project/pyproject.toml" || return 1 ;;
+		cpp) printf 'int main() { return 0; }\n' >"$project/main.cpp" || return 1 ;;
+		*) printf 'unknown language marker: %s\n' "$module" >&2; return 1 ;;
+	esac
+}
+
+assert_starship_language_call_logged() {
+	local expected=$1
+	if ! grep -Fqx -- "$expected" "$STARSHIP_LANGUAGE_CALL_LOG"; then
+		printf '  missing controlled Starship language call: %s\n' "$expected" >&2
+		return 1
+	fi
 }
 
 fixture_git() {
@@ -139,10 +282,12 @@ git_stash_count() {
 }
 
 run_starship() {
-	run_in_sandbox "$STARSHIP_RUNTIME" "/usr/bin:/bin" bash -c '
+	run_in_sandbox "$STARSHIP_RUNTIME" "$STARSHIP_RUNTIME_PATH" bash -c '
 		set -u
 		config=$1
-		shift
+		runtime_path=$2
+		language_call_log=$3
+		shift 3
 		work=$(mktemp -d "${TMPDIR:-/tmp}/dotfiles-starship-render.XXXXXX") || exit 1
 		cleanup() { rm -rf -- "$work"; }
 		trap cleanup EXIT
@@ -155,7 +300,7 @@ run_starship() {
 				HOME=/mnt/home \
 				USER=fixture \
 				SHELL=/usr/bin/bash \
-				PATH=/usr/bin:/bin \
+				PATH="$runtime_path" \
 				LANG=C \
 				LC_ALL=C \
 				TZ=UTC \
@@ -166,6 +311,7 @@ run_starship() {
 				STARSHIP_SESSION_KEY=dotfiles-starship-render \
 				GIT_CONFIG_NOSYSTEM=1 \
 				GIT_CONFIG_GLOBAL=/dev/null \
+				DOTFILES_TEST_STARSHIP_LANGUAGE_CALL_LOG="$language_call_log" \
 				starship "$@"
 		) >"$work/stdout" 2>"$work/stderr" || status=$?
 		if ((status != 0)); then
@@ -177,7 +323,7 @@ run_starship() {
 			exit 1
 		fi
 		cat -- "$work/stdout"
-	' bash "$STARSHIP_FIXTURE_CONFIG" "$@"
+	' bash "$STARSHIP_FIXTURE_CONFIG" "$STARSHIP_RUNTIME_PATH" "$STARSHIP_RUNTIME_CALL_LOG" "$@"
 }
 
 render_with_context() {
@@ -276,6 +422,82 @@ test_non_repository_prompts_retain_success_failure_deep_and_read_only_behavior()
 	assert_eq "$STARSHIP_READ_ONLY_PROMPT" "$COMMAND_OUTPUT" \
 		'the read-only path should retain its exact indicator and styling' || return 1
 	assert_render_cache_removed
+}
+
+test_language_modules_render_exact_controlled_versions() {
+	setup_starship_language_runtime || return 1
+	local index module project
+	for index in "${!STARSHIP_LANGUAGE_MODULES[@]}"; do
+		module=${STARSHIP_LANGUAGE_MODULES[index]}
+		project=$STARSHIP_LANGUAGE_ROOT/$module
+		create_starship_language_marker "$module" "$project" || return 1
+		: >"$STARSHIP_LANGUAGE_CALL_LOG" || return 1
+		render_module "$module" "/mnt/languages/$module" /fixture/project 0 || return 1
+		assert_eq 0 "$COMMAND_STATUS" "the controlled $module module should render" || return 1
+		assert_eq "${STARSHIP_LANGUAGE_OUTPUTS[index]}" "$COMMAND_OUTPUT" \
+			"the controlled $module module should render exact selected bytes" || return 1
+		assert_starship_language_call_logged "${STARSHIP_LANGUAGE_VERSION_CALLS[index]}" || return 1
+		if [[ $module == rust ]]; then
+			assert_starship_language_call_logged 'rustup <default>' || return 1
+		fi
+		assert_render_cache_removed || return 1
+	done
+}
+
+test_polyglot_prompt_renders_languages_in_selected_order() {
+	setup_starship_language_runtime || return 1
+	local module project=$STARSHIP_LANGUAGE_ROOT/polyglot expected_call
+	for module in "${STARSHIP_LANGUAGE_MODULES[@]}"; do
+		create_starship_language_marker "$module" "$project" || return 1
+	done
+	: >"$STARSHIP_LANGUAGE_CALL_LOG" || return 1
+	render_prompt /mnt/languages/polyglot /fixture/project 0 || return 1
+	assert_eq 0 "$COMMAND_STATUS" 'the controlled polyglot prompt should render' || return 1
+	assert_eq "$STARSHIP_LANGUAGE_POLYGLOT_PROMPT" "$COMMAND_OUTPUT" \
+		'the polyglot prompt should render exact C-to-Python bytes before Git context' || return 1
+	for expected_call in "${STARSHIP_LANGUAGE_VERSION_CALLS[@]}" 'rustup <default>'; do
+		assert_starship_language_call_logged "$expected_call" || return 1
+	done
+	assert_eq 10 "$(wc -l <"$STARSHIP_LANGUAGE_CALL_LOG")" \
+		'the polyglot render should make each controlled tool call exactly once' || return 1
+	assert_render_cache_removed || return 1
+}
+
+test_language_detection_preserves_empty_and_disabled_cpp_prompts() {
+	setup_starship_language_runtime || return 1
+	: >"$STARSHIP_LANGUAGE_CALL_LOG" || return 1
+	render_prompt /mnt/project /fixture/project 0 || return 1
+	assert_eq 0 "$COMMAND_STATUS" 'the no-language prompt should render' || return 1
+	assert_eq "$STARSHIP_SUCCESS_PROMPT" "$COMMAND_OUTPUT" \
+		'the no-language prompt should retain its exact pre-feature bytes' || return 1
+	assert_eq '' "$(<"$STARSHIP_LANGUAGE_CALL_LOG")" \
+		'the no-language prompt should not invoke controlled language tools' || return 1
+	assert_render_cache_removed || return 1
+
+	local cpp_project=$STARSHIP_LANGUAGE_ROOT/cpp
+	create_starship_language_marker cpp "$cpp_project" || return 1
+	run_in_sandbox "$STARSHIP_RUNTIME" "$STARSHIP_RUNTIME_PATH" \
+		/mnt/language-bin/c++ --version
+	assert_eq 0 "$COMMAND_STATUS" 'the controlled C++ compiler should be executable' || return 1
+	assert_eq $'c++ (GCC) 14.2.1 20240801\nCopyright (C) 2024 Free Software Foundation, Inc.' \
+		"$COMMAND_OUTPUT" 'the controlled C++ compiler should return its parser-valid version' || return 1
+	assert_eq '' "$(<"$STARSHIP_LANGUAGE_CALL_LOG")" \
+		'the direct C++ availability check should not contaminate the Starship call log' || return 1
+
+	render_module cpp /mnt/languages/cpp /fixture/project 0 || return 1
+	assert_eq 0 "$COMMAND_STATUS" 'the disabled C++ module check should complete' || return 1
+	assert_eq '' "$COMMAND_OUTPUT" 'the disabled C++ module should remain exactly empty' || return 1
+	assert_eq '' "$(<"$STARSHIP_LANGUAGE_CALL_LOG")" \
+		'the disabled C++ module should not invoke the controlled C++ compiler' || return 1
+	assert_render_cache_removed || return 1
+
+	render_prompt /mnt/languages/cpp /fixture/project 0 || return 1
+	assert_eq 0 "$COMMAND_STATUS" 'the C++-only prompt should render' || return 1
+	assert_eq "$STARSHIP_SUCCESS_PROMPT" "$COMMAND_OUTPUT" \
+		'the C++-only prompt should retain exact no-language bytes' || return 1
+	assert_eq '' "$(<"$STARSHIP_LANGUAGE_CALL_LOG")" \
+		'the C++-only prompt should not invoke the controlled C++ compiler' || return 1
+	assert_render_cache_removed || return 1
 }
 
 test_git_prompts_retain_clean_modified_and_untracked_behavior() {
@@ -624,6 +846,12 @@ if [[ -f $SOURCE_REPO/$STARSHIP_SOURCE_RELATIVE && ! -L $SOURCE_REPO/$STARSHIP_S
 		'real Starship accepts the tracked config without diagnostics'
 	run_test test_non_repository_prompts_retain_success_failure_deep_and_read_only_behavior \
 		'non-repository prompts retain success, failure, deep-path, and read-only behavior'
+	run_test test_language_modules_render_exact_controlled_versions \
+		'language modules render exact controlled versions'
+	run_test test_polyglot_prompt_renders_languages_in_selected_order \
+		'polyglot prompt renders languages in selected order'
+	run_test test_language_detection_preserves_empty_and_disabled_cpp_prompts \
+		'language detection preserves empty and disabled C++ prompts'
 	run_test test_git_prompts_retain_clean_modified_and_untracked_behavior \
 		'Git prompts retain clean, modified, and untracked behavior'
 	run_test test_git_upstream_counts_render_synchronized_ahead_behind_diverged_and_mixed_states \
