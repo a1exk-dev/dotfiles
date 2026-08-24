@@ -12,14 +12,35 @@ configure_empty_modem_sysfs() {
 	make_fake nmcli 'printf "unexpected nmcli call\n" >>"$DOTFILES_TEST_CALL_LOG"; exit 99'
 }
 
+stub_guided_brave_apply() {
+	local outcome=$1
+	local context=${2-BRAVE_OPERATION_CONTEXT_ORDINARY}
+	printf '\napply_brave_policy() { BRAVE_OPERATION_CONTEXT=$%s; printf "Stub Brave apply outcome: %s; context: %%s\\n" "$BRAVE_OPERATION_CONTEXT"; return %s; }\n' \
+		"$context" "$outcome" "$outcome" >>"$FIXTURE_REPO/lib/dotfiles/wizard.sh"
+}
+
 test_top_level_menu_starts_with_guided_setup() {
 	new_fixture
 	run_dotfiles "$FIXTURE_ROOT"
 
 	assert_eq 0 "$COMMAND_STATUS" 'an empty menu choice should safely exit' || return 1
-	assert_contains "$COMMAND_OUTPUT" $'  1. Guided setup\n  2. Package status\n  3. Run structural checks\n  4. Apply Stow packages\n  5. Migrate existing target\n  6. Remove Stow package\n  7. Prepare prerequisites\n  8. Clean up Omarchy applications\n  9. Install pinned global skills\n  10. Update pinned global skills\n  11. Recover ZTE USB modem\n  12. Exit' \
-		'the modem action should be appended without renumbering existing actions' || return 1
+	assert_contains "$COMMAND_OUTPUT" $'  1. Guided setup\n  2. Package status\n  3. Run structural checks\n  4. Apply Stow packages\n  5. Migrate existing target\n  6. Remove Stow package\n  7. Prepare prerequisites\n  8. Clean up Omarchy applications\n  9. Install pinned global skills\n  10. Update pinned global skills\n  11. Recover ZTE USB modem\n  12. Manage Brave policy\n  13. Exit' \
+		'the Brave policy action should be available without renumbering existing actions' || return 1
 	assert_contains "$COMMAND_OUTPUT" 'No action selected.' 'no action should be selected by default'
+}
+
+test_entrypoint_sources_brave_before_wizard() {
+	new_fixture
+	local entrypoint brave_line wizard_line
+	entrypoint=$(<"$FIXTURE_REPO/bin/dotfiles")
+	assert_contains "$entrypoint" 'source "$DOTFILES_ENTRY_ROOT/lib/dotfiles/brave.sh"' \
+		'the public entrypoint should source the Brave module' || return 1
+	brave_line=$(awk '/^source .*lib\/dotfiles\/brave[.]sh"$/ { print NR; exit }' "$FIXTURE_REPO/bin/dotfiles")
+	wizard_line=$(awk '/^source .*lib\/dotfiles\/wizard[.]sh"$/ { print NR; exit }' "$FIXTURE_REPO/bin/dotfiles")
+	if [[ -z $brave_line || -z $wizard_line || $brave_line -ge $wizard_line ]]; then
+		printf '  the Brave module must be sourced before interactive orchestration\n' >&2
+		return 1
+	fi
 }
 
 test_legacy_and_invalid_entry_forms_are_rejected() {
@@ -27,6 +48,7 @@ test_legacy_and_invalid_entry_forms_are_rejected() {
 	run_dotfiles "$FIXTURE_ROOT" status
 	assert_eq 2 "$COMMAND_STATUS" 'a removed public route should be rejected' || return 1
 	assert_contains "$COMMAND_OUTPUT" 'Usage: bin/dotfiles [--action' 'invalid entry use should explain the supported interface' || return 1
+	assert_contains "$COMMAND_OUTPUT" 'modem|brave>]' 'usage should advertise the Brave public action' || return 1
 	run_dotfiles "$FIXTURE_ROOT" --arbitrary
 	assert_eq 2 "$COMMAND_STATUS" 'arbitrary flags should be rejected' || return 1
 	run_dotfiles "$FIXTURE_ROOT" --action unknown
@@ -66,6 +88,16 @@ test_modem_menu_selection_dispatches() {
 		return 1
 	fi
 	assert_eq '' "$(<"$CALL_LOG")" 'empty fake sysfs menu discovery should not invoke privileged or network tools'
+}
+
+test_brave_public_action_preselection_dispatches() {
+	new_fixture
+	DOTFILES_TEST_INPUT='4\n' run_dotfiles "$FIXTURE_ROOT" --action brave
+
+	assert_eq 0 "$COMMAND_STATUS" 'the Brave preselection should open its management menu' || return 1
+	assert_contains "$COMMAND_OUTPUT" 'Manage Brave policy' 'the public Brave action should dispatch to the shared manager' || return 1
+	assert_contains "$COMMAND_OUTPUT" $'  1. Status\n  2. Apply\n  3. Remove\n  4. Back' \
+		'the Brave manager should expose only the approved policy operations'
 }
 
 test_status_and_check_standalone_actions() {
@@ -216,21 +248,138 @@ test_guided_setup_orders_and_skips_nonessential_phases() {
 	configure_cleanup_fakes
 	configure_skill_fakes
 	seed_current_global_skills
+	stub_guided_brave_apply 11
 	DOTFILES_TEST_INPUT='1\n0\n\n' run_dotfiles "$FIXTURE_ROOT"
 
 	assert_eq 0 "$COMMAND_STATUS" 'guided setup should continue across empty nonessential selections' || return 1
-	local prerequisites skills cleanup stow
+	local prerequisites skills cleanup stow brave
 	prerequisites=$(awk '/Guided phase 1:/ { print NR; exit }' <<<"$COMMAND_OUTPUT")
 	skills=$(awk '/Guided phase 2:/ { print NR; exit }' <<<"$COMMAND_OUTPUT")
 	cleanup=$(awk '/Guided phase 3:/ { print NR; exit }' <<<"$COMMAND_OUTPUT")
 	stow=$(awk '/Guided phase 4:/ { print NR; exit }' <<<"$COMMAND_OUTPUT")
-	if [[ -z $prerequisites || -z $skills || -z $cleanup || -z $stow || $prerequisites -ge $skills || $skills -ge $cleanup || $cleanup -ge $stow ]]; then
+	brave=$(awk '/Guided phase 5:/ { print NR; exit }' <<<"$COMMAND_OUTPUT")
+	if [[ -z $prerequisites || -z $skills || -z $cleanup || -z $stow || -z $brave || \
+		$prerequisites -ge $skills || $skills -ge $cleanup || $cleanup -ge $stow || $stow -ge $brave ]]; then
 		printf '  guided phases did not run in the required order\n' >&2
 		return 1
 	fi
 	assert_contains "$COMMAND_OUTPUT" 'No cleanup items selected' 'empty cleanup should continue' || return 1
 	assert_contains "$COMMAND_OUTPUT" 'No Stow packages selected' 'empty Stow selection should continue' || return 1
+	assert_contains "$COMMAND_OUTPUT" 'Guided phase 5 skipped: no supported Brave browser is installed.' \
+		'an unavailable browser should skip the new optional phase' || return 1
 	assert_contains "$COMMAND_OUTPUT" 'Guided setup complete.' 'all skipped nonessential phases should complete the guide'
+}
+
+test_guided_phase_five_maps_success() {
+	new_fixture
+	configure_cleanup_fakes
+	configure_skill_fakes
+	seed_current_global_skills
+	stub_guided_brave_apply 0
+	DOTFILES_TEST_INPUT='0\n\n' run_operation "$FIXTURE_ROOT" guided_setup
+
+	assert_eq 0 "$COMMAND_STATUS" 'a successful Brave apply should complete Guided setup' || return 1
+	assert_contains "$COMMAND_OUTPUT" 'Guided phase 5: optional Brave policy' 'Guided setup should announce phase five' || return 1
+	assert_contains "$COMMAND_OUTPUT" 'Stub Brave apply outcome: 0' 'phase five should call apply_brave_policy' || return 1
+	if [[ $COMMAND_OUTPUT == *'Guided phase 5 skipped:'* ]]; then
+		printf '  a successful Brave apply was reported as skipped\n' >&2
+		return 1
+	fi
+	assert_contains "$COMMAND_OUTPUT" 'Guided setup complete.' 'successful phase five should complete Guided setup'
+}
+
+test_guided_phase_five_maps_decline_to_skip() {
+	new_fixture
+	configure_cleanup_fakes
+	configure_skill_fakes
+	seed_current_global_skills
+	stub_guided_brave_apply 10
+	DOTFILES_TEST_INPUT='0\n\n' run_operation "$FIXTURE_ROOT" guided_setup
+
+	assert_eq 0 "$COMMAND_STATUS" 'Brave outcome 10 should be a successful optional skip' || return 1
+	assert_contains "$COMMAND_OUTPUT" 'Stub Brave apply outcome: 10' 'phase five should preserve the decline outcome' || return 1
+	assert_contains "$COMMAND_OUTPUT" 'Guided phase 5 skipped: Brave policy plan declined.' \
+		'Guided setup should explain the declined optional phase' || return 1
+	assert_contains "$COMMAND_OUTPUT" 'Guided setup complete.' 'a declined optional phase should complete Guided setup'
+}
+
+test_guided_phase_five_maps_unavailable_to_skip() {
+	new_fixture
+	configure_cleanup_fakes
+	configure_skill_fakes
+	seed_current_global_skills
+	stub_guided_brave_apply 11
+	DOTFILES_TEST_INPUT='0\n\n' run_operation "$FIXTURE_ROOT" guided_setup
+
+	assert_eq 0 "$COMMAND_STATUS" 'Brave outcome 11 should be a successful optional skip' || return 1
+	assert_contains "$COMMAND_OUTPUT" 'Stub Brave apply outcome: 11' 'phase five should preserve the unavailable outcome' || return 1
+	assert_contains "$COMMAND_OUTPUT" 'Guided phase 5 skipped: no supported Brave browser is installed.' \
+		'Guided setup should explain the unavailable optional phase' || return 1
+	assert_contains "$COMMAND_OUTPUT" 'Guided setup complete.' 'an unavailable optional phase should complete Guided setup'
+}
+
+test_guided_phase_five_stops_after_completed_recovery() {
+	new_fixture
+	configure_cleanup_fakes
+	configure_skill_fakes
+	seed_current_global_skills
+	stub_guided_brave_apply 0 BRAVE_OPERATION_CONTEXT_RECOVERY_COMPLETED
+	DOTFILES_TEST_INPUT='0\n\n' run_operation "$FIXTURE_ROOT" guided_setup
+
+	assert_eq 1 "$COMMAND_STATUS" 'completed Brave recovery should stop Guided setup with a normal failure' || return 1
+	assert_contains "$COMMAND_OUTPUT" 'Stub Brave apply outcome: 0; context: recovery-completed' \
+		'phase five should inspect completed recovery context after a successful public outcome' || return 1
+	assert_contains "$COMMAND_OUTPUT" 'Recovery: choose Manage Brave policy in the Dotfiles wizard.' \
+		'completed recovery should direct the user to the standalone Brave action' || return 1
+	if [[ $COMMAND_OUTPUT == *'Guided phase 5 skipped:'* ]]; then
+		printf '  Guided setup reported completed Brave recovery as an optional skip\n' >&2
+		return 1
+	fi
+	if [[ $COMMAND_OUTPUT == *'Guided setup complete.'* ]]; then
+		printf '  Guided setup completed after Brave recovery required an ordinary-operation rerun\n' >&2
+		return 1
+	fi
+}
+
+test_guided_phase_five_stops_when_recovery_is_declined() {
+	new_fixture
+	configure_cleanup_fakes
+	configure_skill_fakes
+	seed_current_global_skills
+	stub_guided_brave_apply 10 BRAVE_OPERATION_CONTEXT_RECOVERY_DECLINED
+	DOTFILES_TEST_INPUT='0\n\n' run_operation "$FIXTURE_ROOT" guided_setup
+
+	assert_eq 1 "$COMMAND_STATUS" 'declined Brave recovery should stop Guided setup with a normal failure' || return 1
+	assert_contains "$COMMAND_OUTPUT" 'Stub Brave apply outcome: 10; context: recovery-declined' \
+		'phase five should inspect declined recovery context after a declined public outcome' || return 1
+	assert_contains "$COMMAND_OUTPUT" 'Recovery: choose Manage Brave policy in the Dotfiles wizard.' \
+		'declined recovery should direct the user to the standalone Brave action' || return 1
+	if [[ $COMMAND_OUTPUT == *'Guided phase 5 skipped:'* ]]; then
+		printf '  Guided setup reported declined Brave recovery as an optional skip\n' >&2
+		return 1
+	fi
+	if [[ $COMMAND_OUTPUT == *'Guided setup complete.'* ]]; then
+		printf '  Guided setup completed after Brave recovery was declined\n' >&2
+		return 1
+	fi
+}
+
+test_guided_phase_five_stops_on_operational_failure() {
+	new_fixture
+	configure_cleanup_fakes
+	configure_skill_fakes
+	seed_current_global_skills
+	stub_guided_brave_apply 73
+	DOTFILES_TEST_INPUT='0\n\n' run_operation "$FIXTURE_ROOT" guided_setup
+
+	assert_eq 73 "$COMMAND_STATUS" 'an untyped Brave failure should stop with its original outcome' || return 1
+	assert_contains "$COMMAND_OUTPUT" 'Stub Brave apply outcome: 73' 'phase five should preserve the operational failure' || return 1
+	assert_contains "$COMMAND_OUTPUT" 'Recovery: choose Manage Brave policy in the Dotfiles wizard.' \
+		'phase-five failure recovery should name the standalone Brave action' || return 1
+	if [[ $COMMAND_OUTPUT == *'Guided setup complete.'* ]]; then
+		printf '  Guided setup completed after a Brave operational failure\n' >&2
+		return 1
+	fi
 }
 
 test_guided_setup_phase_four_uses_arch_aware_apply_flow() {
@@ -241,6 +390,7 @@ test_guided_setup_phase_four_uses_arch_aware_apply_flow() {
 	configure_skill_fakes
 	seed_current_global_skills
 	make_applying_stow
+	stub_guided_brave_apply 11
 	DOTFILES_TEST_INPUT='1\n0\n1\ny\n' run_dotfiles "$FIXTURE_ROOT"
 
 	assert_eq 0 "$COMMAND_STATUS" 'guided setup should apply a package with a missing Arch requirement' || return 1
@@ -345,10 +495,12 @@ test_make_targets_launch_expected_wizard_actions() {
 
 set -e
 run_test test_top_level_menu_starts_with_guided_setup 'top-level menu starts with guided setup'
+run_test test_entrypoint_sources_brave_before_wizard 'entrypoint sources Brave before wizard orchestration'
 run_test test_legacy_and_invalid_entry_forms_are_rejected 'legacy and invalid entry forms are rejected'
 run_test test_public_action_preselection_dispatches 'public action preselection dispatches'
 run_test test_modem_public_action_preselection_dispatches 'modem public action preselection dispatches'
 run_test test_modem_menu_selection_dispatches 'modem menu selection dispatches'
+run_test test_brave_public_action_preselection_dispatches 'Brave public action preselection dispatches'
 run_test test_status_and_check_standalone_actions 'status and checks remain standalone actions'
 run_test test_bash_apply_standalone_uses_one_multiselect_and_dependency_order 'Bash apply resolves a multi-selection in dependency order'
 run_test test_gum_apply_has_no_default_selection 'Gum apply has no default selection'
@@ -358,6 +510,12 @@ run_test test_prerequisites_upgrade_old_node 'prerequisites upgrade an old Node.
 run_test test_prerequisites_reject_missing_core_tool 'prerequisites reject a missing core tool with wizard recovery'
 run_test test_cleanup_skills_and_update_standalone_actions 'cleanup and skill operations remain standalone actions'
 run_test test_guided_setup_orders_and_skips_nonessential_phases 'guided setup orders and skips nonessential phases'
+run_test test_guided_phase_five_maps_success 'guided phase 5 maps successful apply'
+run_test test_guided_phase_five_maps_decline_to_skip 'guided phase 5 maps decline to an optional skip'
+run_test test_guided_phase_five_maps_unavailable_to_skip 'guided phase 5 maps browser unavailability to an optional skip'
+run_test test_guided_phase_five_stops_after_completed_recovery 'guided phase 5 stops after completed recovery requires a rerun'
+run_test test_guided_phase_five_stops_when_recovery_is_declined 'guided phase 5 stops when recovery is declined'
+run_test test_guided_phase_five_stops_on_operational_failure 'guided phase 5 stops on operational failure with recovery'
 run_test test_guided_setup_phase_four_uses_arch_aware_apply_flow 'guided setup phase 4 uses the Arch-aware apply flow'
 run_test test_guided_setup_stops_on_operational_failure_with_action_recovery 'guided setup stops on failure with wizard recovery'
 run_test test_guided_setup_stops_when_prerequisites_are_declined 'guided setup stops when required prerequisites are declined'

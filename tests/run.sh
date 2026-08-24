@@ -12,6 +12,7 @@ readonly SUITES=(
 	skills_test.sh
 	cleanup_test.sh
 	modem_test.sh
+	brave_test.sh
 	wizard_test.sh
 )
 

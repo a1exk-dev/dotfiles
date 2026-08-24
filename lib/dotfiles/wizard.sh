@@ -107,6 +107,7 @@ wizard_run_action() {
 		skills) install_skills --interactive ;;
 		skills-update) update_skills --interactive ;;
 		modem) recover_zte_usb_modem ;;
+		brave) manage_brave_policy ;;
 		exit) printf 'No action selected.\n' ;;
 		*) printf 'Error: unknown wizard action: %s\n' "$action" >&2; return 2 ;;
 	esac
@@ -126,6 +127,33 @@ guided_setup() {
 		return 1
 	fi
 	apply_packages "${WIZARD_PACKAGES[@]}" || { printf 'Recovery: choose Apply Stow packages in the Dotfiles wizard.\n' >&2; return 1; }
+	printf 'Guided phase 5: optional Brave policy\n'
+	local brave_outcome
+	if apply_brave_policy; then
+		brave_outcome=$BRAVE_OUTCOME_SUCCESS
+	else
+		brave_outcome=$?
+	fi
+	case $BRAVE_OPERATION_CONTEXT in
+		"$BRAVE_OPERATION_CONTEXT_ORDINARY") ;;
+		"$BRAVE_OPERATION_CONTEXT_RECOVERY_COMPLETED"|"$BRAVE_OPERATION_CONTEXT_RECOVERY_DECLINED")
+			printf 'Recovery: choose Manage Brave policy in the Dotfiles wizard.\n' >&2
+			return 1
+			;;
+		*)
+			printf 'Recovery: choose Manage Brave policy in the Dotfiles wizard.\n' >&2
+			return 1
+			;;
+	esac
+	case $brave_outcome in
+		"$BRAVE_OUTCOME_SUCCESS") ;;
+		"$BRAVE_OUTCOME_DECLINED") printf 'Guided phase 5 skipped: Brave policy plan declined.\n' ;;
+		"$BRAVE_OUTCOME_UNAVAILABLE") printf 'Guided phase 5 skipped: no supported Brave browser is installed.\n' ;;
+		*)
+			printf 'Recovery: choose Manage Brave policy in the Dotfiles wizard.\n' >&2
+			return "$brave_outcome"
+			;;
+	esac
 	printf 'Guided setup complete.\n'
 }
 
@@ -144,9 +172,10 @@ wizard() {
 		'Install pinned global skills'
 		'Update pinned global skills'
 		'Recover ZTE USB modem'
+		'Manage Brave policy'
 		'Exit'
 	)
-	local -a actions=(guided status check apply migrate remove prerequisites cleanup skills skills-update modem exit)
+	local -a actions=(guided status check apply migrate remove prerequisites cleanup skills skills-update modem brave exit)
 	if ! choice=$(wizard_choose 'Choose an action (none selected by default)' "${labels[@]}"); then
 		printf 'No action selected.\n'
 		return 0

@@ -10,7 +10,7 @@ A lowercase-named deployment unit under `config/<name>/` for one application or 
 
 ## Dotfiles wizard
 
-The intended human interface for repository setup and operations. Guided setup runs prerequisite preparation, pinned global agent-skill installation, application cleanup, and Stow package application. Standalone actions provide each operation separately. Public routes provide the same operations to Make targets, agents, scripts, and tests.
+The intended human interface for repository setup and operations. Guided setup runs prerequisite preparation, pinned global agent-skill installation, application cleanup, and Stow package application, then optionally applies the Shared Brave configuration as phase five. Standalone actions provide each operation separately. Public routes provide the same operations to Make targets, agents, scripts, and tests.
 
 ## Shared Brave configuration
 

@@ -2,6 +2,13 @@
 
 source "$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)/support/test_helper.sh"
 
+configure_brave_structural_canaries() {
+	make_fake pacman 'printf "unexpected pacman call\n" >>"$DOTFILES_TEST_CALL_LOG"; exit 99'
+	make_fake brave 'printf "unexpected brave call\n" >>"$DOTFILES_TEST_CALL_LOG"; exit 99'
+	make_fake brave-origin 'printf "unexpected brave-origin call\n" >>"$DOTFILES_TEST_CALL_LOG"; exit 99'
+	make_fake sudo 'printf "unexpected sudo call\n" >>"$DOTFILES_TEST_CALL_LOG"; exit 99'
+}
+
 test_status_inspects_empty_relocated_clone() {
 	new_fixture
 	use_empty_package_catalog
@@ -38,6 +45,103 @@ test_check_accepts_empty_catalog() {
 		'check should use only the fake Omarchy command under isolated roots'
 }
 
+test_check_validates_brave_source_without_browser_or_deployment() {
+	new_fixture
+	use_empty_package_catalog
+	configure_brave_structural_canaries
+	rm "$FIXTURE_BIN/stow"
+	BWRAP_EXTRA_ARGS+=(--tmpfs /etc)
+	local source=$FIXTURE_REPO/brave/managed-policy.json
+	local before_source before_paths
+	before_source=$(sha256sum "$source")
+	before_paths=$(snapshot_isolated_paths)
+
+	DOTFILES_TEST_PATH=$(restricted_path_without_stow) run_operation "$FIXTURE_ROOT" check
+
+	assert_eq 0 "$COMMAND_STATUS" 'canonical Brave source should pass structural checks' || return 1
+	assert_contains "$COMMAND_OUTPUT" 'Brave policy source: valid' \
+		'structural checks should report canonical Brave source validation' || return 1
+	assert_eq "$before_source" "$(sha256sum "$source")" 'Brave source validation should not rewrite its input' || return 1
+	assert_eq "$before_paths" "$(snapshot_isolated_paths)" \
+		'Brave source validation should not mutate user or Omarchy fixture paths' || return 1
+	if [[ $(<"$CALL_LOG") == *'unexpected '* ]]; then
+		printf '  structural Brave validation inspected a browser, package provider, or privilege command\n' >&2
+		return 1
+	fi
+}
+
+test_check_rejects_noncanonical_brave_source_without_browser_or_deployment() {
+	new_fixture
+	use_empty_package_catalog
+	configure_brave_structural_canaries
+	rm "$FIXTURE_BIN/stow"
+	BWRAP_EXTRA_ARGS+=(--tmpfs /etc)
+	local source=$FIXTURE_REPO/brave/managed-policy.json
+	jq '.ShowHomeButton = true' "$source" >"$source.invalid"
+	mv "$source.invalid" "$source"
+	local before_source
+	before_source=$(sha256sum "$source")
+
+	DOTFILES_TEST_PATH=$(restricted_path_without_stow) run_operation "$FIXTURE_ROOT" check
+
+	if [[ $COMMAND_STATUS -eq 0 ]]; then
+		printf '  structural checks accepted a changed canonical Brave value\n' >&2
+		return 1
+	fi
+	assert_contains "$COMMAND_OUTPUT" 'Error: invalid Brave policy source:' \
+		'structural checks should report why the canonical Brave source was rejected' || return 1
+	if [[ $COMMAND_OUTPUT == *'Brave policy source: valid'* ]]; then
+		printf '  structural checks reported a rejected Brave source as valid\n' >&2
+		return 1
+	fi
+	assert_eq "$before_source" "$(sha256sum "$source")" 'rejected Brave source validation should not rewrite its input' || return 1
+	if [[ $(<"$CALL_LOG") == *'unexpected '* ]]; then
+		printf '  rejected Brave source validation inspected a browser, package provider, or privilege command\n' >&2
+		return 1
+	fi
+}
+
+test_check_propagates_brave_failure_from_conditional_context() {
+	new_fixture
+	use_empty_package_catalog
+	configure_brave_structural_canaries
+	rm "$FIXTURE_BIN/stow"
+	BWRAP_EXTRA_ARGS+=(--tmpfs /etc)
+	local source=$FIXTURE_REPO/brave/managed-policy.json
+	jq '.ShowHomeButton = true' "$source" >"$source.invalid"
+	mv "$source.invalid" "$source"
+	printf '%s\n' \
+		'' \
+		'check_from_errexit_disabled_context() {' \
+		'  local outcome' \
+		'  if check; then' \
+		'    outcome=0' \
+		'  else' \
+		'    outcome=$?' \
+		'  fi' \
+		'  return "$outcome"' \
+		'}' >>"$FIXTURE_REPO/lib/dotfiles/wizard.sh"
+
+	DOTFILES_TEST_PATH=$(restricted_path_without_stow) run_operation "$FIXTURE_ROOT" check_from_errexit_disabled_context
+
+	assert_eq 1 "$COMMAND_STATUS" 'check should propagate Brave validation failure from an if condition' || return 1
+	assert_contains "$COMMAND_OUTPUT" 'Error: invalid Brave policy source:' \
+		'the conditional check should report the rejected Brave source' || return 1
+	assert_contains "$COMMAND_OUTPUT" 'GNU Stow: unavailable (nonfatal until a package operation is selected)' \
+		'the conditional check should continue useful diagnostics after Brave validation fails' || return 1
+}
+
+test_brave_focused_suite_is_registered_once() {
+	new_fixture
+	if [[ ! -f $SOURCE_REPO/tests/brave_test.sh ]]; then
+		printf '  registered focused Brave suite is missing: %s\n' "$SOURCE_REPO/tests/brave_test.sh" >&2
+		return 1
+	fi
+	local registrations
+	registrations=$(awk '$1 == "brave_test.sh" { count++ } END { print count + 0 }' "$SOURCE_REPO/tests/run.sh")
+	assert_eq 1 "$registrations" 'the focused Brave suite should be registered exactly once'
+}
+
 test_check_rejects_missing_declared_package_prerequisite() {
 	new_fixture
 	add_package
@@ -72,6 +176,7 @@ test_check_rejects_missing_core_and_global_skill_commands() {
 	for command in bash dirname jq find git diff; do
 		ln -s "$(command -v "$command")" "$check_bin/$command"
 	done
+	ln -s "$FIXTURE_BIN/node" "$check_bin/node"
 	ln -s "$FIXTURE_BIN/omarchy" "$check_bin/omarchy"
 
 	DOTFILES_TEST_PATH=$check_bin run_operation "$FIXTURE_ROOT" check
@@ -442,6 +547,10 @@ test_check_rejects_missing_dependency_and_cycle() {
 set -e
 run_test test_status_inspects_empty_relocated_clone 'status inspects an empty relocated clone'
 run_test test_check_accepts_empty_catalog 'check accepts an empty package catalog'
+run_test test_check_validates_brave_source_without_browser_or_deployment 'check validates Brave source without a browser or deployment'
+run_test test_check_rejects_noncanonical_brave_source_without_browser_or_deployment 'check rejects noncanonical Brave source without a browser or deployment'
+run_test test_check_propagates_brave_failure_from_conditional_context 'check propagates Brave failure from an errexit-disabled conditional context'
+run_test test_brave_focused_suite_is_registered_once 'focused Brave suite is registered once'
 run_test test_check_rejects_missing_declared_package_prerequisite 'check rejects missing declared package prerequisite'
 run_test test_check_rejects_missing_validator_executable 'check rejects missing validator executable'
 run_test test_check_rejects_missing_core_and_global_skill_commands 'check rejects missing core and global skill commands'

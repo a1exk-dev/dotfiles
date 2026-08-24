@@ -34,23 +34,28 @@ The wizard uses Gum when it is available. Otherwise, it uses Bash prompts.
 2. Pinned global skill installation
 3. Application cleanup
 4. Stow package application
+5. Optional shared Brave policy application
 
-Prerequisite preparation verifies GNU Stow and the Node.js tools required by pinned global skills. If tools are missing, the wizard shows one plan and asks for confirmation. This guide covers the Stow phase. See [Application cleanup](cleanup.md) and [Agent setup](agent-setup.md) for the other guided phases.
+Prerequisite preparation verifies GNU Stow, Node.js 22.20.0 or newer, npm, and npx. If a prerequisite is missing or does not meet its version requirement, the wizard shows one plan and asks for confirmation. Guided setup stops before later phases if you decline the plan, if installation fails, or if verification fails. This guide covers the Stow phase. See [Application cleanup](cleanup.md), [Agent setup](agent-setup.md), and [Brave](brave.md) for the other guided phases.
 
 ```text
 omarchy pkg add stow
 omarchy install dev-env node
 ```
 
-Omarchy manages privilege prompts. The wizard verifies the tools after installation.
+Omarchy manages the privilege prompts. The wizard verifies the tools after installation.
 
-The Stow phase shows one package multi-select screen. No package is selected by default. An empty selection skips the Stow phase. An operational failure stops guided setup and names the standalone wizard action to use for recovery.
+The Stow phase shows one package multi-select screen. No package is selected by default. An empty selection skips the Stow phase. An operational failure stops Guided setup and names the standalone wizard action for recovery.
+
+After the Stow phase, optional phase 5 calls the same apply operation as `Manage Brave policy`. The phase skips successfully when no supported browser is installed or you decline the plan. It succeeds if the active policy already matches the shared Brave policy exactly or if the apply completes. An operational failure stops Guided setup and directs you to `Manage Brave policy` for recovery.
 
 ## Ownership
 
 Prefer Omarchy-supported user overrides. Track a complete configuration only when an override cannot express the required behavior and a human has reviewed the replacement scope.
 
 Packages target the user's home directory. A system target or another location requires a separate decision.
+
+The shared Brave policy is a copied system file, not a Stow package. It does not live below `config/` and has no `packages.json` entry. `Manage Brave policy` uses a separate preview, confirmation, backup, verification, recovery, and removal process for its root-owned system copy. See [Brave](brave.md).
 
 Stop before adding machine-specific values, generated files, or sensitive data. Decide how to handle the concrete case first.
 
@@ -71,9 +76,10 @@ Choose `Run structural checks` to validate:
 - Package-specific Arch requirements
 - The application cleanup profile
 - The skill manifest and required global skill commands
+- The canonical shared Brave policy source
 - GNU Stow availability
 
-This action does not require GNU Stow. It requires npx to validate the global skill tooling.
+`Run structural checks` can run without GNU Stow, but it reports a structural error if GNU Stow is missing. It does not require an installed browser. It requires Node.js and npx. Brave source validation does not require a deployed policy or privilege and does not change system or user files.
 
 ## Apply Stow packages
 
@@ -144,7 +150,7 @@ Then print the current requirement plan and run the complete Stow simulation fro
 
 Each runtime package prints either `installed` or `will install during Apply Stow packages`. A planned install does not stop this preflight. GNU Stow must be present for the simulation. If GNU Stow is missing, run `make`, choose `Prepare prerequisites`, and restart this preflight before backup or removal.
 
-The Stow simulation is expected to return nonzero. Its output must show exactly one conflict: `~/.config/tmux/tmux.conf`. The starter must already be linked to its tracked source or otherwise be conflict-free. Any additional Stow conflict stops this procedure before backup or removal.
+The Stow simulation is expected to return nonzero. Its output must show exactly one conflict: `~/.config/tmux/tmux.conf`. Every other target in the `tmux` package must already be linked to its tracked source or otherwise be conflict-free. Any additional Stow conflict stops this procedure before backup or removal.
 
 The complete direct-migration plan is to inspect and back up the live file, verify the backup, remove only that file, and immediately choose `Apply Stow packages` for `tmux`. After removal clears the known Stow conflict, the wizard simulates the package and shows the complete plan. The plan must show that the wizard will install and verify every requirement marked `will install during Apply Stow packages`, repeat the simulation after any installation, apply the package with `--no-folding`, and verify both links and validators. Continue only after reviewing this full plan and deciding to apply it immediately. This procedure applies only to the tmux target described here.
 

@@ -4,6 +4,7 @@ set -u
 
 SOURCE_REPO=$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")/../.." && pwd)
 BWRAP=$(command -v bwrap)
+HOST_NODE_REAL=$(readlink -f -- "$(command -v node)")
 BWRAP_EXTRA_ARGS=()
 TESTS_RUN=0
 TESTS_FAILED=0
@@ -60,10 +61,20 @@ new_fixture() {
 	CALL_LOG="$FIXTURE_ROOT/external-calls"
 	ARCH_PACKAGE_STATE="$FIXTURE_ROOT/installed-arch-packages"
 	ARCH_PACKAGE_ADD_MARKER="$FIXTURE_ROOT/arch-package-add-attempted"
+	FIXTURE_BRAVE_SYSTEM="$FIXTURE_ROOT/system/etc/brave"
+	BRAVE_METADATA_ROOT="$FIXTURE_ROOT/brave-metadata"
+	BRAVE_PACKAGE_DB="$FIXTURE_ROOT/brave-packages"
+	BRAVE_PROVIDER_DB="$FIXTURE_ROOT/brave-providers"
+	BRAVE_OWNER_DB="$FIXTURE_ROOT/brave-provider-owners"
+	BRAVE_FAILURE_MARKERS="$FIXTURE_ROOT/brave-failure-markers"
+	BRAVE_CANARY_ROOT="$FIXTURE_ROOT/brave-canaries"
+	FIXTURE_REAL_NODE_DIR="$FIXTURE_ROOT/real-node"
 
 	mkdir -p "$FIXTURE_REPO/bin" "$FIXTURE_REPO/lib/dotfiles" "$FIXTURE_HOME" "$FIXTURE_CONFIG" \
 		"$FIXTURE_STATE" "$FIXTURE_CACHE" "$FIXTURE_TMP" "$FIXTURE_BIN" "$FIXTURE_OMARCHY" \
+		"$BRAVE_METADATA_ROOT" "$BRAVE_FAILURE_MARKERS" "$BRAVE_CANARY_ROOT" "$FIXTURE_REAL_NODE_DIR" \
 		"$OUTSIDE_ROOT/user-config" "$OUTSIDE_ROOT/global-skills" "$OUTSIDE_ROOT/packaged-omarchy"
+	BWRAP_EXTRA_ARGS+=(--ro-bind "$(dirname -- "$HOST_NODE_REAL")" "$FIXTURE_REAL_NODE_DIR")
 	printf 'outside user configuration\n' >"$OUTSIDE_ROOT/user-config/sentinel"
 	printf 'outside global skill\n' >"$OUTSIDE_ROOT/global-skills/sentinel"
 	printf 'outside packaged Omarchy\n' >"$OUTSIDE_ROOT/packaged-omarchy/sentinel"
@@ -72,8 +83,15 @@ new_fixture() {
 	printf '%s\n' thefuck tmux fzf less starship >"$ARCH_PACKAGE_STATE"
 	cp "$SOURCE_REPO/bin/dotfiles" "$FIXTURE_REPO/bin/dotfiles"
 	cp "$SOURCE_REPO/lib/dotfiles/"*.sh "$FIXTURE_REPO/lib/dotfiles/"
+	cp "$SOURCE_REPO/lib/dotfiles/"*.mjs "$FIXTURE_REPO/lib/dotfiles/"
 	cp "$SOURCE_REPO/packages.json" "$FIXTURE_REPO/packages.json"
 	cp "$SOURCE_REPO/cleanup.json" "$FIXTURE_REPO/cleanup.json"
+	if [[ -f $SOURCE_REPO/README.md ]]; then
+		cp "$SOURCE_REPO/README.md" "$FIXTURE_REPO/README.md"
+	fi
+	if [[ -d $SOURCE_REPO/brave ]]; then
+		cp -a "$SOURCE_REPO/brave" "$FIXTURE_REPO/brave"
+	fi
 	if [[ -d $SOURCE_REPO/config ]]; then
 		cp -a "$SOURCE_REPO/config" "$FIXTURE_REPO/config"
 	fi
@@ -113,8 +131,103 @@ exit 64'
 	make_fake omarchy-pkg-add 'printf "omarchy-pkg-add %s\n" "$*" >>"$DOTFILES_TEST_CALL_LOG"'
 	make_fake git 'printf "git %s\n" "$*" >>"$DOTFILES_TEST_CALL_LOG"'
 	make_fake npx 'printf "npx %s\n" "$*" >>"$DOTFILES_TEST_CALL_LOG"'
-	make_fake node 'printf "v%s\n" "${DOTFILES_TEST_NODE_VERSION:-22.20.0}"'
+	make_fake node 'if [[ ${1-} == --version ]]; then
+	printf "v%s\n" "${DOTFILES_TEST_NODE_VERSION:-22.20.0}"
+	exit 0
+fi
+exec "$DOTFILES_TEST_REAL_NODE" "$@"'
 	make_fake npm 'exit 0'
+}
+
+brave_metadata_key() {
+	printf '%s' "$1" | sha256sum | { read -r digest _; printf '%s\n' "$digest"; }
+}
+
+set_brave_metadata() {
+	local logical=$1 uid=$2 gid=$3 mode=$4 key
+	key=$(brave_metadata_key "$logical")
+	printf '%s %s %s\n' "$uid" "$gid" "$mode" >"$BRAVE_METADATA_ROOT/$key"
+}
+
+setup_brave_fixture() {
+	mkdir -p "$FIXTURE_BRAVE_SYSTEM/policies/managed"
+	chmod 0755 "$FIXTURE_BRAVE_SYSTEM" "$FIXTURE_BRAVE_SYSTEM/policies" "$FIXTURE_BRAVE_SYSTEM/policies/managed"
+	set_brave_metadata /etc/brave 0 0 0755
+	set_brave_metadata /etc/brave/policies 0 0 0755
+	set_brave_metadata /etc/brave/policies/managed 0 0 0755
+	: >"$BRAVE_PACKAGE_DB"
+	: >"$BRAVE_PROVIDER_DB"
+	: >"$BRAVE_OWNER_DB"
+}
+
+install_brave_consumer() {
+	local package=$1 version=${2-1:1.93.136-1} command path
+	case $package in
+		brave-bin) command=brave ;;
+		brave-origin-bin) command=brave-origin ;;
+		*) return 2 ;;
+	esac
+	path="$FIXTURE_BIN/$command"
+	printf '%s|%s\n' "$package" "$version" >>"$BRAVE_PACKAGE_DB"
+	printf '%s|%s\n' "$command" "$path" >>"$BRAVE_PROVIDER_DB"
+	printf '%s|%s\n' "$path" "$package" >>"$BRAVE_OWNER_DB"
+	make_fake "$command" 'printf "BROWSER EXECUTED: %s\n" "$0 $*" >>"$DOTFILES_TEST_CALL_LOG"
+	exit 99'
+}
+
+add_brave_color_policy() {
+	local content=${1-'{"BrowserThemeColor":"#123456","BrowserColorScheme":1}'} uid
+	uid=$(id -u)
+	printf '%s\n' "$content" >"$FIXTURE_BRAVE_SYSTEM/policies/managed/color.json"
+	chmod 0644 "$FIXTURE_BRAVE_SYSTEM/policies/managed/color.json"
+	set_brave_metadata /etc/brave/policies/managed/color.json "$uid" "$(id -g)" 0644
+}
+
+add_brave_foreign_policy() {
+	local name=$1 content=$2 uid=${3-0} gid=${4-0} mode=${5-0644}
+	printf '%s\n' "$content" >"$FIXTURE_BRAVE_SYSTEM/policies/managed/$name"
+	chmod "$mode" "$FIXTURE_BRAVE_SYSTEM/policies/managed/$name"
+	set_brave_metadata "/etc/brave/policies/managed/$name" "$uid" "$gid" "$mode"
+}
+
+seed_brave_canaries() {
+	mkdir -p "$BRAVE_CANARY_ROOT/profile/Default" "$BRAVE_CANARY_ROOT/themes" "$BRAVE_CANARY_ROOT/fonts" "$BRAVE_CANARY_ROOT/packages" \
+		"$FIXTURE_HOME/.config" "$FIXTURE_OMARCHY"
+	printf 'profile preferences\n' >"$BRAVE_CANARY_ROOT/profile/Default/Preferences"
+	printf 'secure preferences\n' >"$BRAVE_CANARY_ROOT/profile/Default/Secure Preferences"
+	printf 'local state\n' >"$BRAVE_CANARY_ROOT/profile/Local State"
+	printf 'theme state\n' >"$BRAVE_CANARY_ROOT/themes/current"
+	printf 'font state\n' >"$BRAVE_CANARY_ROOT/fonts/current"
+	printf 'package state\n' >"$BRAVE_CANARY_ROOT/packages/current"
+	printf 'brave flags\n' >"$FIXTURE_HOME/.config/brave-flags.conf"
+	printf 'origin flags\n' >"$FIXTURE_HOME/.config/brave-origin-flags.conf"
+	printf 'packaged Omarchy\n' >"$FIXTURE_OMARCHY/brave-sentinel"
+}
+
+snapshot_brave_canaries() {
+	(
+		cd -- "$FIXTURE_ROOT" || return 1
+		find brave-canaries user/home/.config packaged-omarchy -type f -printf '%P|%m|%s|%T@\n' | sort
+		find brave-canaries user/home/.config packaged-omarchy -type f -print0 | sort -z | xargs -0 sha256sum
+	)
+}
+
+seed_active_brave_policy() {
+	local source=${1-"$FIXTURE_REPO/brave/managed-policy.json"}
+	local digest transaction timestamp state_root receipt
+	digest=$(sha256sum "$source" | { read -r value _; printf '%s\n' "$value"; })
+	transaction=20260823T120000Z-1000-deadbeef
+	timestamp=2026-08-23T12:00:00Z
+	state_root="$FIXTURE_STATE/dotfiles/brave-policy"
+	mkdir -p "$state_root"
+	chmod 0700 "$state_root"
+	cp "$source" "$FIXTURE_BRAVE_SYSTEM/policies/managed/dotfiles.json"
+	chmod 0644 "$FIXTURE_BRAVE_SYSTEM/policies/managed/dotfiles.json"
+	set_brave_metadata /etc/brave/policies/managed/dotfiles.json 0 0 0644
+	receipt=$(jq -cn --arg digest "$digest" --arg transaction "$transaction" --arg timestamp "$timestamp" \
+		'{schema_version:1,kind:"active",target:"/etc/brave/policies/managed/dotfiles.json",source:"brave/managed-policy.json",deployed_digest:$digest,transaction_id:$transaction,activated_at:$timestamp,managed_directory_original:{present:true,uid:0,gid:0,mode:"0777"}}')
+	printf '%s\n' "$receipt" >"$state_root/active.json"
+	chmod 0600 "$state_root/active.json"
 }
 
 use_empty_package_catalog() {
@@ -367,6 +480,37 @@ run_in_sandbox() {
 				DOTFILES_TEST_FIND_COUNT="${DOTFILES_TEST_FIND_COUNT-}" \
 				DOTFILES_TEST_PACMAN_VERIFY_FAILURE="${DOTFILES_TEST_PACMAN_VERIFY_FAILURE:-false}" \
 				DOTFILES_TEST_YAY_METADATA_FAILURE="${DOTFILES_TEST_YAY_METADATA_FAILURE:-false}" \
+				DOTFILES_TEST_REAL_NODE="$FIXTURE_REAL_NODE_DIR/$(basename -- "$HOST_NODE_REAL")" \
+				DOTFILES_TEST_BRAVE_SYSTEM="$FIXTURE_BRAVE_SYSTEM" \
+				DOTFILES_TEST_BRAVE_METADATA="$BRAVE_METADATA_ROOT" \
+				DOTFILES_TEST_BRAVE_PACKAGES="$BRAVE_PACKAGE_DB" \
+				DOTFILES_TEST_BRAVE_PROVIDERS="$BRAVE_PROVIDER_DB" \
+				DOTFILES_TEST_BRAVE_OWNERS="$BRAVE_OWNER_DB" \
+				DOTFILES_TEST_BRAVE_FAILURE_MARKERS="$BRAVE_FAILURE_MARKERS" \
+				DOTFILES_TEST_BRAVE_UID="${DOTFILES_TEST_BRAVE_UID:-$(id -u)}" \
+				DOTFILES_TEST_BRAVE_FAIL_BEFORE="${DOTFILES_TEST_BRAVE_FAIL_BEFORE-}" \
+				DOTFILES_TEST_BRAVE_FAIL_AFTER="${DOTFILES_TEST_BRAVE_FAIL_AFTER-}" \
+				DOTFILES_TEST_BRAVE_FAIL_RECEIPT="${DOTFILES_TEST_BRAVE_FAIL_RECEIPT-}" \
+				DOTFILES_TEST_BRAVE_FAIL_STATE_REMOVE="${DOTFILES_TEST_BRAVE_FAIL_STATE_REMOVE-}" \
+				DOTFILES_TEST_BRAVE_FAIL_BACKUP="${DOTFILES_TEST_BRAVE_FAIL_BACKUP:-false}" \
+				DOTFILES_TEST_BRAVE_BACKUP_RACE="${DOTFILES_TEST_BRAVE_BACKUP_RACE:-false}" \
+				DOTFILES_TEST_BRAVE_SENSITIVE="${DOTFILES_TEST_BRAVE_SENSITIVE:-$FIXTURE_ROOT/brave-sensitive}" \
+				DOTFILES_TEST_BRAVE_FAIL_PREVIEW="${DOTFILES_TEST_BRAVE_FAIL_PREVIEW:-false}" \
+				DOTFILES_TEST_BRAVE_CORRUPT_STAGE="${DOTFILES_TEST_BRAVE_CORRUPT_STAGE:-false}" \
+				DOTFILES_TEST_BRAVE_CORRUPT_STAGE_METADATA="${DOTFILES_TEST_BRAVE_CORRUPT_STAGE_METADATA-}" \
+				DOTFILES_TEST_BRAVE_STAGE_LINK_OPERATION="${DOTFILES_TEST_BRAVE_STAGE_LINK_OPERATION-}" \
+				DOTFILES_TEST_BRAVE_STAGE_LINK_KIND="${DOTFILES_TEST_BRAVE_STAGE_LINK_KIND-}" \
+				DOTFILES_TEST_BRAVE_STAGE_REFERENT="${DOTFILES_TEST_BRAVE_STAGE_REFERENT:-$FIXTURE_ROOT/brave-stage-referent}" \
+				DOTFILES_TEST_BRAVE_RECEIPT_RACE="${DOTFILES_TEST_BRAVE_RECEIPT_RACE-}" \
+				DOTFILES_TEST_BRAVE_RECEIPT_REFERENT="${DOTFILES_TEST_BRAVE_RECEIPT_REFERENT:-$FIXTURE_ROOT/brave-receipt-referent}" \
+				DOTFILES_TEST_BRAVE_STATE_ROOT_RACE_REFERENT="${DOTFILES_TEST_BRAVE_STATE_ROOT_RACE_REFERENT-}" \
+				DOTFILES_TEST_BRAVE_REPLACE_MANAGED_AFTER="${DOTFILES_TEST_BRAVE_REPLACE_MANAGED_AFTER-}" \
+				DOTFILES_TEST_BRAVE_RENAME_FAILURE="${DOTFILES_TEST_BRAVE_RENAME_FAILURE-}" \
+				DOTFILES_TEST_BRAVE_REPLACE_TARGET_ON_STATE_REMOVE="${DOTFILES_TEST_BRAVE_REPLACE_TARGET_ON_STATE_REMOVE-}" \
+				DOTFILES_TEST_BRAVE_REPLACE_TARGET_AFTER="${DOTFILES_TEST_BRAVE_REPLACE_TARGET_AFTER-}" \
+				DOTFILES_TEST_BRAVE_LOG_RECOVERY_ORDER="${DOTFILES_TEST_BRAVE_LOG_RECOVERY_ORDER:-false}" \
+				DOTFILES_TEST_BRAVE_FALSE_SUCCESS="${DOTFILES_TEST_BRAVE_FALSE_SUCCESS-}" \
+				DOTFILES_TEST_BRAVE_RACE="${DOTFILES_TEST_BRAVE_RACE-}" \
 				DOTFILES_UI="${DOTFILES_UI:-bash}" \
 				"$BWRAP" \
 					--ro-bind / / \
@@ -405,6 +549,347 @@ run_operation() {
 			source "$repository/lib/dotfiles/skills.sh"
 			source "$repository/lib/dotfiles/cleanup.sh"
 			source "$repository/lib/dotfiles/modem.sh"
+			source "$repository/lib/dotfiles/brave.sh"
+			source "$repository/lib/dotfiles/wizard.sh"
+			"$operation" "$@"
+		' bash "$FIXTURE_REPO" "$operation" "$@"
+}
+
+run_brave_operation() {
+	local working_directory=$1 operation=$2
+	shift 2
+	run_in_sandbox "$working_directory" "${DOTFILES_TEST_PATH:-$FIXTURE_BIN:/usr/bin:/bin}" \
+		bash -c '
+			set -euo pipefail
+			repository=$1
+			operation=$2
+			shift 2
+			source "$repository/lib/dotfiles/core.sh"
+			source "$repository/lib/dotfiles/brave.sh"
+
+			brave_map_system_path() {
+				case $1 in
+					/etc/brave) printf "%s\n" "$DOTFILES_TEST_BRAVE_SYSTEM" ;;
+					/etc/brave/*) printf "%s/%s\n" "$DOTFILES_TEST_BRAVE_SYSTEM" "${1#/etc/brave/}" ;;
+					*) return 2 ;;
+				esac
+			}
+			brave_test_metadata_key() {
+				printf "%s" "$1" | sha256sum | { read -r digest _; printf "%s\n" "$digest"; }
+			}
+			brave_test_set_metadata() {
+				local key
+				key=$(brave_test_metadata_key "$1")
+				printf "%s %s %s\n" "$2" "$3" "$4" >"$DOTFILES_TEST_BRAVE_METADATA/$key"
+			}
+			brave_test_remove_metadata() {
+				local key
+				key=$(brave_test_metadata_key "$1")
+				rm -f -- "$DOTFILES_TEST_BRAVE_METADATA/$key"
+			}
+			brave_lstat() {
+				local logical=$1 actual type mode uid=0 gid=0 key
+				actual=$(brave_map_system_path "$logical") || return 2
+				[[ -e $actual || -L $actual ]] || return 1
+				type=$(stat -c %F -- "$actual") || return 2
+				mode=$(stat -c %a -- "$actual") || return 2
+				key=$(brave_test_metadata_key "$logical")
+				if [[ -f $DOTFILES_TEST_BRAVE_METADATA/$key ]]; then
+					read -r uid gid mode <"$DOTFILES_TEST_BRAVE_METADATA/$key"
+				fi
+				printf "%s|%s|%s|%s\n" "$type" "$uid" "$gid" "$mode"
+			}
+			brave_package_version() {
+				local wanted=$1 package version
+				while IFS="|" read -r package version; do
+					[[ $package == "$wanted" ]] || continue
+					printf "%s\n" "$version"
+					return 0
+				done <"$DOTFILES_TEST_BRAVE_PACKAGES"
+				return 1
+			}
+			brave_resolve_provider() {
+				local wanted=$1 command provider
+				while IFS="|" read -r command provider; do
+					[[ $command == "$wanted" ]] || continue
+					printf "%s\n" "$provider"
+					return 0
+				done <"$DOTFILES_TEST_BRAVE_PROVIDERS"
+				return 1
+			}
+			brave_provider_package() {
+				local wanted=$1 provider package
+				while IFS="|" read -r provider package; do
+					[[ $provider == "$wanted" ]] || continue
+					printf "%s\n" "$package"
+					return 0
+				done <"$DOTFILES_TEST_BRAVE_OWNERS"
+				return 1
+			}
+			brave_effective_uid() { printf "%s\n" "$DOTFILES_TEST_BRAVE_UID"; }
+			brave_omarchy_version() {
+				[[ $DOTFILES_TEST_BRAVE_LOG_RECOVERY_ORDER != true ]] || printf "recovery-order inspect-omarchy\n" >>"$DOTFILES_TEST_CALL_LOG"
+				printf "%s\n" "$DOTFILES_TEST_OMARCHY_VERSION"
+			}
+			brave_confirm() {
+				[[ $DOTFILES_TEST_BRAVE_LOG_RECOVERY_ORDER != true ]] || printf "recovery-order confirmation %s\n" "$1" >>"$DOTFILES_TEST_CALL_LOG"
+				wizard_confirm "$1"
+			}
+			brave_test_operation_with_context() {
+				local requested=$1 outcome=0
+				shift
+				"$requested" "$@" || outcome=$?
+				printf "Brave operation context: %s\n" "$BRAVE_OPERATION_CONTEXT"
+				return "$outcome"
+			}
+			brave_create_state_root() {
+				local root=$1 marker="$DOTFILES_TEST_BRAVE_FAILURE_MARKERS/state-root-race"
+				if [[ -n $DOTFILES_TEST_BRAVE_STATE_ROOT_RACE_REFERENT && ! -e $marker ]]; then
+					touch "$marker"
+					ln -s "$DOTFILES_TEST_BRAVE_STATE_ROOT_RACE_REFERENT" "$root"
+					return 1
+				fi
+				brave_create_state_root_impl "$root"
+			}
+			brave_atomic_write_receipt() {
+				local kind=$1 marker="$DOTFILES_TEST_BRAVE_FAILURE_MARKERS/receipt-$1"
+				if [[ $DOTFILES_TEST_BRAVE_FAIL_RECEIPT == "$kind" && ! -e $marker ]]; then
+					touch "$marker"
+					return 79
+				fi
+				brave_atomic_write_receipt_impl "$@"
+			}
+			brave_publish_receipt_temporary() {
+				local temporary=$1 destination=$2 marker="$DOTFILES_TEST_BRAVE_FAILURE_MARKERS/receipt-destination-race"
+				if [[ -n $DOTFILES_TEST_BRAVE_RECEIPT_RACE && ! -e $marker ]]; then
+					touch "$marker"
+					case $DOTFILES_TEST_BRAVE_RECEIPT_RACE in
+						directory) mkdir "$destination" ;;
+						symlink-directory) ln -s "$DOTFILES_TEST_BRAVE_RECEIPT_REFERENT" "$destination" ;;
+						*) return 64 ;;
+					esac
+				fi
+				brave_publish_receipt_temporary_impl "$temporary" "$destination"
+			}
+			brave_test_attempt_unprivileged_target_replacement() {
+				local point=$1 metadata mode_value invoking_uid group allowed=false actual
+				metadata=$(brave_lstat /etc/brave/policies/managed) || return 1
+				brave_parse_metadata "$metadata" BRAVE_TEST_REPLACEMENT_PARENT || return 1
+				mode_value=$(brave_mode_value "$BRAVE_TEST_REPLACEMENT_PARENT_MODE") || return 1
+				invoking_uid=$(brave_effective_uid) || return 1
+				if [[ $BRAVE_TEST_REPLACEMENT_PARENT_UID == "$invoking_uid" && $((mode_value & 0200)) -ne 0 ]]; then
+					allowed=true
+				elif (( (mode_value & 0020) != 0 )); then
+					for group in $(brave_effective_groups); do
+						[[ $group != "$BRAVE_TEST_REPLACEMENT_PARENT_GID" ]] || allowed=true
+					done
+				fi
+				if (( (mode_value & 0002) != 0 )); then allowed=true; fi
+				if [[ $allowed != true ]]; then
+					printf "unprivileged-target-replacement blocked %s metadata=%s\n" "$point" "$metadata" >>"$DOTFILES_TEST_CALL_LOG"
+					return 1
+				fi
+				actual=$(brave_map_system_path /etc/brave/policies/managed/dotfiles.json) || return 1
+				printf "replacement created during owned finalization\n" >"$actual"
+				chmod 0644 "$actual"
+				brave_test_set_metadata /etc/brave/policies/managed/dotfiles.json "$invoking_uid" "$(id -g)" 0644
+				printf "unprivileged-target-replacement created %s metadata=%s\n" "$point" "$metadata" >>"$DOTFILES_TEST_CALL_LOG"
+			}
+			brave_remove_state_file() {
+				local name=${1##*/} marker="$DOTFILES_TEST_BRAVE_FAILURE_MARKERS/remove-${1##*/}"
+				[[ $DOTFILES_TEST_BRAVE_LOG_RECOVERY_ORDER != true ]] || printf "recovery-order remove-state %s\n" "$name" >>"$DOTFILES_TEST_CALL_LOG"
+				if [[ $DOTFILES_TEST_BRAVE_REPLACE_TARGET_ON_STATE_REMOVE == "$name" && ! -e $DOTFILES_TEST_BRAVE_FAILURE_MARKERS/state-remove-target-replacement ]]; then
+					touch "$DOTFILES_TEST_BRAVE_FAILURE_MARKERS/state-remove-target-replacement"
+					brave_test_attempt_unprivileged_target_replacement "state-remove-$name" || true
+				fi
+				if [[ $DOTFILES_TEST_BRAVE_FAIL_STATE_REMOVE == "$name" && ! -e $marker ]]; then
+					touch "$marker"
+					return 80
+				fi
+				brave_remove_state_file_impl "$@"
+			}
+			brave_copy_backup() {
+				local marker="$DOTFILES_TEST_BRAVE_FAILURE_MARKERS/backup"
+				if [[ $DOTFILES_TEST_BRAVE_FAIL_BACKUP == true && ! -e $marker ]]; then
+					touch "$marker"
+					return 81
+				fi
+				if [[ $DOTFILES_TEST_BRAVE_BACKUP_RACE == true && $1 == "$DOTFILES_TEST_BRAVE_SYSTEM/policies/managed/dotfiles.json" && ! -e $DOTFILES_TEST_BRAVE_FAILURE_MARKERS/backup-race ]]; then
+					touch "$DOTFILES_TEST_BRAVE_FAILURE_MARKERS/backup-race"
+					rm -f -- "$1"
+					ln -s "$DOTFILES_TEST_BRAVE_SENSITIVE" "$1"
+				fi
+				brave_copy_backup_impl "$@"
+			}
+			brave_copy_preview_snapshot() {
+				[[ $DOTFILES_TEST_BRAVE_FAIL_PREVIEW != true ]] || return 82
+				brave_copy_backup_impl "$@"
+			}
+			brave_test_race_once() {
+				[[ -n $DOTFILES_TEST_BRAVE_RACE ]] || return 0
+				local marker="$DOTFILES_TEST_BRAVE_FAILURE_MARKERS/race-$DOTFILES_TEST_BRAVE_RACE"
+				[[ ! -e $marker ]] || return 0
+				touch "$marker"
+				case $DOTFILES_TEST_BRAVE_RACE in
+					source) printf " \n" >>"$repository/brave/managed-policy.json" ;;
+					consumers) printf "brave-bin|9:9.9.9-1\n" >"$DOTFILES_TEST_BRAVE_PACKAGES" ;;
+					providers) printf "brave|$DOTFILES_TEST_FAKE_BIN/brave\n" >"$DOTFILES_TEST_BRAVE_PROVIDERS"; printf "%s|other-browser\n" "$DOTFILES_TEST_FAKE_BIN/brave" >"$DOTFILES_TEST_BRAVE_OWNERS" ;;
+					receipts) [[ ! -f $XDG_STATE_HOME/dotfiles/brave-policy/active.json ]] || printf " \n" >>"$XDG_STATE_HOME/dotfiles/brave-policy/active.json" ;;
+					pending) printf " \n" >>"$XDG_STATE_HOME/dotfiles/brave-policy/pending.json" ;;
+					backup)
+						local recovery_backup
+						recovery_backup=$(jq -r ".prior_target.backup_path // .prior_active.backup_path" "$XDG_STATE_HOME/dotfiles/brave-policy/pending.json")
+						printf " \n" >>"$recovery_backup"
+						;;
+					target) [[ ! -f $DOTFILES_TEST_BRAVE_SYSTEM/policies/managed/dotfiles.json ]] || printf " \n" >>"$DOTFILES_TEST_BRAVE_SYSTEM/policies/managed/dotfiles.json" ;;
+					paths) rm -rf "$DOTFILES_TEST_BRAVE_SYSTEM/policies"; ln -s "$DOTFILES_TEST_BRAVE_SYSTEM" "$DOTFILES_TEST_BRAVE_SYSTEM/policies" ;;
+					metadata) brave_test_set_metadata /etc/brave/policies 0 0 0777 ;;
+					foreign) printf "{\"RacePolicy\":true}\n" >"$DOTFILES_TEST_BRAVE_SYSTEM/policies/managed/race.json"; chmod 0644 "$DOTFILES_TEST_BRAVE_SYSTEM/policies/managed/race.json"; brave_test_set_metadata /etc/brave/policies/managed/race.json 0 0 0644 ;;
+				esac
+			}
+			brave_test_fail() {
+				local phase=$1 operation=$2 configured marker
+				[[ $phase == before ]] && configured=$DOTFILES_TEST_BRAVE_FAIL_BEFORE || configured=$DOTFILES_TEST_BRAVE_FAIL_AFTER
+				[[ ,$configured, == *,$operation,* ]] || return 1
+				marker="$DOTFILES_TEST_BRAVE_FAILURE_MARKERS/$phase-$operation"
+				[[ ! -e $marker ]] || return 1
+				touch "$marker"
+				return 0
+			}
+			brave_test_seed_stage_link() {
+				local operation=$1 stage=$2 marker="$DOTFILES_TEST_BRAVE_FAILURE_MARKERS/stage-link-$1"
+				[[ $DOTFILES_TEST_BRAVE_STAGE_LINK_OPERATION == "$operation" && ! -e $marker ]] || return 0
+				touch "$marker"
+				case $DOTFILES_TEST_BRAVE_STAGE_LINK_KIND in
+					file|directory) ln -s "$DOTFILES_TEST_BRAVE_STAGE_REFERENT" "$stage" ;;
+					*) return 64 ;;
+				esac
+			}
+			brave_privileged_operation() {
+				local operation=$1
+				shift
+				local transaction logical actual stage backup uid gid mode digest expected_identity temporary_mode
+				printf "privileged %s" "$operation" >>"$DOTFILES_TEST_CALL_LOG"
+				printf " %q" "$@" >>"$DOTFILES_TEST_CALL_LOG"
+				printf "\n" >>"$DOTFILES_TEST_CALL_LOG"
+				if brave_test_fail before "$operation"; then return 77; fi
+				if [[ ,$DOTFILES_TEST_BRAVE_FALSE_SUCCESS, == *,$operation,* ]]; then
+					printf "false-success %s\n" "$operation" >>"$DOTFILES_TEST_CALL_LOG"
+					return 0
+				fi
+				case $operation in
+					acquire)
+						printf "/usr/bin/sudo -v\n" >>"$DOTFILES_TEST_CALL_LOG"
+						brave_test_race_once
+						;;
+					create-managed)
+						mkdir -p "$DOTFILES_TEST_BRAVE_SYSTEM/policies/managed"
+						chmod 0755 "$DOTFILES_TEST_BRAVE_SYSTEM/policies/managed"
+						brave_test_set_metadata /etc/brave/policies/managed 0 0 0755
+						printf "/usr/bin/sudo /usr/bin/install -d -o root -g root -m 0755 -- /etc/brave/policies/managed\n" >>"$DOTFILES_TEST_CALL_LOG"
+						;;
+					harden-managed)
+						chmod 0755 "$DOTFILES_TEST_BRAVE_SYSTEM/policies/managed"
+						brave_test_set_metadata /etc/brave/policies/managed 0 0 0755
+						printf "/usr/bin/sudo /usr/bin/chown 0:0 -- /etc/brave/policies/managed\n/usr/bin/sudo /usr/bin/chmod 0755 -- /etc/brave/policies/managed\n" >>"$DOTFILES_TEST_CALL_LOG"
+						;;
+					write-stage)
+						transaction=$1 logical="/etc/brave/policies/.dotfiles-$transaction.stage" actual=$(brave_map_system_path "$logical")
+						brave_test_seed_stage_link write-stage "$actual" || return 1
+						rm -f -- "$actual"
+						cp "$repository/brave/managed-policy.json" "$actual"
+						chmod 0644 "$actual"
+						brave_test_set_metadata "$logical" 0 0 0644
+						brave_validate_stage "$transaction" || return 1
+						printf "brave_json emit-no-follow | /usr/bin/sudo /usr/bin/install -T -o root -g root -m 0644 -- /dev/stdin %s\n" "$logical" >>"$DOTFILES_TEST_CALL_LOG"
+						;;
+					publish-stage)
+						transaction=$1 expected_identity=$2 logical="/etc/brave/policies/.dotfiles-$transaction.stage" stage=$(brave_map_system_path "$logical") actual=$(brave_map_system_path /etc/brave/policies/managed/dotfiles.json)
+						[[ $(brave_validate_stage_file_metadata "$transaction" 0 0 0644) == "$expected_identity" ]] || return 1
+						printf "/usr/bin/sudo /usr/bin/mv --no-copy -fT -- %s /etc/brave/policies/managed/dotfiles.json\n" "$logical" >>"$DOTFILES_TEST_CALL_LOG"
+						if [[ $DOTFILES_TEST_BRAVE_RENAME_FAILURE == publish-stage ]]; then
+							printf "simulated cross-filesystem rename failure: publish-stage\n" >>"$DOTFILES_TEST_CALL_LOG"
+							return 1
+						fi
+						/usr/bin/mv --no-copy -fT -- "$stage" "$actual"
+						brave_test_remove_metadata "$logical"
+						brave_test_set_metadata /etc/brave/policies/managed/dotfiles.json 0 0 0644
+						;;
+					remove-target)
+						rm -f "$DOTFILES_TEST_BRAVE_SYSTEM/policies/managed/dotfiles.json"
+						brave_test_remove_metadata /etc/brave/policies/managed/dotfiles.json
+						printf "/usr/bin/sudo /usr/bin/rm -f -- /etc/brave/policies/managed/dotfiles.json\n" >>"$DOTFILES_TEST_CALL_LOG"
+						;;
+					remove-stage)
+						transaction=$1 logical="/etc/brave/policies/.dotfiles-$transaction.stage" actual=$(brave_map_system_path "$logical")
+						rm -f "$actual"
+						brave_test_remove_metadata "$logical"
+						printf "/usr/bin/sudo /usr/bin/rm -f -- %s\n" "$logical" >>"$DOTFILES_TEST_CALL_LOG"
+						;;
+				restore-target)
+					transaction=$1 backup=$2 uid=$3 gid=$4 mode=$5 digest=$6
+					temporary_mode=$(brave_mode_without_write_bits "$mode") || return 1
+					logical="/etc/brave/policies/.dotfiles-$transaction.stage" stage=$(brave_map_system_path "$logical")
+					brave_test_seed_stage_link restore-target "$stage" || return 1
+					rm -f -- "$stage"
+					cp "$backup" "$stage"
+					chmod "$temporary_mode" "$stage"
+					brave_test_set_metadata "$logical" "$uid" "$gid" "$temporary_mode"
+					brave_validate_restore_stage "$transaction" "$backup" "$uid" "$gid" "$temporary_mode" "$digest" || return 1
+					expected_identity=$BRAVE_VALIDATED_STAGE_IDENTITY
+					[[ $(brave_validate_stage_file_metadata "$transaction" "$uid" "$gid" "$temporary_mode") == "$expected_identity" ]] || return 1
+					actual=$(brave_map_system_path /etc/brave/policies/managed/dotfiles.json)
+					printf "brave_json emit-no-follow | /usr/bin/sudo /usr/bin/install -T -o %s -g %s -m %s -- /dev/stdin %s\n/usr/bin/sudo /usr/bin/mv --no-copy -fT -- %s /etc/brave/policies/managed/dotfiles.json\n" "$uid" "$gid" "$temporary_mode" "$logical" "$logical" >>"$DOTFILES_TEST_CALL_LOG"
+					if [[ $DOTFILES_TEST_BRAVE_RENAME_FAILURE == restore-target ]]; then
+						printf "simulated cross-filesystem rename failure: restore-target\n" >>"$DOTFILES_TEST_CALL_LOG"
+						return 1
+					fi
+					/usr/bin/mv --no-copy -fT -- "$stage" "$actual"
+					brave_test_remove_metadata "$logical"
+					brave_test_set_metadata /etc/brave/policies/managed/dotfiles.json "$uid" "$gid" "$temporary_mode"
+					chmod "$mode" "$actual"
+					brave_test_set_metadata /etc/brave/policies/managed/dotfiles.json "$uid" "$gid" "$mode"
+					brave_validate_target_against_backup "$backup" "$uid" "$gid" "$mode" "$digest" || return 1
+					printf "/usr/bin/sudo /usr/bin/chmod %s -- /etc/brave/policies/managed/dotfiles.json\n" "$mode" >>"$DOTFILES_TEST_CALL_LOG"
+					;;
+					restore-managed)
+						uid=$1 gid=$2 mode=$3
+						chmod "$mode" "$DOTFILES_TEST_BRAVE_SYSTEM/policies/managed"
+						brave_test_set_metadata /etc/brave/policies/managed "$uid" "$gid" "$mode"
+						printf "/usr/bin/sudo /usr/bin/chown %s:%s -- /etc/brave/policies/managed\n/usr/bin/sudo /usr/bin/chmod %s -- /etc/brave/policies/managed\n" "$uid" "$gid" "$mode" >>"$DOTFILES_TEST_CALL_LOG"
+						;;
+					remove-managed)
+						rmdir "$DOTFILES_TEST_BRAVE_SYSTEM/policies/managed"
+						brave_test_remove_metadata /etc/brave/policies/managed
+						printf "/usr/bin/sudo /usr/bin/rmdir -- /etc/brave/policies/managed\n" >>"$DOTFILES_TEST_CALL_LOG"
+						;;
+					*) return 64 ;;
+				esac
+				if [[ $operation == write-stage && $DOTFILES_TEST_BRAVE_CORRUPT_STAGE == true ]]; then
+					printf "corrupt\n" >>"$actual"
+				fi
+				if [[ $operation == write-stage && -n $DOTFILES_TEST_BRAVE_CORRUPT_STAGE_METADATA ]]; then
+					case $DOTFILES_TEST_BRAVE_CORRUPT_STAGE_METADATA in
+						owner) brave_test_set_metadata "$logical" 1000 1000 0644 ;;
+						group) brave_test_set_metadata "$logical" 0 1000 0644 ;;
+						mode) brave_test_set_metadata "$logical" 0 0 0666 ;;
+						*) return 64 ;;
+					esac
+				fi
+				if [[ $DOTFILES_TEST_BRAVE_REPLACE_MANAGED_AFTER == "$operation" && ! -e $DOTFILES_TEST_BRAVE_FAILURE_MARKERS/managed-replacement ]]; then
+					touch "$DOTFILES_TEST_BRAVE_FAILURE_MARKERS/managed-replacement"
+					rmdir "$DOTFILES_TEST_BRAVE_SYSTEM/policies/managed" || return 1
+					mkdir "$DOTFILES_TEST_BRAVE_SYSTEM/policies/managed"
+					chmod 0755 "$DOTFILES_TEST_BRAVE_SYSTEM/policies/managed"
+					brave_test_set_metadata /etc/brave/policies/managed 0 0 0755
+				fi
+				if [[ $DOTFILES_TEST_BRAVE_REPLACE_TARGET_AFTER == "$operation" && ! -e $DOTFILES_TEST_BRAVE_FAILURE_MARKERS/target-replacement-after-operation ]]; then
+					touch "$DOTFILES_TEST_BRAVE_FAILURE_MARKERS/target-replacement-after-operation"
+					brave_test_attempt_unprivileged_target_replacement "after-$operation" || true
+				fi
+				if brave_test_fail after "$operation"; then return 78; fi
+			}
+
 			source "$repository/lib/dotfiles/wizard.sh"
 			"$operation" "$@"
 		' bash "$FIXTURE_REPO" "$operation" "$@"

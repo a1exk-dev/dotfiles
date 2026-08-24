@@ -129,7 +129,7 @@ status() {
 
 check() {
 	local command missing=false
-	for command in jq find readlink omarchy; do
+	for command in jq find readlink omarchy node; do
 		if ! command -v "$command" >/dev/null 2>&1; then
 			printf 'Error: missing core inspection command: %s\n' "$command" >&2
 			missing=true
@@ -143,6 +143,9 @@ check() {
 	printf 'Cleanup manifest: valid (%s defaults)\n' "$(jq '[.packages[], .web_apps[], .tuis[]] | length' "$CLEANUP_MANIFEST")"
 	validate_skill_manifest
 	printf 'Skill manifest: valid (%s sources)\n' "$(jq '.sources | length' "$SKILL_MANIFEST")"
+	if ! validate_brave_policy_source; then
+		missing=true
+	fi
 
 	for command in git npx diff; do
 		if ! command -v "$command" >/dev/null 2>&1; then

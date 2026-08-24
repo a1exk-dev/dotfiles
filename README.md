@@ -1,6 +1,6 @@
 # Dotfiles
 
-Portable dotfiles for Omarchy version 4. GNU Stow links tracked configuration into the user's home directory. The Dotfiles wizard manages prerequisites, application cleanup, Stow packages, and pinned global agent skills.
+Portable dotfiles for Omarchy version 4. GNU Stow links tracked configuration into the user's home directory. The Dotfiles wizard manages prerequisites, pinned global agent skills, application cleanup, Stow packages, and the optional shared Brave configuration.
 
 ## Requirements
 
@@ -33,6 +33,10 @@ Skill updates also require write access to `skills.json`.
 
 The wizard can install the Node.js toolchain through Omarchy after confirmation.
 
+Brave policy management requires `chmod`, `chown`, `date`, `diff`, `find`, `flock`, `id`, `install`, `jq`, `mkdir`, `mktemp`, `mv`, Node.js 22.20.0 or newer through `node`, `omarchy`, `pacman`, `readlink`, `rm`, `rmdir`, `stat`, and `sudo`. The privileged adapter requires `/usr/bin/chmod`, `/usr/bin/chown`, `/usr/bin/install`, `/usr/bin/mv`, `/usr/bin/rm`, `/usr/bin/rmdir`, and `/usr/bin/sudo` at those fixed paths.
+
+Applying the policy also requires `brave-bin` and its package-owned `brave` command, or `brave-origin-bin` and its package-owned `brave-origin` command. Apply, remove, and recovery require a writable absolute `XDG_STATE_HOME`, or the default `~/.local/state`, for receipts and backups. Remove does not require an installed browser. The wizard reports the supported Omarchy browser installation commands but does not install or remove a browser.
+
 Gum is optional. The wizard uses Bash prompts when Gum is not available.
 
 The integration tests require Bubblewrap (`bwrap`), GNU Stow, tmux 3.7b, and Starship 1.26.0.
@@ -45,7 +49,7 @@ cd dotfiles
 make
 ```
 
-Choose `Guided setup` to prepare prerequisites, install pinned global skills, clean up selected Omarchy applications, and apply selected Stow packages.
+Choose `Guided setup` to prepare prerequisites, install pinned global skills, clean up selected Omarchy applications, apply selected Stow packages, and optionally apply the shared Brave policy.
 
 Choose `Recover ZTE USB modem` to inspect and, after confirmation, recover the known ZTE USB modem.
 
@@ -53,6 +57,7 @@ Choose `Recover ZTE USB modem` to inspect and, after confirmation, recover the k
 
 - `bin/dotfiles`: Dotfiles wizard entry point
 - `lib/dotfiles/`: wizard operation modules
+- `brave/`: canonical source for the shared Brave managed policy
 - `config/`: Stow packages
 - `packages.json`: package catalog
 - `cleanup.json`: application cleanup profile
@@ -68,6 +73,7 @@ make test
 ## Documentation
 
 - [Stow workflow](docs/stow.md)
+- [Shared Brave configuration](docs/brave.md)
 - [Bash](docs/bash.md)
 - [Starship](docs/starship.md)
 - [Tmux](docs/tmux.md)
