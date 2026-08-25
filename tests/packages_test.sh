@@ -875,8 +875,8 @@ printf "invoked\n" >"$STARSHIP_CACHE/invoked"'
 		printf '  output: %s\n' "$COMMAND_OUTPUT" >&2
 		return 1
 	}
-	assert_contains "$COMMAND_OUTPUT" $'Choose a package (none selected by default)\n  1. Cancel\n  2. bash\n  3. tmux\n  4. ghostty\n  5. starship' \
-		'the public migration command should offer Bash and Starship as independent choices' || return 1
+	assert_contains "$COMMAND_OUTPUT" $'Choose a package (none selected by default)\n  1. Cancel\n  2. bash\n  3. tmux\n  4. ghostty\n  5. starship\n  6. btop' \
+		'appending btop should preserve the existing Starship migration number' || return 1
 	assert_contains "$COMMAND_OUTPUT" $'Plan: migration package order:\n  1. starship (selected; migrate and apply)' \
 		'the public migration command should plan only the selected Starship package' || return 1
 	if [[ $COMMAND_OUTPUT == *'Plan simulation: apply bash'* || $COMMAND_OUTPUT == *'Package bash prerequisites:'* ]]; then

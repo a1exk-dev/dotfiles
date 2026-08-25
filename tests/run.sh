@@ -7,6 +7,7 @@ readonly SUITES=(
 	inspection_test.sh
 	bash_test.sh
 	starship_test.sh
+	btop_test.sh
 	tmux_test.sh
 	packages_test.sh
 	skills_test.sh

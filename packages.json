@@ -61,5 +61,25 @@
 			"Migration backups remain under the Dotfiles XDG state backup tree",
 			"Optional post-removal baseline restoration command (reported only, not run): omarchy refresh config starship.toml"
 		]
+	}, {
+		"name": "btop",
+		"path": "config/btop",
+		"description": "Complete Omarchy-based btop configuration for this machine's ACPI THRM CPU sensor (thermal1/acpitz)",
+		"dependencies": [],
+		"arch_packages": ["btop"],
+		"prerequisites": [],
+		"validators": [
+			"bash -c 'config=$HOME/.config/btop/btop.conf; [[ -r $config ]] || { printf \"Error: btop config is not readable: %s\\n\" \"$config\" >&2; exit 1; }; required=(\"#? Config file for btop v.1.4.7\" \"color_theme = \\\"current\\\"\" \"disable_presets = \\\"Off\\\"\" \"vim_keys = true\" \"disable_mouse = false\" \"shown_boxes = \\\"cpu mem net proc\\\"\" \"proc_follow_detailed = true\" \"cpu_sensor = \\\"thermal1/acpitz\\\"\" \"swap_upload_download = false\" \"save_config_on_exit = true\" \"shown_gpus = \\\"nvidia amd intel\\\"\"); for line in \"${required[@]}\"; do grep -Fqx -- \"$line\" \"$config\" || { printf \"Error: btop config is missing required line: %s\\n\" \"$line\" >&2; exit 1; }; done'",
+			"bash -c 'zone=/sys/class/thermal/thermal_zone1; for file in device/path type temp; do [[ -r $zone/$file ]] || { printf \"Error: btop CPU sensor thermal1/acpitz is incompatible with this hardware: %s is not readable\\n\" \"$zone/$file\" >&2; exit 1; }; done; IFS= read -r identity < \"$zone/device/path\"; IFS= read -r type < \"$zone/type\"; IFS= read -r temp < \"$zone/temp\"; [[ $identity == \"\\\\_TZ_.THRM\" ]] || { printf \"Error: btop CPU sensor thermal1/acpitz requires ACPI THRM at thermal_zone1; found %s\\n\" \"$identity\" >&2; exit 1; }; [[ $type == acpitz ]] || { printf \"Error: btop CPU sensor thermal1/acpitz requires type acpitz at thermal_zone1; found %s\\n\" \"$type\" >&2; exit 1; }; [[ $temp =~ ^-?[0-9]+$ ]] || { printf \"Error: btop CPU sensor thermal1/acpitz returned an unreadable temperature: %s\\n\" \"$temp\" >&2; exit 1; }'"
+		],
+		"documentation": "docs/btop.md",
+		"cleanup": [
+			"Removing this package leaves ~/.config/btop/btop.conf absent",
+			"Arch package btop remains installed",
+			"btop themes under ~/.config/btop/themes, the log at ~/.local/state/btop.log, and other runtime state are not removed",
+			"Existing btop configuration backups under ~/.config/btop are not removed",
+			"Migration backups remain under the Dotfiles XDG state backup tree",
+			"Optional post-removal baseline restoration command (reported only, not run): omarchy refresh config btop/btop.conf"
+		]
 	}]
 }

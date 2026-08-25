@@ -39,7 +39,7 @@ Applying the policy also requires `brave-bin` and its package-owned `brave` comm
 
 Gum is optional. The wizard uses Bash prompts when Gum is not available.
 
-The integration tests require Bubblewrap (`bwrap`), GNU Stow, tmux 3.7b, and Starship 1.26.0.
+The integration tests require Bubblewrap (`bwrap`), GNU Stow, btop 1.4.7, tmux 3.7b, and Starship 1.26.0.
 
 ## Quick start
 
@@ -78,6 +78,7 @@ make test
 - [Starship](docs/starship.md)
 - [Tmux](docs/tmux.md)
 - [Ghostty](docs/ghostty.md)
+- [btop](docs/btop.md)
 - [ZTE USB modem recovery](docs/usb-modem.md)
 - [Application cleanup](docs/cleanup.md)
 - [Agent setup](docs/agent-setup.md)

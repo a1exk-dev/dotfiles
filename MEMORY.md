@@ -70,7 +70,7 @@ Applies when: A configuration first requires a monitor name, device path, userna
 
 Guidance: Decide the handling mechanism from that concrete case instead of adding profiles or templates in advance.
 
-Reason: The repository has no current machine-specific requirement to design around.
+Reason: Profiles and templates add complexity before a concrete machine-specific requirement establishes the needed boundary.
 
 ## Operate Stow packages safely
 
@@ -103,6 +103,14 @@ Applies when: Implementing or maintaining tmux configuration.
 Guidance: Use the `tmux` Stow package to own a complete replacement for the active tmux configuration. Seed it from the packaged Omarchy baseline; inspect and back up the prior live file without adopting it. Track one self-contained replacement rather than a pristine baseline snapshot or sourced drop-in. Removal leaves the active configuration absent and reports restoration of the packaged baseline as a separate Omarchy-owned recovery action.
 
 Reason: Omarchy has no stable tmux override seam; a sourced drop-in loses its include on refresh, while direct live edits are not portable or repository-owned.
+
+## Validate btop's machine-specific CPU sensor
+
+Applies when: Changing or applying the `btop` package, or diagnosing its CPU temperature.
+
+Guidance: Keep the complete configuration machine-scoped. Apply it only after the hardware check in `docs/btop.md` passes. Treat `No good candidate for cpu sensor found` as inconclusive; verification is complete when btop's displayed temperature agrees with repeated reads from the configured thermal zone after unit conversion.
+
+Reason: btop offers no include or drop-in seam; the supported release can emit that warning while building its Auto fallback before using the explicit selector, and ACPI THRM is a processor-associated proxy rather than package temperature.
 
 ## Stop before tracking sensitive values
 
@@ -144,13 +152,13 @@ Guidance: Decide whether Git stores source, output, or both after reviewing that
 
 Reason: The repository has no single generated-file policy that fits every configuration concern.
 
-## Review Omarchy writes through Stow links
+## Review writes through Stow links
 
-Applies when: An Omarchy update, migration, refresh, reinstall, installer, or hook can write to a path owned through a Stow symlink.
+Applies when: An application or an Omarchy update, migration, refresh, reinstall, installer, or hook can write to a path owned through a Stow symlink.
 
-Guidance: Treat the resulting repository-source edit as a proposed Git change. Compare it with the packaged default, keep or reject it deliberately, restore required customizations, and run package validation. Treat `omarchy refresh config` as a tracked replacement rather than a local reset when its target is linked. Before `omarchy reinstall configs`, unlink affected packages or explicitly accept that it will overwrite their repository sources.
+Guidance: Treat any resulting repository-source edit as a proposed Git change: review it, keep or reject it deliberately, restore required customizations, and run package validation. For Omarchy writes, also compare the packaged default. Treat `omarchy refresh config` as a tracked replacement rather than a local reset when its target is linked. Before `omarchy reinstall configs` or `omarchy reinstall`, unlink affected packages or explicitly accept that it will overwrite their repository sources.
 
-Reason: Omarchy file operations can follow the symlink and modify the repository-owned source instead of isolated live state.
+Reason: Writers can follow the symlink and modify the repository-owned source instead of isolated live state.
 
 ## Fail Starship validation on diagnostics
 

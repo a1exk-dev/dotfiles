@@ -416,7 +416,7 @@ test_check_accepts_tmux_validator_before_tmux_is_installed() {
 
 	assert_eq 0 "$COMMAND_STATUS" \
 		'check should accept the shell-fronted tmux validator before its declared Arch package is installed' || return 1
-	assert_contains "$COMMAND_OUTPUT" 'Package catalog: valid (4 packages)' \
+	assert_contains "$COMMAND_OUTPUT" 'Package catalog: valid (5 packages)' \
 		'preflight should still inspect the complete real catalog'
 }
 
@@ -424,7 +424,7 @@ test_check_accepts_starship_validator_before_starship_is_installed() {
 	new_fixture
 	ln -s "$(command -v sh)" "$FIXTURE_BIN/sh"
 	make_fake ghostty 'exit 0'
-	set_installed_arch_packages thefuck tmux fzf less
+	set_installed_arch_packages thefuck tmux fzf less btop
 	local command_path
 	command_path=$(restricted_path_without_stow)
 	if PATH=$command_path command -v starship >/dev/null 2>&1; then
