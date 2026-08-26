@@ -24,6 +24,14 @@ Guidance: Maintain one explicit current target and change it only through a deli
 
 Reason: One target keeps compatibility bounded; version differences can invalidate full replacements and managed-path assumptions before ordinary validation exposes them.
 
+## Keep the Omarchy root separate from command paths
+
+Applies when: Invoking packaged Omarchy commands from Bash, especially from a process that inherits exported `OMARCHY_PATH`.
+
+Guidance: Keep `OMARCHY_PATH` as the installation root `/usr/share/omarchy`; use a differently named variable for an Omarchy executable. For an exact compatibility probe, use a minimal environment with the fixed root, `/usr/bin` path, and C locale, and test under an inherited exported `OMARCHY_PATH`.
+
+Reason: Bash preserves an inherited variable's export attribute across assignment. Reusing `OMARCHY_PATH` for `/usr/share/omarchy/bin/omarchy` makes `omarchy-version` interpret the executable as its installation root and report a development version.
+
 ## Keep archived shell migration on Bash
 
 Applies when: Planning or implementing shell configuration from the archived Zsh files.
