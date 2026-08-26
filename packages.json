@@ -81,5 +81,21 @@
 			"Migration backups remain under the Dotfiles XDG state backup tree",
 			"Optional post-removal baseline restoration command (reported only, not run): omarchy refresh config btop/btop.conf"
 		]
+	}, {
+		"name": "opencode",
+		"path": "config/opencode",
+		"description": "Complete global OpenCode runtime and TUI settings",
+		"dependencies": [],
+		"arch_packages": [],
+		"prerequisites": ["opencode"],
+		"validators": ["bash lib/dotfiles/opencode-validator.sh \"$HOME/.config/opencode/opencode.json\" \"$HOME/.config/opencode/tui.json\""],
+		"documentation": "docs/opencode.md",
+		"cleanup": [
+			"Removing this package leaves ~/.config/opencode/opencode.json and ~/.config/opencode/tui.json absent",
+			"The Mise-managed OpenCode executable and Omarchy wrapper remain installed",
+			"Generated OpenCode config siblings, credentials, XDG data, state, caches, plugins, downloaded tools, themes, and language servers are not removed",
+			"Migration backups remain under the Dotfiles XDG state backup tree",
+			"Restart OpenCode after removal or reapplication"
+		]
 	}]
 }

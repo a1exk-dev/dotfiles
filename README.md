@@ -18,6 +18,8 @@ USB modem recovery requires `sudo`, `nmcli`, `readlink`, Linux sysfs, and an xHC
 
 Stow package application, migration, and removal require GNU Stow. The wizard can install it through Omarchy after confirmation. Migration also requires a writable absolute `XDG_STATE_HOME`, or the default `~/.local/state`, for backups.
 
+The `opencode` Stow package owns complete global OpenCode runtime and TUI settings. It requires OpenCode installed through Omarchy 4's Mise flow, but it does not install or update OpenCode.
+
 Some Stow packages need Arch packages. Apply and migration plans list anything missing. After confirmation, the wizard installs and verifies those packages through Omarchy before it changes Stow links.
 
 Pinned global skill installation and updates also require:
@@ -39,7 +41,7 @@ Applying the policy also requires `brave-bin` and its package-owned `brave` comm
 
 Gum is optional. The wizard uses Bash prompts when Gum is not available.
 
-The integration tests require Bubblewrap (`bwrap`), GNU Stow, btop 1.4.7, tmux 3.7b, and Starship 1.26.0.
+The integration tests require Bubblewrap (`bwrap`), GNU Stow, btop 1.4.7, tmux 3.7b, Starship 1.26.0, and OpenCode 1.18.23.
 
 ## Quick start
 
@@ -59,6 +61,7 @@ Choose `Recover ZTE USB modem` to inspect and, after confirmation, recover the k
 - `lib/dotfiles/`: wizard operation modules
 - `brave/`: canonical source for the shared Brave managed policy
 - `config/`: Stow packages
+- `config/opencode/`: complete global OpenCode runtime and TUI settings
 - `packages.json`: package catalog
 - `cleanup.json`: application cleanup profile
 - `skills.json`: pinned global skill sources
@@ -70,6 +73,12 @@ Run the test suite with:
 make test
 ```
 
+Run the focused OpenCode tests with:
+
+```bash
+bash tests/opencode_test.sh
+```
+
 ## Documentation
 
 - [Stow workflow](docs/stow.md)
@@ -79,6 +88,7 @@ make test
 - [Tmux](docs/tmux.md)
 - [Ghostty](docs/ghostty.md)
 - [btop](docs/btop.md)
+- [OpenCode](docs/opencode.md)
 - [ZTE USB modem recovery](docs/usb-modem.md)
 - [Application cleanup](docs/cleanup.md)
 - [Agent setup](docs/agent-setup.md)

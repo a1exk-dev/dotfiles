@@ -137,6 +137,7 @@ exit 64'
 fi
 exec "$DOTFILES_TEST_REAL_NODE" "$@"'
 	make_fake npm 'exit 0'
+	make_fake opencode 'printf "unexpected generic opencode invocation\n" >>"$DOTFILES_TEST_CALL_LOG"; exit 99'
 }
 
 brave_metadata_key() {

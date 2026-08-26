@@ -75,9 +75,9 @@ test_btop_catalog_and_stow_package_have_the_approved_boundary() {
 	local package_root=$FIXTURE_REPO/config/btop
 	local expected_tree actual_tree owners validators config_validator sensor_validator
 
-	assert_eq '["bash","tmux","ghostty","starship","btop"]' \
+	assert_eq '["bash","tmux","ghostty","starship","btop","opencode"]' \
 		"$(jq -c '[.packages[].name]' "$catalog")" \
-		'btop should be appended without changing existing wizard package numbers' || return 1
+		'opencode should be appended after btop without changing existing wizard package numbers' || return 1
 	assert_eq 1 "$(jq '[.packages[] | select(.name == "btop")] | length' "$catalog")" \
 		'the catalog should declare btop exactly once' || return 1
 	assert_eq config/btop "$(jq -r '.packages[] | select(.name == "btop") | .path' "$catalog")" \
