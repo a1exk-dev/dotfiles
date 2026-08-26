@@ -1,6 +1,6 @@
 # Dotfiles
 
-Portable dotfiles for Omarchy version 4. GNU Stow links tracked configuration into the user's home directory. The Dotfiles wizard manages prerequisites, pinned global agent skills, application cleanup, Stow packages, and the optional shared Brave configuration.
+Portable dotfiles for Omarchy version 4. GNU Stow links tracked configuration into the user's home directory. The Dotfiles wizard manages prerequisites, pinned global agent skills, application cleanup, Stow packages, the optional shared Brave configuration, and Telegram Desktop's optional Omarchy theme integration.
 
 ## Requirements
 
@@ -19,6 +19,8 @@ USB modem recovery requires `sudo`, `nmcli`, `readlink`, Linux sysfs, and an xHC
 Stow package application, migration, and removal require GNU Stow. The wizard can install it through Omarchy after confirmation. Migration also requires a writable absolute `XDG_STATE_HOME`, or the default `~/.local/state`, for backups.
 
 The `opencode` Stow package owns complete global OpenCode runtime and TUI settings. It requires OpenCode installed through Omarchy 4's Mise flow, but it does not install or update OpenCode.
+
+The `telegram-theme` Stow package supports exactly Omarchy `4.0.1-1` and Telegram Desktop `7.0.9-4`. It requires Node.js 22.20.0 or newer, `zip`, `flock`, and writable absolute XDG state and runtime directories. The package plan installs `telegram-desktop` and `zip` through Omarchy after confirmation.
 
 Some Stow packages need Arch packages. Apply and migration plans list anything missing. After confirmation, the wizard installs and verifies those packages through Omarchy before it changes Stow links.
 
@@ -41,7 +43,7 @@ Applying the policy also requires `brave-bin` and its package-owned `brave` comm
 
 Gum is optional. The wizard uses Bash prompts when Gum is not available.
 
-The integration tests require Bubblewrap (`bwrap`), GNU Stow, btop 1.4.7, tmux 3.7b, Starship 1.26.0, and OpenCode 1.18.23.
+The integration tests require Bubblewrap (`bwrap`), GNU Stow, btop 1.4.7, tmux 3.7b, Starship 1.26.0, OpenCode 1.18.23, the Omarchy 4.0.1 stock themes, `zip`, `unzip`, and `inotifywait`.
 
 ## Quick start
 
@@ -55,6 +57,8 @@ Choose `Guided setup` to prepare prerequisites, install pinned global skills, cl
 
 Choose `Recover ZTE USB modem` to inspect and, after confirmation, recover the known ZTE USB modem.
 
+Choose `Manage Telegram theme` to inspect status, run the approved bootstrap refresh, or retry generation.
+
 ## Repository layout
 
 - `bin/dotfiles`: Dotfiles wizard entry point
@@ -62,6 +66,7 @@ Choose `Recover ZTE USB modem` to inspect and, after confirmation, recover the k
 - `brave/`: canonical source for the shared Brave managed policy
 - `config/`: Stow packages
 - `config/opencode/`: complete global OpenCode runtime and TUI settings
+- `config/telegram-theme/`: Telegram Desktop theme generator and Omarchy integration assets
 - `packages.json`: package catalog
 - `cleanup.json`: application cleanup profile
 - `skills.json`: pinned global skill sources
@@ -89,6 +94,7 @@ bash tests/opencode_test.sh
 - [Ghostty](docs/ghostty.md)
 - [btop](docs/btop.md)
 - [OpenCode](docs/opencode.md)
+- [Telegram Desktop theme integration](docs/telegram-theme.md)
 - [ZTE USB modem recovery](docs/usb-modem.md)
 - [Application cleanup](docs/cleanup.md)
 - [Agent setup](docs/agent-setup.md)

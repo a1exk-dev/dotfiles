@@ -24,8 +24,8 @@ test_top_level_menu_starts_with_guided_setup() {
 	run_dotfiles "$FIXTURE_ROOT"
 
 	assert_eq 0 "$COMMAND_STATUS" 'an empty menu choice should safely exit' || return 1
-	assert_contains "$COMMAND_OUTPUT" $'  1. Guided setup\n  2. Package status\n  3. Run structural checks\n  4. Apply Stow packages\n  5. Migrate existing target\n  6. Remove Stow package\n  7. Prepare prerequisites\n  8. Clean up Omarchy applications\n  9. Install pinned global skills\n  10. Update pinned global skills\n  11. Recover ZTE USB modem\n  12. Manage Brave policy\n  13. Exit' \
-		'the Brave policy action should be available without renumbering existing actions' || return 1
+	assert_contains "$COMMAND_OUTPUT" $'  1. Guided setup\n  2. Package status\n  3. Run structural checks\n  4. Apply Stow packages\n  5. Migrate existing target\n  6. Remove Stow package\n  7. Prepare prerequisites\n  8. Clean up Omarchy applications\n  9. Install pinned global skills\n  10. Update pinned global skills\n  11. Recover ZTE USB modem\n  12. Manage Brave policy\n  13. Manage Telegram theme\n  14. Exit' \
+		'the Telegram theme action should be appended before Exit without renumbering existing actions' || return 1
 	assert_contains "$COMMAND_OUTPUT" 'No action selected.' 'no action should be selected by default'
 }
 
@@ -98,6 +98,17 @@ test_brave_public_action_preselection_dispatches() {
 	assert_contains "$COMMAND_OUTPUT" 'Manage Brave policy' 'the public Brave action should dispatch to the shared manager' || return 1
 	assert_contains "$COMMAND_OUTPUT" $'  1. Status\n  2. Apply\n  3. Remove\n  4. Back' \
 		'the Brave manager should expose only the approved policy operations'
+}
+
+test_default_make_menu_dispatches_telegram_theme_management() {
+	new_fixture
+	DOTFILES_TEST_INPUT='13\n4\n' run_make "$FIXTURE_ROOT"
+
+	assert_eq 0 "$COMMAND_STATUS" 'default make menu item 13 should open and leave Telegram theme management' || return 1
+	assert_contains "$COMMAND_OUTPUT" 'Manage Telegram theme' \
+		'the main Bash menu should dispatch its Telegram theme action' || return 1
+	assert_contains "$COMMAND_OUTPUT" $'  1. Status\n  2. Setup / refresh\n  3. Retry\n  4. Back' \
+		'the dispatched Telegram manager should expose its supported operations'
 }
 
 test_status_and_check_standalone_actions() {
@@ -501,6 +512,7 @@ run_test test_public_action_preselection_dispatches 'public action preselection 
 run_test test_modem_public_action_preselection_dispatches 'modem public action preselection dispatches'
 run_test test_modem_menu_selection_dispatches 'modem menu selection dispatches'
 run_test test_brave_public_action_preselection_dispatches 'Brave public action preselection dispatches'
+run_test test_default_make_menu_dispatches_telegram_theme_management 'default Make menu dispatches Telegram theme management'
 run_test test_status_and_check_standalone_actions 'status and checks remain standalone actions'
 run_test test_bash_apply_standalone_uses_one_multiselect_and_dependency_order 'Bash apply resolves a multi-selection in dependency order'
 run_test test_gum_apply_has_no_default_selection 'Gum apply has no default selection'

@@ -1,0 +1,321 @@
+#!/usr/bin/env bash
+
+set -uo pipefail
+
+readonly TELEGRAM_THEME_EXPECTED_OMARCHY='4.0.1-1'
+readonly TELEGRAM_THEME_EXPECTED_TELEGRAM='7.0.9-4'
+readonly TELEGRAM_THEME_MINIMUM_NODE='22.20.0'
+
+telegram_theme_hook_notify() {
+	local message=$1
+	if command -v omarchy-notification-send >/dev/null 2>&1 &&
+		omarchy-notification-send -u normal 'Telegram theme update failed' "$message" >/dev/null 2>&1; then
+		return 0
+	fi
+	if command -v notify-send >/dev/null 2>&1; then
+		notify-send --app-name=dotfiles 'Telegram theme update failed' "$message" >/dev/null 2>&1 || true
+	fi
+}
+
+telegram_theme_hook_previous_fingerprint() {
+	[[ -f $TELEGRAM_THEME_STATUS ]] || return 0
+	jq -r 'select(.schema_version == 1 and .status == "error") | .failure_fingerprint // empty' \
+		"$TELEGRAM_THEME_STATUS" 2>/dev/null || true
+}
+
+telegram_theme_hook_add_fingerprint() {
+	local previous=$1 canonical fingerprint temporary
+	canonical=$(jq -cS --arg slug "$TELEGRAM_THEME_SLUG" \
+		'.slug = $slug | del(.failure_fingerprint, .created_at, .generated_at, .timestamp, .updated_at)' \
+		"$TELEGRAM_THEME_STATUS" 2>/dev/null) || return 1
+	read -r fingerprint _ < <(printf '%s' "$canonical" | sha256sum) || return 1
+	temporary=$(mktemp "$TELEGRAM_THEME_STATE_ROOT/.status.XXXXXX") || return 1
+	if ! jq --arg slug "$TELEGRAM_THEME_SLUG" --arg fingerprint "$fingerprint" \
+		'.slug = $slug | .failure_fingerprint = $fingerprint' \
+		"$TELEGRAM_THEME_STATUS" >"$temporary" ||
+		! chmod 0600 "$temporary" || ! mv -f -- "$temporary" "$TELEGRAM_THEME_STATUS"; then
+		rm -f -- "$temporary"
+		return 1
+	fi
+	if [[ $fingerprint != "$previous" ]]; then
+		telegram_theme_hook_notify "$(jq -r '.message // "Generation failed"' "$TELEGRAM_THEME_STATUS")"
+	fi
+}
+
+telegram_theme_hook_write_failure() {
+	local previous=$1 stage=$2 message=$3 detected_omarchy=${4-unknown} detected_telegram=${5-unknown}
+	local temporary
+	temporary=$(mktemp "$TELEGRAM_THEME_STATE_ROOT/.status.XXXXXX") || return 1
+	if ! jq -n \
+		--arg slug "$TELEGRAM_THEME_SLUG" \
+		--arg stage "$stage" \
+		--arg message "$message" \
+		--arg expected_omarchy "$TELEGRAM_THEME_EXPECTED_OMARCHY" \
+		--arg expected_telegram "$TELEGRAM_THEME_EXPECTED_TELEGRAM" \
+		--arg detected_omarchy "$detected_omarchy" \
+		--arg detected_telegram "$detected_telegram" \
+		'{schema_version:1,status:"error",slug:$slug,stage:$stage,message:$message,packages:{omarchy:{expected:$expected_omarchy,detected:$detected_omarchy},telegram_desktop:{expected:$expected_telegram,detected:$detected_telegram}}}' \
+		>"$temporary" || ! chmod 0600 "$temporary" || ! mv -f -- "$temporary" "$TELEGRAM_THEME_STATUS"; then
+		rm -f -- "$temporary"
+		return 1
+	fi
+	telegram_theme_hook_add_fingerprint "$previous"
+}
+
+telegram_theme_hook_fail() {
+	local previous=$1 stage=$2 message=$3 detected_omarchy=${4-unknown} detected_telegram=${5-unknown}
+	telegram_theme_hook_write_failure "$previous" "$stage" "$message" "$detected_omarchy" "$detected_telegram" ||
+		printf 'Telegram theme hook could not record failure status: %s\n' "$message" >&2
+	printf 'Telegram theme hook failed: %s\n' "$message" >&2
+	return 1
+}
+
+telegram_theme_hook_node_version() {
+	local output
+	output=$(node --version 2>/dev/null) || return 1
+	[[ $output != *$'\n'* && $output =~ ^v([0-9]+[.][0-9]+[.][0-9]+)$ ]] || return 1
+	printf '%s\n' "${BASH_REMATCH[1]}"
+}
+
+telegram_theme_hook_version_at_least() {
+	local actual=$1 required=$2
+	local actual_major actual_minor actual_patch required_major required_minor required_patch
+	IFS=. read -r actual_major actual_minor actual_patch <<<"$actual"
+	IFS=. read -r required_major required_minor required_patch <<<"$required"
+	((10#$actual_major > 10#$required_major)) && return 0
+	((10#$actual_major < 10#$required_major)) && return 1
+	((10#$actual_minor > 10#$required_minor)) && return 0
+	((10#$actual_minor < 10#$required_minor)) && return 1
+	((10#$actual_patch >= 10#$required_patch))
+}
+
+if (($# != 1)) || [[ -z $1 ]]; then
+	printf 'Telegram theme hook requires exactly one non-empty theme slug.\n' >&2
+	exit 2
+fi
+
+readonly TELEGRAM_THEME_SLUG=$1
+readonly TELEGRAM_THEME_STATE_HOME=${XDG_STATE_HOME:-"$HOME/.local/state"}
+readonly TELEGRAM_THEME_STATE_ROOT="$TELEGRAM_THEME_STATE_HOME/dotfiles/telegram-theme"
+readonly TELEGRAM_THEME_STATUS="$TELEGRAM_THEME_STATE_ROOT/status.json"
+readonly TELEGRAM_THEME_OUTPUT="$TELEGRAM_THEME_STATE_ROOT/current.tdesktop-theme"
+readonly TELEGRAM_THEME_ACTIVE_ROOT="$TELEGRAM_THEME_STATE_HOME/omarchy/current"
+readonly TELEGRAM_THEME_MANIFEST="$TELEGRAM_THEME_ACTIVE_ROOT/theme/telegram-omarchy-theme.json"
+readonly TELEGRAM_THEME_HELPER="$HOME/.local/libexec/dotfiles/telegram-theme/generate.mjs"
+readonly TELEGRAM_THEME_RUNTIME=${XDG_RUNTIME_DIR:-}
+
+telegram_theme_temporary_manifest=''
+telegram_theme_generator_stderr=''
+telegram_theme_hook_cleanup() {
+	if [[ -n ${telegram_theme_omarchy_lock_fd:-} ]]; then
+		flock --unlock "$telegram_theme_omarchy_lock_fd" 2>/dev/null || true
+		exec {telegram_theme_omarchy_lock_fd}>&-
+		unset telegram_theme_omarchy_lock_fd
+	fi
+	if [[ -n ${telegram_theme_lock_fd:-} ]]; then
+		flock --unlock "$telegram_theme_lock_fd" 2>/dev/null || true
+		exec {telegram_theme_lock_fd}>&-
+		unset telegram_theme_lock_fd
+	fi
+	if [[ -n $telegram_theme_temporary_manifest ]]; then
+		rm -f -- "$telegram_theme_temporary_manifest"
+		telegram_theme_temporary_manifest=''
+	fi
+	if [[ -n $telegram_theme_generator_stderr ]]; then
+		rm -f -- "$telegram_theme_generator_stderr"
+		telegram_theme_generator_stderr=''
+	fi
+}
+
+trap telegram_theme_hook_cleanup EXIT
+trap 'exit 1' HUP INT TERM
+
+umask 077
+if [[ $TELEGRAM_THEME_STATE_HOME != /* ]]; then
+	printf 'Telegram theme hook requires an absolute XDG_STATE_HOME.\n' >&2
+	exit 1
+fi
+if ! mkdir -p -- "$TELEGRAM_THEME_STATE_ROOT"; then
+	printf 'Telegram theme hook could not create integration state: %s\n' "$TELEGRAM_THEME_STATE_ROOT" >&2
+	exit 1
+fi
+
+previous_fingerprint=$(telegram_theme_hook_previous_fingerprint)
+if [[ -z $TELEGRAM_THEME_RUNTIME || $TELEGRAM_THEME_RUNTIME != /* ]]; then
+	telegram_theme_hook_fail "$previous_fingerprint" runtime \
+		'Telegram theme synchronization requires an absolute XDG_RUNTIME_DIR.'
+	exit $?
+fi
+if ! mkdir -p -- "$TELEGRAM_THEME_RUNTIME"; then
+	telegram_theme_hook_fail "$previous_fingerprint" runtime \
+		"Could not access XDG runtime directory: $TELEGRAM_THEME_RUNTIME"
+	exit $?
+fi
+if ! command -v flock >/dev/null 2>&1; then
+	telegram_theme_hook_fail "$previous_fingerprint" runtime 'Required integration lock command is unavailable: flock'
+	exit $?
+fi
+
+exec {telegram_theme_lock_fd}>"$TELEGRAM_THEME_RUNTIME/dotfiles-telegram-theme.lock" || {
+	telegram_theme_hook_fail "$previous_fingerprint" runtime 'Could not open the Telegram theme integration lock.'
+	exit $?
+}
+if ! flock --exclusive "$telegram_theme_lock_fd"; then
+	telegram_theme_hook_fail "$previous_fingerprint" runtime 'Could not acquire the Telegram theme integration lock.'
+	exit $?
+fi
+
+# Another hook may have updated failure status while this process waited.
+previous_fingerprint=$(telegram_theme_hook_previous_fingerprint)
+
+detected_omarchy=unknown
+detected_telegram=unknown
+omarchy_query=$(LC_ALL=C pacman -Q omarchy 2>/dev/null) && detected_omarchy=${omarchy_query#omarchy } || true
+telegram_query=$(LC_ALL=C pacman -Q telegram-desktop 2>/dev/null) && detected_telegram=${telegram_query#telegram-desktop } || true
+if [[ $omarchy_query != "omarchy $TELEGRAM_THEME_EXPECTED_OMARCHY" ||
+	$telegram_query != "telegram-desktop $TELEGRAM_THEME_EXPECTED_TELEGRAM" ]]; then
+	message="Unsupported package versions. Required: omarchy $TELEGRAM_THEME_EXPECTED_OMARCHY and telegram-desktop $TELEGRAM_THEME_EXPECTED_TELEGRAM; detected: omarchy $detected_omarchy and telegram-desktop $detected_telegram."
+	telegram_theme_hook_fail "$previous_fingerprint" compatibility "$message" "$detected_omarchy" "$detected_telegram"
+	exit $?
+fi
+
+if [[ ! -r $TELEGRAM_THEME_HELPER ]]; then
+	telegram_theme_hook_fail "$previous_fingerprint" helper \
+		"Installed Telegram theme helper is unavailable: $TELEGRAM_THEME_HELPER" "$detected_omarchy" "$detected_telegram"
+	exit $?
+fi
+if ! command -v node >/dev/null 2>&1; then
+	telegram_theme_hook_fail "$previous_fingerprint" helper \
+		'Required Telegram theme generator runtime is unavailable: node' "$detected_omarchy" "$detected_telegram"
+	exit $?
+fi
+detected_node=unavailable
+if ! detected_node=$(telegram_theme_hook_node_version); then
+	telegram_theme_hook_fail "$previous_fingerprint" helper \
+		"Node.js version is unavailable or malformed; required version is $TELEGRAM_THEME_MINIMUM_NODE or newer." \
+		"$detected_omarchy" "$detected_telegram"
+	exit $?
+fi
+if ! telegram_theme_hook_version_at_least "$detected_node" "$TELEGRAM_THEME_MINIMUM_NODE"; then
+	telegram_theme_hook_fail "$previous_fingerprint" helper \
+		"Node.js $detected_node is below required version $TELEGRAM_THEME_MINIMUM_NODE." \
+		"$detected_omarchy" "$detected_telegram"
+	exit $?
+fi
+
+# Omarchy releases this lock before dispatching hooks. Taking the integration
+# lock first is acyclic because theme-set never waits for it while holding this lock.
+exec {telegram_theme_omarchy_lock_fd}>"$TELEGRAM_THEME_RUNTIME/omarchy-theme-set.lock" || {
+	telegram_theme_hook_fail "$previous_fingerprint" runtime 'Could not open the Omarchy theme-set lock.' \
+		"$detected_omarchy" "$detected_telegram"
+	exit $?
+}
+if ! flock --exclusive "$telegram_theme_omarchy_lock_fd"; then
+	telegram_theme_hook_fail "$previous_fingerprint" runtime 'Could not acquire the Omarchy theme-set lock.' \
+		"$detected_omarchy" "$detected_telegram"
+	exit $?
+fi
+
+if [[ ! -r $TELEGRAM_THEME_ACTIVE_ROOT/theme.name ]]; then
+	telegram_theme_hook_fail "$previous_fingerprint" active-theme \
+		"Active Omarchy theme slug is unavailable: $TELEGRAM_THEME_ACTIVE_ROOT/theme.name"
+	exit $?
+fi
+current_slug=$(<"$TELEGRAM_THEME_ACTIVE_ROOT/theme.name")
+if [[ $current_slug != "$TELEGRAM_THEME_SLUG" ]]; then
+	exit 0
+fi
+if [[ ! $TELEGRAM_THEME_SLUG =~ ^[A-Za-z0-9][A-Za-z0-9._-]*$ ]]; then
+	telegram_theme_hook_fail "$previous_fingerprint" active-theme \
+		'The active Omarchy theme slug is not safe for the Telegram manifest.'
+	exit $?
+fi
+if [[ ! -r $TELEGRAM_THEME_MANIFEST ]]; then
+	telegram_theme_hook_fail "$previous_fingerprint" manifest \
+		"Rendered active-theme manifest is unavailable: $TELEGRAM_THEME_MANIFEST" "$detected_omarchy" "$detected_telegram"
+	exit $?
+fi
+
+telegram_theme_temporary_manifest=$(mktemp "$TELEGRAM_THEME_STATE_ROOT/.manifest.XXXXXX") || {
+	telegram_theme_hook_fail "$previous_fingerprint" manifest \
+		'Could not create a secure integration-owned manifest copy.' "$detected_omarchy" "$detected_telegram"
+	exit $?
+}
+if ! jq -e --arg slug "$TELEGRAM_THEME_SLUG" '
+	if type != "object" then error("manifest must be an object")
+	elif (keys | sort) != ["colors", "mode", "schema_version", "slug"] then
+		error("manifest top-level keys do not match schema version 1")
+	elif .schema_version != 1 then error("manifest schema version is unsupported")
+	elif (.slug | type) != "string" then error("manifest slug sentinel must be a string")
+	else .slug = $slug
+	end
+' "$TELEGRAM_THEME_MANIFEST" >"$telegram_theme_temporary_manifest" 2>/dev/null ||
+	! chmod 0600 "$telegram_theme_temporary_manifest"; then
+	telegram_theme_hook_fail "$previous_fingerprint" manifest \
+		'The rendered active-theme manifest is invalid and could not be staged safely.' \
+		"$detected_omarchy" "$detected_telegram"
+	exit $?
+fi
+
+telegram_theme_generator_stderr=$(mktemp "$TELEGRAM_THEME_STATE_ROOT/.generator-stderr.XXXXXX") || {
+	telegram_theme_hook_fail "$previous_fingerprint" generator \
+		'Could not create a secure generator diagnostic file.' "$detected_omarchy" "$detected_telegram"
+	exit $?
+}
+generator_output=$(node "$TELEGRAM_THEME_HELPER" \
+	--manifest "$telegram_theme_temporary_manifest" \
+	--output "$TELEGRAM_THEME_OUTPUT" \
+	--status "$TELEGRAM_THEME_STATUS" \
+	--guard "$TELEGRAM_THEME_SLUG:$TELEGRAM_THEME_ACTIVE_ROOT/theme.name" 2>"$telegram_theme_generator_stderr")
+generator_status=$?
+generator_error=$(<"$telegram_theme_generator_stderr")
+rm -f -- "$telegram_theme_generator_stderr"
+telegram_theme_generator_stderr=''
+if ((generator_status != 0)); then
+	[[ -n $generator_error ]] || generator_error="Generator exited with status $generator_status without stderr diagnostics."
+	if ! telegram_theme_hook_write_failure "$previous_fingerprint" generator "$generator_error" \
+		"$detected_omarchy" "$detected_telegram"; then
+		printf 'Telegram theme hook could not record the current generator failure status.\n' >&2
+	fi
+	printf 'Telegram theme hook failed: %s\n' "$generator_error" >&2
+	exit "$generator_status"
+fi
+
+if [[ $generator_output == *'telegram theme generation skipped: stale active theme guard'* ]]; then
+	exit 0
+fi
+if [[ ! -r $TELEGRAM_THEME_ACTIVE_ROOT/theme.name ]] ||
+	[[ $(<"$TELEGRAM_THEME_ACTIVE_ROOT/theme.name") != "$TELEGRAM_THEME_SLUG" ]]; then
+	exit 0
+fi
+
+if [[ ! -f $TELEGRAM_THEME_OUTPUT || -L $TELEGRAM_THEME_OUTPUT || ! -s $TELEGRAM_THEME_OUTPUT ]]; then
+	telegram_theme_hook_fail "$previous_fingerprint" verification \
+		'Telegram theme generator returned success without a stable regular archive.' \
+		"$detected_omarchy" "$detected_telegram"
+	exit $?
+fi
+expected_archive_hash=''
+if ! expected_archive_hash=$(jq -er --arg slug "$TELEGRAM_THEME_SLUG" \
+	'select(.schema_version == 1 and .status == "ok" and .slug == $slug and (.archive_sha256 | type == "string")) | .archive_sha256' \
+	"$TELEGRAM_THEME_STATUS" 2>/dev/null) || [[ ! $expected_archive_hash =~ ^[0-9A-Fa-f]{64}$ ]]; then
+	telegram_theme_hook_fail "$previous_fingerprint" verification \
+		'Telegram theme generator returned success without a matching structured archive digest.' \
+		"$detected_omarchy" "$detected_telegram"
+	exit $?
+fi
+actual_archive_hash=''
+if ! read -r actual_archive_hash _ < <(sha256sum -- "$TELEGRAM_THEME_OUTPUT"); then
+	telegram_theme_hook_fail "$previous_fingerprint" verification \
+		'Could not hash the stable Telegram theme archive for verification.' \
+		"$detected_omarchy" "$detected_telegram"
+	exit $?
+fi
+if [[ ! $actual_archive_hash =~ ^[0-9A-Fa-f]{64}$ || ${actual_archive_hash,,} != ${expected_archive_hash,,} ]]; then
+	telegram_theme_hook_fail "$previous_fingerprint" verification \
+		'The stable Telegram theme archive digest does not match structured status.' \
+		"$detected_omarchy" "$detected_telegram"
+	exit $?
+fi
+
+exit 0

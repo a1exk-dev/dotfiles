@@ -144,6 +144,14 @@ Guidance: Declare the package in `arch_packages`. During apply and migration, in
 
 Reason: Arch packages have independent ownership and can be shared. Package-specific planning avoids global installs, while retention avoids removing software without installation provenance.
 
+## Append package catalog entries
+
+Applies when: Adding a Stow package to `packages.json`.
+
+Guidance: Append the new entry after every existing package so established wizard menu numbers remain stable.
+
+Reason: Package catalog order defines the wizard's user-facing numeric choices; inserting an entry changes existing selections and can make saved or scripted input operate on the wrong package.
+
 ## Add one requested package at a time
 
 Applies when: A user asks to add a new configuration concern.

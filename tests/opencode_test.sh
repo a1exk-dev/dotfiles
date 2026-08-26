@@ -866,9 +866,9 @@ test_opencode_package_and_catalog_match_the_native_configuration_contract() {
 		return 1
 	}
 
-	assert_eq '["bash","tmux","ghostty","starship","btop","opencode"]' \
+	assert_eq '["bash","tmux","ghostty","starship","btop","opencode","telegram-theme"]' \
 		"$(jq -c '[.packages[].name]' "$FIXTURE_REPO/packages.json")" \
-		'opencode should be appended without reordering existing packages' || return 1
+		'telegram-theme should be appended after opencode without reordering existing packages' || return 1
 	jq -e --arg validator "$OPENCODE_VALIDATOR" '
 		[.packages[] | select(.name == "opencode")] == [{
 			"name": "opencode",
@@ -887,10 +887,11 @@ test_opencode_package_and_catalog_match_the_native_configuration_contract() {
 				"Restart OpenCode after removal or reapplication"
 			]
 		}] and
-		(.packages[-1] | keys_unsorted) == [
+		(.packages[-2] | keys_unsorted) == [
 			"name", "path", "description", "dependencies", "arch_packages",
 			"prerequisites", "validators", "documentation", "cleanup"
-		]
+		] and
+		.packages[-1].name == "telegram-theme"
 	' "$FIXTURE_REPO/packages.json" >/dev/null || {
 		printf '  the opencode catalog entry should match the exact native configuration contract\n' >&2
 		return 1

@@ -416,7 +416,7 @@ test_check_accepts_tmux_validator_before_tmux_is_installed() {
 
 	assert_eq 0 "$COMMAND_STATUS" \
 		'check should accept the shell-fronted tmux validator before its declared Arch package is installed' || return 1
-	assert_contains "$COMMAND_OUTPUT" 'Package catalog: valid (6 packages)' \
+	assert_contains "$COMMAND_OUTPUT" 'Package catalog: valid (7 packages)' \
 		'preflight should still inspect the complete real catalog'
 }
 

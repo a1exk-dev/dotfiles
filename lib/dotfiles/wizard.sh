@@ -108,6 +108,7 @@ wizard_run_action() {
 		skills-update) update_skills --interactive ;;
 		modem) recover_zte_usb_modem ;;
 		brave) manage_brave_policy ;;
+		telegram-theme) manage_telegram_theme ;;
 		exit) printf 'No action selected.\n' ;;
 		*) printf 'Error: unknown wizard action: %s\n' "$action" >&2; return 2 ;;
 	esac
@@ -173,9 +174,10 @@ wizard() {
 		'Update pinned global skills'
 		'Recover ZTE USB modem'
 		'Manage Brave policy'
+		'Manage Telegram theme'
 		'Exit'
 	)
-	local -a actions=(guided status check apply migrate remove prerequisites cleanup skills skills-update modem brave exit)
+	local -a actions=(guided status check apply migrate remove prerequisites cleanup skills skills-update modem brave telegram-theme exit)
 	if ! choice=$(wizard_choose 'Choose an action (none selected by default)' "${labels[@]}"); then
 		printf 'No action selected.\n'
 		return 0

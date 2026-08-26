@@ -16,6 +16,8 @@ source "$DOTFILES_ENTRY_ROOT/lib/dotfiles/cleanup.sh"
 source "$DOTFILES_ENTRY_ROOT/lib/dotfiles/modem.sh"
 # shellcheck source=../lib/dotfiles/brave.sh
 source "$DOTFILES_ENTRY_ROOT/lib/dotfiles/brave.sh"
+# shellcheck source=../lib/dotfiles/telegram-theme.sh
+source "$DOTFILES_ENTRY_ROOT/lib/dotfiles/telegram-theme.sh"
 # shellcheck source=../lib/dotfiles/wizard.sh
 source "$DOTFILES_ENTRY_ROOT/lib/dotfiles/wizard.sh"
 
@@ -24,6 +26,6 @@ if (($# == 0)); then
 elif (($# == 2)) && [[ $1 == --action ]]; then
 	wizard_run_action "$2"
 else
-	printf 'Usage: bin/dotfiles [--action <guided|status|check|apply|migrate|remove|prerequisites|cleanup|skills|skills-update|modem|brave>]\n' >&2
+	printf 'Usage: bin/dotfiles [--action <guided|status|check|apply|migrate|remove|prerequisites|cleanup|skills|skills-update|telegram-theme|modem|brave>]\n' >&2
 	exit 2
 fi

@@ -55,6 +55,7 @@ new_fixture() {
 	FIXTURE_CONFIG="$FIXTURE_ROOT/user/config"
 	FIXTURE_STATE="$FIXTURE_ROOT/user/state"
 	FIXTURE_CACHE="$FIXTURE_ROOT/user/cache"
+	FIXTURE_RUNTIME="$FIXTURE_ROOT/user/runtime"
 	FIXTURE_TMP="$FIXTURE_ROOT/tmp"
 	FIXTURE_BIN="$FIXTURE_ROOT/fake-bin"
 	FIXTURE_OMARCHY="$FIXTURE_ROOT/packaged-omarchy"
@@ -71,7 +72,7 @@ new_fixture() {
 	FIXTURE_REAL_NODE_DIR="$FIXTURE_ROOT/real-node"
 
 	mkdir -p "$FIXTURE_REPO/bin" "$FIXTURE_REPO/lib/dotfiles" "$FIXTURE_HOME" "$FIXTURE_CONFIG" \
-		"$FIXTURE_STATE" "$FIXTURE_CACHE" "$FIXTURE_TMP" "$FIXTURE_BIN" "$FIXTURE_OMARCHY" \
+		"$FIXTURE_STATE" "$FIXTURE_CACHE" "$FIXTURE_RUNTIME" "$FIXTURE_TMP" "$FIXTURE_BIN" "$FIXTURE_OMARCHY" \
 		"$BRAVE_METADATA_ROOT" "$BRAVE_FAILURE_MARKERS" "$BRAVE_CANARY_ROOT" "$FIXTURE_REAL_NODE_DIR" \
 		"$OUTSIDE_ROOT/user-config" "$OUTSIDE_ROOT/global-skills" "$OUTSIDE_ROOT/packaged-omarchy"
 	BWRAP_EXTRA_ARGS+=(--ro-bind "$(dirname -- "$HOST_NODE_REAL")" "$FIXTURE_REAL_NODE_DIR")
@@ -80,7 +81,7 @@ new_fixture() {
 	printf 'outside packaged Omarchy\n' >"$OUTSIDE_ROOT/packaged-omarchy/sentinel"
 	OUTSIDE_SNAPSHOT=$(snapshot_outside_canaries)
 	: >"$CALL_LOG"
-	printf '%s\n' thefuck tmux fzf less starship btop >"$ARCH_PACKAGE_STATE"
+	printf '%s\n' thefuck tmux fzf less starship btop telegram-desktop zip >"$ARCH_PACKAGE_STATE"
 	cp "$SOURCE_REPO/bin/dotfiles" "$FIXTURE_REPO/bin/dotfiles"
 	cp "$SOURCE_REPO/lib/dotfiles/"*.sh "$FIXTURE_REPO/lib/dotfiles/"
 	cp "$SOURCE_REPO/lib/dotfiles/"*.mjs "$FIXTURE_REPO/lib/dotfiles/"
@@ -242,11 +243,61 @@ EOF
 restricted_path_without_stow() {
 	local restricted_bin=$FIXTURE_ROOT/restricted-bin command command_path
 	mkdir -p "$restricted_bin"
-	for command in bash basename cp date diff dirname env find grep head jq ln mktemp mv readlink rm sha256sum sort; do
+	for command in bash basename cp date diff dirname env find flock grep head jq ln mktemp mv readlink rm sha256sum sort; do
 		command_path=$(command -v "$command") || return 1
 		ln -s "$command_path" "$restricted_bin/$command"
 	done
 	printf '%s:%s\n' "$FIXTURE_BIN" "$restricted_bin"
+}
+
+readonly -a TELEGRAM_THEME_COLOR_KEYS=(
+	accent selection muted
+	background dark_background darker_background lighter_background
+	foreground dark_foreground light_foreground bright_foreground
+	red yellow green cyan blue magenta
+	bright_red bright_yellow bright_green bright_cyan bright_blue bright_magenta
+)
+
+make_telegram_theme_manifest() {
+	local source=$1 slug=$2 destination=$3 line mode='' key value json
+	declare -A colors=()
+	while IFS= read -r line; do
+		if [[ $line =~ ^mode[[:space:]]*=[[:space:]]*\"(dark|light)\" ]]; then
+			mode=${BASH_REMATCH[1]}
+		elif [[ $line =~ ^([a-z_]+)[[:space:]]*=[[:space:]]*\"(#[0-9A-Fa-f]{6})\" ]]; then
+			colors[${BASH_REMATCH[1]}]=${BASH_REMATCH[2],,}
+		fi
+	done <"$source"
+	[[ -n $mode ]] || {
+		printf '  Telegram source palette has no supported mode: %s\n' "$source" >&2
+		return 1
+	}
+	json=$(jq -cn --arg slug "$slug" --arg mode "$mode" \
+		'{schema_version:1,slug:$slug,mode:$mode,colors:{}}') || return 1
+	for key in "${TELEGRAM_THEME_COLOR_KEYS[@]}"; do
+		value=${colors[$key]-}
+		[[ $value =~ ^#[0-9a-f]{6}$ ]] || {
+			printf '  Telegram source palette is missing direct color %s: %s\n' "$key" "$source" >&2
+			return 1
+		}
+		json=$(jq -c --arg key "$key" --arg value "$value" '.colors[$key] = $value' <<<"$json") || return 1
+	done
+	printf '%s\n' "$json" >"$destination"
+}
+
+telegram_theme_test_path_without() {
+	local omitted=$1 restricted_bin=$FIXTURE_ROOT/telegram-restricted-bin command source
+	mkdir -p "$restricted_bin"
+	for command in bash basename chmod dirname env find flock jq mkdir mktemp mv pacman readlink rm sha256sum stat gum omarchy node zip; do
+		[[ $command != "$omitted" ]] || continue
+		if [[ -x $FIXTURE_BIN/$command ]]; then
+			source=$FIXTURE_BIN/$command
+		else
+			source=$(command -v "$command") || return 1
+		fi
+		ln -s "$source" "$restricted_bin/$command"
+	done
+	printf '%s\n' "$restricted_bin"
 }
 
 add_package() {
@@ -455,6 +506,7 @@ run_in_sandbox() {
 				XDG_CONFIG_HOME="$FIXTURE_CONFIG" \
 				XDG_STATE_HOME="$FIXTURE_STATE" \
 				XDG_CACHE_HOME="$FIXTURE_CACHE" \
+				XDG_RUNTIME_DIR="$FIXTURE_RUNTIME" \
 				TMPDIR="$FIXTURE_TMP" \
 				OMARCHY_PATH="$FIXTURE_OMARCHY" \
 				PATH="$command_path" \
@@ -551,6 +603,9 @@ run_operation() {
 			source "$repository/lib/dotfiles/cleanup.sh"
 			source "$repository/lib/dotfiles/modem.sh"
 			source "$repository/lib/dotfiles/brave.sh"
+			if [[ -f $repository/lib/dotfiles/telegram-theme.sh ]]; then
+				source "$repository/lib/dotfiles/telegram-theme.sh"
+			fi
 			source "$repository/lib/dotfiles/wizard.sh"
 			"$operation" "$@"
 		' bash "$FIXTURE_REPO" "$operation" "$@"
