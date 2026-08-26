@@ -80,9 +80,13 @@ omarchy theme refresh
 
 The refresh regenerates Omarchy's user theme templates and invokes the installed theme-set hook. It can retint other Omarchy-managed applications, so the wizard requires approval before it runs the command.
 
-After a successful refresh, the wizard verifies the stable archive and prints its path.
+After a successful refresh, the wizard verifies the stable archive and prints its path. With the default state directory, import:
 
-Open Telegram Desktop yourself. Use its local theme chooser to import the stable file, review the preview, and select **Keep Changes** once.
+```text
+~/.local/state/dotfiles/telegram-theme/current.tdesktop-theme
+```
+
+If Telegram's file chooser hides `.local`, enable **Show Hidden Files**. If you set `XDG_STATE_HOME`, use `$XDG_STATE_HOME/dotfiles/telegram-theme/current.tdesktop-theme` instead. Review the preview and select **Keep Changes** once.
 
 Telegram then watches that stable path. Keeping the file changes Telegram's global local appearance state and can affect account-backed selected-theme metadata through Telegram's supported behavior. The Dotfiles wizard does not open Telegram or select **Keep Changes**.
 
