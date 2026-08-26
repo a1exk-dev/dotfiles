@@ -160,6 +160,14 @@ Guidance: Decide whether Git stores source, output, or both after reviewing that
 
 Reason: The repository has no single generated-file policy that fits every configuration concern.
 
+## Keep Telegram theming on supported native seams
+
+Applies when: Implementing or maintaining the `telegram-theme` package.
+
+Guidance: Use Omarchy's user theme template and `theme-set.d` hook. Use Node for the generator core, a thin Bash adapter for hook entry, and system `zip` for archive creation. Track implementation source and pinned role data in Git; write generated themes and diagnostics to XDG state. Atomically publish one stable watched theme file, retain the last-good output on failure, and activate that file once through Telegram's manual Import and Keep flow. Enforce text contrast of at least `4.50:1` and a minimum `0.025` OKLab distance between primary surfaces. Fail closed without publishing when either the Omarchy or Telegram version is unverified. Use only Telegram's supported watched-file seam; do not edit private `tdata`, automate the UI, or launch or restart the client.
+
+Reason: Telegram's supported watcher applies later theme publishes after one manual activation. Restricting integration to that watcher keeps synchronization stable across updates and leaves Telegram-owned state and process control intact.
+
 ## Review writes through Stow links
 
 Applies when: An application or an Omarchy update, migration, refresh, reinstall, installer, or hook can write to a path owned through a Stow symlink.
