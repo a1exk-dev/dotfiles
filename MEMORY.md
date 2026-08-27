@@ -204,7 +204,7 @@ Reason: Writers can follow the symlink and modify the repository-owned source in
 
 Applies when: Planning, implementing, or validating repository wallpaper deployment.
 
-Guidance: Keep theme-grouped source under `wallpapers/library/` and the ignored Wallpaper inbox under `wallpapers/inbox/`. Leave both outside `config/` and `packages.json`. Use a dedicated wizard operation to materialize receipt-owned regular files under `~/.config/omarchy/backgrounds/`, preserve unrelated files, and store clone-independent target and digest inventory in XDG state. Reuse its apply function in Guided setup after Stow package application and before Shared Brave policy. Reinspect Omarchy background behavior when the supported version changes.
+Guidance: Keep theme-grouped source under `wallpapers/library/` and the ignored Wallpaper inbox under `wallpapers/inbox/`. Leave both outside `config/` and `packages.json`. Use a dedicated wizard operation to materialize receipt-owned regular files under `~/.config/omarchy/backgrounds/`, preserve unrelated files, and store clone-independent target and digest inventory in strictly validated XDG state. Serialize Apply and removal; use verified pending evidence and backups to restore every touched live path and receipt after failure or interruption, and block ordinary work when recovery cannot be proved. Treat different foreign targets, changed owned files, invalid receipts, unsafe paths, and active-background deletion as pre-mutation conflicts; adopt only exact unowned matches. Preserve exact no-ops without metadata churn. Reuse Apply in Guided setup after Stow package application and before Shared Brave policy. Enforce the supported Omarchy-version decision before mutation and reinspect background behavior when that target changes.
 
 Reason: Direct Stow symlinks break repeated background cycling on Omarchy 4.0.1, while the package catalog has no materialization lifecycle. Regular copies preserve cycling, and receipts make convergence and removal safe without owning complete themes or user backgrounds.
 
@@ -212,9 +212,9 @@ Reason: Direct Stow symlinks break repeated background cycling on Omarchy 4.0.1,
 
 Applies when: Planning, implementing, or validating repository wallpaper curation.
 
-Guidance: Identify a Managed wallpaper with the full lowercase SHA-256 digest of its exact, unmodified bytes and append the canonical extension detected from supported image content. Reuse exact duplicates and fail closed if equal digests have different bytes. Delete an Intake image only after the complete Managed wallpaper and requested Theme assignment exist in repository state and the stored bytes match the intake; every failure leaves the intake untouched.
+Guidance: Identify a Managed wallpaper with the full lowercase SHA-256 digest of its exact, unmodified bytes and append the canonical extension detected from supported image content. Accept JPEG, PNG, GIF, BMP, or WebP only after warning-free complete decoding of all image data or animation frames. Reuse exact duplicates and fail closed if equal digests have different bytes. Allow unrelated worktree changes, but validate the complete Wallpaper library and revalidate confirmed operation paths before mutation. Serialize Add, Move, and Remove with recoverable transaction evidence that restores prior assignments and Intake images after failure or interruption. Delete an Intake image only after the complete Managed wallpaper and every requested Theme assignment exist in repository state and the stored bytes match the intake.
 
-Reason: Content identity avoids source-name collisions and remains stable across Theme assignments, while post-verification deletion preserves recoverable maintainer input.
+Reason: Content identity avoids source-name collisions and remains stable across Theme assignments. Complete decoding keeps unreadable assets out of Git, while transactional restoration and post-verification deletion preserve recoverable maintainer input.
 
 ## Keep wallpaper curation in one manager
 
