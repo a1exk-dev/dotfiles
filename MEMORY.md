@@ -200,13 +200,13 @@ Guidance: Treat any resulting repository-source edit as a proposed Git change: r
 
 Reason: Writers can follow the symlink and modify the repository-owned source instead of isolated live state.
 
-## Preserve Omarchy background cycling across deployment
+## Deploy the Wallpaper library outside Stow
 
-Applies when: Planning, implementing, or validating repository-owned files under `~/.config/omarchy/backgrounds/`.
+Applies when: Planning, implementing, or validating repository wallpaper deployment.
 
-Guidance: On Omarchy 4.0.1, treat direct Stow symlinks as discoverable but not behaviorally transparent. `omarchy theme bg set` stores a canonical path while `omarchy theme bg next` compares it with linked candidate paths. Choose regular live-file materialization or another approved compatibility mechanism, then verify several transitions and wraparound. Reinspect this behavior when the supported Omarchy version changes.
+Guidance: Keep theme-grouped source under `wallpapers/library/` and the ignored Wallpaper inbox under `wallpapers/inbox/`. Leave both outside `config/` and `packages.json`. Use a dedicated wizard operation to materialize receipt-owned regular files under `~/.config/omarchy/backgrounds/`, preserve unrelated files, and store clone-independent target and digest inventory in XDG state. Reuse its apply function in Guided setup after Stow package application and before Shared Brave policy. Reinspect Omarchy background behavior when the supported version changes.
 
-Reason: Leaf-file and directory symlinks can make repeated background cycling reset to the first candidate even though discovery and the graphical picker work.
+Reason: Direct Stow symlinks break repeated background cycling on Omarchy 4.0.1, while the package catalog has no materialization lifecycle. Regular copies preserve cycling, and receipts make convergence and removal safe without owning complete themes or user backgrounds.
 
 ## Curate Managed wallpapers by verified content identity
 

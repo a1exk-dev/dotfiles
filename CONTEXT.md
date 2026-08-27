@@ -42,8 +42,12 @@ An image file in the Wallpaper inbox that has not been accepted as a Managed wal
 
 ## Managed wallpaper
 
-A validated image accepted into the repository's tracked wallpaper library. Its identity comes from its exact file content, not its original name or Theme assignments, and it exists only while it has at least one Theme assignment.
+A validated image accepted into the Wallpaper library. Its identity comes from its exact file content, not its original name or Theme assignments, and it exists only while it has at least one Theme assignment.
 
 ## Theme assignment
 
 The relationship that makes one Managed wallpaper available to one Omarchy theme. A Managed wallpaper can have Theme assignments to multiple themes, and those assignments can change without changing its identity.
+
+## Wallpaper library
+
+The repository-owned collection of Managed wallpapers grouped by Theme assignment. A Managed wallpaper assigned to multiple themes appears in each corresponding group while retaining one identity.
