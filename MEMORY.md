@@ -208,6 +208,14 @@ Guidance: On Omarchy 4.0.1, treat direct Stow symlinks as discoverable but not b
 
 Reason: Leaf-file and directory symlinks can make repeated background cycling reset to the first candidate even though discovery and the graphical picker work.
 
+## Curate Managed wallpapers by verified content identity
+
+Applies when: Planning, implementing, or validating repository wallpaper curation.
+
+Guidance: Identify a Managed wallpaper with the full lowercase SHA-256 digest of its exact, unmodified bytes and append the canonical extension detected from supported image content. Reuse exact duplicates and fail closed if equal digests have different bytes. Delete an Intake image only after the complete Managed wallpaper and requested Theme assignment exist in repository state and the stored bytes match the intake; every failure leaves the intake untouched.
+
+Reason: Content identity avoids source-name collisions and remains stable across Theme assignments, while post-verification deletion preserves recoverable maintainer input.
+
 ## Fail Starship validation on diagnostics
 
 Applies when: Validating a Starship configuration or adding its package validators and focused tests.

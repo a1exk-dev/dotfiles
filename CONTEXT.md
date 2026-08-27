@@ -31,3 +31,19 @@ The root `skills.json` file containing exact source revisions, each repository's
 ## Telegram theme integration
 
 A dedicated `telegram-theme` Stow package that adapts the active Omarchy semantic colors to Telegram Desktop's native theming. The repository owns the color mapping and integration lifecycle; generated output is integration-owned, regenerable local state; Telegram owns saved theme and account state. The visual promise is Omarchy colors and clear native sections within Telegram's native structure, rather than structural TUI styling.
+
+## Wallpaper inbox
+
+The repository-local, untracked holding area for maintainer-supplied image files awaiting acceptance. Its contents are intake images, not repository-owned assets.
+
+## Intake image
+
+An image file in the Wallpaper inbox that has not been accepted as a Managed wallpaper. It remains maintainer-owned input until curation succeeds.
+
+## Managed wallpaper
+
+A validated image accepted into the repository's tracked wallpaper library. Its identity comes from its exact file content, not its original name or Theme assignments, and it exists only while it has at least one Theme assignment.
+
+## Theme assignment
+
+The relationship that makes one Managed wallpaper available to one Omarchy theme. A Managed wallpaper can have Theme assignments to multiple themes, and those assignments can change without changing its identity.
