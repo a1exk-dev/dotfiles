@@ -216,6 +216,14 @@ Guidance: Identify a Managed wallpaper with the full lowercase SHA-256 digest of
 
 Reason: Content identity avoids source-name collisions and remains stable across Theme assignments, while post-verification deletion preserves recoverable maintainer input.
 
+## Keep wallpaper curation in one manager
+
+Applies when: Implementing or validating the maintainer-facing wallpaper workflow.
+
+Guidance: Route `make wallpapers` through `bin/dotfiles --action wallpapers` to one manager with Add, Inspect, Move, Remove, and Back. Offer only installed packaged and user theme slugs, showing each exact slug and origin. Process one Intake image per visible, confirmed Add plan; make duplicate cleanup explicit. Keep Inspect read-only. Move or remove one Theme assignment at a time, warn before final-assignment deletion, and preserve source state on cancellation or failure. After successful curation, offer the separate deployment Apply once when leaving the manager.
+
+Reason: One-image plans and explicit assignment changes keep destructive effects reviewable, while a separate exit-time deployment offer preserves transaction boundaries without making local refresh cumbersome.
+
 ## Fail Starship validation on diagnostics
 
 Applies when: Validating a Starship configuration or adding its package validators and focused tests.
