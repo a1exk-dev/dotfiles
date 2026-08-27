@@ -200,6 +200,14 @@ Guidance: Treat any resulting repository-source edit as a proposed Git change: r
 
 Reason: Writers can follow the symlink and modify the repository-owned source instead of isolated live state.
 
+## Preserve Omarchy background cycling across deployment
+
+Applies when: Planning, implementing, or validating repository-owned files under `~/.config/omarchy/backgrounds/`.
+
+Guidance: On Omarchy 4.0.1, treat direct Stow symlinks as discoverable but not behaviorally transparent. `omarchy theme bg set` stores a canonical path while `omarchy theme bg next` compares it with linked candidate paths. Choose regular live-file materialization or another approved compatibility mechanism, then verify several transitions and wraparound. Reinspect this behavior when the supported Omarchy version changes.
+
+Reason: Leaf-file and directory symlinks can make repeated background cycling reset to the first candidate even though discovery and the graphical picker work.
+
 ## Fail Starship validation on diagnostics
 
 Applies when: Validating a Starship configuration or adding its package validators and focused tests.
