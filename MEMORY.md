@@ -24,6 +24,22 @@ Guidance: Maintain one explicit current target and change it only through a deli
 
 Reason: One target keeps compatibility bounded; version differences can invalidate full replacements and managed-path assumptions before ordinary validation exposes them.
 
+## Check direct consumers of cloned Omarchy services
+
+Applies when: Cloning or maintaining a built-in Omarchy shell service.
+
+Guidance: Trace every direct service consumer as well as generic plugin-id routing. On Omarchy 4.0.1, `StayAwake.qml` looks up `omarchy.idle` directly, while the active clone is stored under its personal plugin id, so the Stay Awake indicator stops controlling the cloned service. Before accepting a clone, make each direct consumer resolve the active implementation or approve a specific compatibility route.
+
+Reason: Omarchy's generic clone routing does not cover consumers that read the service registry by the built-in id.
+
+## Carry screensaver overrides through Hyprland dispatch
+
+Applies when: A user-owned Omarchy screensaver launcher must pass a private command or environment into terminals started through `hyprctl dispatch exec`.
+
+Guidance: Put the private command or environment in the dispatched terminal payload. An environment change applied only to the launcher process does not cross the compositor dispatch. Verify that the launched terminal resolves the intended command while session-wide command resolution remains unchanged.
+
+Reason: Hyprland, not the launcher process, starts the terminal after receiving the dispatch command.
+
 ## Keep the Omarchy root separate from command paths
 
 Applies when: Invoking packaged Omarchy commands from Bash, especially from a process that inherits exported `OMARCHY_PATH`.
