@@ -20,7 +20,7 @@ Reason: The archived files do not represent the intended repository.
 
 Applies when: Checking Omarchy compatibility, detecting a version mismatch, changing the supported target, or maintaining a full replacement.
 
-Guidance: Maintain one explicit current target and change it only through a deliberate repository decision. Before any mutation under a detected mismatch, show the target and detected versions and obtain an explicit human decision to continue. Compare every full replacement with the applicable packaged defaults and accept or reject each difference deliberately. Surface managed-path conflicts for a human decision and prefer stable Omarchy overrides. After a target change, run structural checks, all affected validators and focused tests, and the complete suite.
+Guidance: Maintain one explicit current target and change it only through a deliberate repository decision. Before mutation under a detected mismatch, show the target and detected versions and follow the integration's approved compatibility policy; when no policy exists, obtain an explicit human decision. The Selective screensaver integration warns and continues without extra confirmation, keeps previously mapped discovered effects available, and excludes new Unmapped effects. Compare every full replacement with the applicable packaged defaults and accept or reject each difference deliberately. Surface managed-path conflicts for a human decision and prefer stable Omarchy overrides. After a target change, run structural checks, all affected validators and focused tests, and the complete suite.
 
 Reason: One target keeps compatibility bounded; version differences can invalidate full replacements and managed-path assumptions before ordinary validation exposes them.
 
@@ -63,6 +63,14 @@ Applies when: Installing or changing a personal Omarchy 4.0.1 idle plugin clone.
 Guidance: Install a complete validated clone before triggering one plugin rescan, and do not edit its installed files during an idle cycle. After any reload, start a fresh cycle and verify idle-service status before relying on screensaver or lock timing.
 
 Reason: Omarchy reloads the complete plugin registry after a plugin change, recreating the idle service and resetting its timers, active-cycle state, screensaver-window bookkeeping, and pending lock coordination.
+
+## Deploy watched Omarchy plugins through complete sources
+
+Applies when: A Stow package provides a complete Omarchy plugin clone whose live directory is recursively watched.
+
+Guidance: Stow the validated canonical plugin source outside `~/.config/omarchy/plugins/`, publish the complete live plugin as one receipt-owned directory symlink, and use Omarchy's plugin commands for rescan, activation, deactivation, and restoration. Keep the shared `shell.json` and unrelated menu content outside Stow ownership. Make exact reapply a no-op, and restore prior activation state before unlinking package sources.
+
+Reason: Leaf-by-leaf Stow changes expose partial clones to the watcher and reload the whole plugin registry, while Omarchy's commands preserve clone restoration state in the shared shell configuration.
 
 ## Keep the screensaver allowlist outside the plugin tree
 

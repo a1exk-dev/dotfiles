@@ -36,6 +36,10 @@ A dedicated `telegram-theme` Stow package that adapts the active Omarchy semanti
 
 The repository-owned nonempty set of verified `ttfx` effects available to the selective Omarchy screensaver integration. One member fixes the effect; several members are sampled independently and uniformly at each effect start. Members may have Full or Partial active-theme mappings, while effects without a verified mapping remain outside the allowlist.
 
+## Selective screensaver integration
+
+The repository-owned Omarchy customization that applies the Screensaver effect allowlist to automatic idle and System-menu launches. The repository owns its Stow sources and receipt-managed activation edges. Omarchy owns the shared shell configuration and general idle, lock, wake, terminal, and monitor behavior, while stock CLI screensaver launches remain outside the integration.
+
 ## Wallpaper inbox
 
 The repository-local, untracked holding area for maintainer-supplied image files awaiting acceptance. Its contents are intake images, not repository-owned assets.
