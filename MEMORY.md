@@ -40,6 +40,22 @@ Guidance: Put the private command or environment in the dispatched terminal payl
 
 Reason: Hyprland, not the launcher process, starts the terminal after receiving the dispatch command.
 
+## Select themed ttfx effects explicitly
+
+Applies when: Building or validating effect-specific active-theme mappings for an Omarchy screensaver against `ttfx` 0.3.2.
+
+Guidance: Resolve Omarchy theme tokens at launch, put root color arguments before an explicit effect name, and put effect-specific arguments after it. Choose the effect outside `--random-effect`; describe only the 25 audited fully controllable effects as fully theme-compatible, and repeat the catalog, grammar, fixed-color, and bounded-invocation audit when the `ttfx` version changes.
+
+Reason: `ttfx` 0.3.2 reconstructs a randomly selected effect with default configuration, discarding effect-specific mappings, and 12 of its 37 effects retain visible fixed colors outside their accepted arguments.
+
+## Account for the stock screensaver runner loop
+
+Applies when: A private `ttfx` shim runs beneath Omarchy 4.0.1's packaged `omarchy-screensaver`.
+
+Guidance: Preserve the stock black terminal background unless a separate ownership decision replaces its OSC 11 behavior; `--terminal-background-color` controls only effect fade endpoints. Ensure configuration, theme-token, and runtime failures cannot exit rapidly into the runner's unconditional loop while preserving input and focus dismissal and the lock deadline.
+
+Reason: The packaged runner sets the terminal background to black before immediately relaunching each exited `ttfx` process, while `ttfx` does not apply its background argument to the terminal itself.
+
 ## Keep the Omarchy root separate from command paths
 
 Applies when: Invoking packaged Omarchy commands from Bash, especially from a process that inherits exported `OMARCHY_PATH`.
