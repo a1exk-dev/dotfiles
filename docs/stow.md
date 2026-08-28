@@ -34,12 +34,14 @@ The wizard uses Gum when it is available. Otherwise, it uses Bash prompts.
 2. Pinned global skill installation
 3. Application cleanup
 4. Stow package application
-5. Optional shared Brave policy application
+5. Wallpaper library deployment
+6. Optional shared Brave policy application
 
-Prerequisite preparation verifies GNU Stow, Node.js 22.20.0 or newer, npm, and npx. If a prerequisite is missing or does not meet its version requirement, the wizard shows one plan and asks for confirmation. Guided setup stops before later phases if you decline the plan, if installation fails, or if verification fails. This guide covers the Stow phase. See [Application cleanup](cleanup.md), [Agent setup](agent-setup.md), and [Brave](brave.md) for the other guided phases.
+Prerequisite preparation verifies GNU Stow, ImageMagick through `magick`, Node.js 22.20.0 or newer, npm, and npx. If a prerequisite is missing or does not meet its version requirement, the wizard shows one plan and asks for confirmation. Guided setup stops before later phases if you decline the plan, if installation fails, or if verification fails. This guide covers the Stow phase. See [Application cleanup](cleanup.md), [Agent setup](agent-setup.md), and [Brave](brave.md) for the other guided phases.
 
 ```text
 omarchy pkg add stow
+omarchy pkg add imagemagick
 omarchy install dev-env node
 ```
 
@@ -47,7 +49,9 @@ Omarchy manages the privilege prompts. The wizard verifies the tools after insta
 
 The Stow phase shows one package multi-select screen. No package is selected by default. An empty selection skips the Stow phase. An operational failure stops Guided setup and names the standalone wizard action for recovery.
 
-After the Stow phase, optional phase 5 calls the same apply operation as `Manage Brave policy`. The phase skips successfully when no supported browser is installed or you decline the plan. It succeeds if the active policy already matches the shared Brave policy exactly or if the apply completes. An operational failure stops Guided setup and directs you to `Manage Brave policy` for recovery.
+After the Stow phase, phase 5 calls the same operation as `Apply wallpapers`. A declined plan, an empty unowned Wallpaper library, and an exact deployment no-op are successful skips. An operational failure stops Guided setup and directs you to `Apply wallpapers` for recovery.
+
+Phase 6 calls the same apply operation as `Manage Brave policy`. It skips successfully when no supported browser is installed or you decline the plan. It succeeds if the active policy already matches the shared Brave policy exactly or if the apply completes. An operational failure stops Guided setup and directs you to `Manage Brave policy` for recovery.
 
 ## Ownership
 
@@ -56,6 +60,8 @@ Prefer Omarchy-supported user overrides. Track a complete configuration only whe
 Packages target the user's home directory. A system target or another location requires a separate decision.
 
 The shared Brave policy is a copied system file, not a Stow package. It does not live below `config/` and has no `packages.json` entry. `Manage Brave policy` uses a separate preview, confirmation, backup, verification, recovery, and removal process for its root-owned system copy. See [Brave](brave.md).
+
+The Wallpaper library is also outside Stow. Git tracks source assignments under `wallpapers/library/`; `Apply wallpapers` creates receipt-owned regular files under `~/.config/omarchy/backgrounds/`. The operation preserves unrelated backgrounds and Omarchy theme state.
 
 Stop before adding machine-specific values, generated files, or sensitive data. Decide how to handle the concrete case first.
 
@@ -77,6 +83,7 @@ Choose `Run structural checks` to validate:
 - The application cleanup profile
 - The skill manifest and required global skill commands
 - The canonical shared Brave policy source
+- ImageMagick and the Wallpaper library
 - GNU Stow availability
 
 `Run structural checks` can run without GNU Stow, but it reports a structural error if GNU Stow is missing. It does not require an installed browser. It requires Node.js and npx. Brave source validation does not require a deployed policy or privilege and does not change system or user files.

@@ -9,6 +9,13 @@ configure_brave_structural_canaries() {
 	make_fake sudo 'printf "unexpected sudo call\n" >>"$DOTFILES_TEST_CALL_LOG"; exit 99'
 }
 
+stub_wallpaper_library_validator() {
+	local outcome=${1-0}
+	printf '\nvalidate_wallpaper_library() { printf "Stub Wallpaper library validation\\n"; if ((%s == 0)); then printf "Wallpaper library: valid\\n"; fi; return %s; }\n' \
+		"$outcome" \
+		"$outcome" >>"$FIXTURE_REPO/lib/dotfiles/wizard.sh"
+}
+
 test_status_inspects_empty_relocated_clone() {
 	new_fixture
 	use_empty_package_catalog
@@ -43,6 +50,79 @@ test_check_accepts_empty_catalog() {
 	calls=$(<"$CALL_LOG")
 	assert_eq "version|HOME=$FIXTURE_HOME|XDG_CONFIG_HOME=$FIXTURE_CONFIG|XDG_STATE_HOME=$FIXTURE_STATE|XDG_CACHE_HOME=$FIXTURE_CACHE" "$calls" \
 		'check should use only the fake Omarchy command under isolated roots'
+}
+
+test_check_reports_imagemagick_and_validates_wallpaper_library() {
+	new_fixture
+	use_empty_package_catalog
+	stub_wallpaper_library_validator
+	local before_paths
+	before_paths=$(snapshot_isolated_paths)
+
+	run_operation "$FIXTURE_ROOT" check
+
+	assert_eq 0 "$COMMAND_STATUS" 'a valid Wallpaper library should pass structural checks' || return 1
+	assert_contains "$COMMAND_OUTPUT" 'ImageMagick: available (magick)' \
+		'check should explicitly report the Wallpaper image prerequisite' || return 1
+	assert_contains "$COMMAND_OUTPUT" 'Stub Wallpaper library validation' \
+		'check should invoke the focused Wallpaper library validator' || return 1
+	assert_contains "$COMMAND_OUTPUT" 'Wallpaper library: valid' \
+		'check should report successful Wallpaper library validation' || return 1
+	assert_eq 1 "$(awk '/^Stub Wallpaper library validation$/ { count++ } END { print count + 0 }' <<<"$COMMAND_OUTPUT")" \
+		'check should invoke Wallpaper library validation once' || return 1
+	assert_eq "$before_paths" "$(snapshot_isolated_paths)" \
+		'Wallpaper structural validation should not mutate isolated user paths'
+}
+
+test_check_rejects_missing_imagemagick_without_running_wallpaper_validator() {
+	new_fixture
+	use_empty_package_catalog
+	stub_wallpaper_library_validator
+	rm -f -- "$FIXTURE_BIN/magick"
+	local check_path
+	check_path=$(restricted_path_without_stow)
+
+	DOTFILES_TEST_PATH=$check_path run_operation "$FIXTURE_ROOT" check
+
+	assert_eq 1 "$COMMAND_STATUS" 'missing ImageMagick should fail structural checks' || return 1
+	assert_contains "$COMMAND_OUTPUT" 'Error: missing Wallpaper prerequisite: ImageMagick command magick' \
+		'check should explicitly identify the missing Wallpaper prerequisite' || return 1
+	if [[ $COMMAND_OUTPUT == *'Stub Wallpaper library validation'* || $COMMAND_OUTPUT == *'Wallpaper library: valid'* ]]; then
+		printf '  check invoked or accepted Wallpaper validation without ImageMagick\n' >&2
+		return 1
+	fi
+}
+
+test_wallpaper_inbox_is_ignored_without_ignoring_library() {
+	if ! git -C "$SOURCE_REPO" check-ignore --no-index --quiet -- wallpapers/inbox/candidate.png; then
+		printf '  Wallpaper inbox candidates should be ignored\n' >&2
+		return 1
+	fi
+	if git -C "$SOURCE_REPO" check-ignore --no-index --quiet -- wallpapers/library/theme/managed.png; then
+		printf '  Wallpaper library assignments should remain trackable\n' >&2
+		return 1
+	fi
+}
+
+test_check_rejects_invalid_wallpaper_library_without_mutation() {
+	new_fixture
+	use_empty_package_catalog
+	setup_wallpaper_fixture
+	mkdir "$FIXTURE_REPO/wallpapers/library/.unsafe"
+	local before
+	before=$(snapshot_isolated_paths)
+
+	run_dotfiles "$FIXTURE_ROOT" --action check
+
+	assert_eq 1 "$COMMAND_STATUS" 'an invalid Wallpaper library should fail structural checks' || return 1
+	assert_contains "$COMMAND_OUTPUT" 'Error: invalid Wallpaper library: unsafe theme slug: .unsafe' \
+		'check should preserve the focused Wallpaper library rejection reason' || return 1
+	if [[ $COMMAND_OUTPUT == *'Wallpaper library: valid'* ]]; then
+		printf '  check reported an invalid Wallpaper library as valid\n' >&2
+		return 1
+	fi
+	assert_eq "$before" "$(snapshot_isolated_paths)" \
+		'rejected Wallpaper library validation should not mutate isolated user paths'
 }
 
 test_check_validates_brave_source_without_browser_or_deployment() {
@@ -547,6 +627,10 @@ test_check_rejects_missing_dependency_and_cycle() {
 set -e
 run_test test_status_inspects_empty_relocated_clone 'status inspects an empty relocated clone'
 run_test test_check_accepts_empty_catalog 'check accepts an empty package catalog'
+run_test test_check_reports_imagemagick_and_validates_wallpaper_library 'check reports ImageMagick and validates the Wallpaper library'
+run_test test_check_rejects_missing_imagemagick_without_running_wallpaper_validator 'check rejects missing ImageMagick without running the Wallpaper validator'
+run_test test_wallpaper_inbox_is_ignored_without_ignoring_library 'Wallpaper inbox is ignored without ignoring the library'
+run_test test_check_rejects_invalid_wallpaper_library_without_mutation 'check rejects an invalid Wallpaper library without mutation'
 run_test test_check_validates_brave_source_without_browser_or_deployment 'check validates Brave source without a browser or deployment'
 run_test test_check_rejects_noncanonical_brave_source_without_browser_or_deployment 'check rejects noncanonical Brave source without a browser or deployment'
 run_test test_check_propagates_brave_failure_from_conditional_context 'check propagates Brave failure from an errexit-disabled conditional context'

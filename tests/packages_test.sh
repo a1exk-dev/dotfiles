@@ -2,6 +2,42 @@
 
 source "$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)/support/test_helper.sh"
 
+seed_stow_isolation_wallpapers() {
+	mkdir -p "$FIXTURE_REPO/wallpapers/inbox" "$FIXTURE_REPO/wallpapers/library/example-theme" \
+		"$FIXTURE_CONFIG/omarchy/backgrounds/example-theme" \
+		"$FIXTURE_STATE/dotfiles/wallpapers/backups/test-transaction"
+	printf 'intake canary\n' >"$FIXTURE_REPO/wallpapers/inbox/intake.png"
+	printf 'library canary\n' >"$FIXTURE_REPO/wallpapers/library/example-theme/managed.png"
+	printf 'live canary\n' >"$FIXTURE_CONFIG/omarchy/backgrounds/example-theme/managed.png"
+	printf 'receipt canary\n' >"$FIXTURE_STATE/dotfiles/wallpapers/active.json"
+	printf 'pending canary\n' >"$FIXTURE_STATE/dotfiles/wallpapers/pending.json"
+	printf 'recovery canary\n' >"$FIXTURE_STATE/dotfiles/wallpapers/recovery-required.json"
+	printf 'backup canary\n' >"$FIXTURE_STATE/dotfiles/wallpapers/backups/test-transaction/managed.png"
+}
+
+snapshot_stow_isolation_wallpapers() {
+	local label path
+	while IFS='|' read -r label path; do
+		printf '%s|' "$label"
+		if [[ -f $path && ! -L $path ]]; then
+			printf 'file|%s|' "$(stat -c '%a|%s|%y|%z' -- "$path")"
+			sha256sum -- "$path" | { read -r digest _; printf '%s\n' "$digest"; }
+		elif [[ -L $path ]]; then
+			printf 'symlink|%s\n' "$(readlink -- "$path")"
+		else
+			printf 'missing\n'
+		fi
+	done <<EOF
+inbox|$FIXTURE_REPO/wallpapers/inbox/intake.png
+library|$FIXTURE_REPO/wallpapers/library/example-theme/managed.png
+live|$FIXTURE_CONFIG/omarchy/backgrounds/example-theme/managed.png
+receipt|$FIXTURE_STATE/dotfiles/wallpapers/active.json
+pending|$FIXTURE_STATE/dotfiles/wallpapers/pending.json
+recovery|$FIXTURE_STATE/dotfiles/wallpapers/recovery-required.json
+backup|$FIXTURE_STATE/dotfiles/wallpapers/backups/test-transaction/managed.png
+EOF
+}
+
 test_apply_requires_explicit_package_and_approval() {
 	new_fixture
 	add_package
@@ -843,6 +879,51 @@ fi'
 	fi
 }
 
+test_stow_lifecycle_and_relocation_preserve_wallpaper_domains() {
+	new_fixture
+	add_package
+	seed_stow_isolation_wallpapers
+	rm -f -- "$FIXTURE_BIN/stow"
+	ln -s /usr/bin/stow "$FIXTURE_BIN/stow"
+	local before
+	before=$(snapshot_stow_isolation_wallpapers)
+
+	DOTFILES_TEST_INPUT='y\n' run_operation "$FIXTURE_ROOT" apply_packages demo
+	assert_eq 0 "$COMMAND_STATUS" 'Stow Apply should succeed with Wallpaper canaries present' || return 1
+	assert_eq "$before" "$(snapshot_stow_isolation_wallpapers)" \
+		'Stow Apply should not claim repository, live, receipt, or transaction Wallpaper state' || return 1
+
+	run_in_sandbox "$FIXTURE_ROOT" "$FIXTURE_BIN:/usr/bin:/bin" \
+		stow --no-folding --restow --dir "$FIXTURE_REPO/config" --target "$FIXTURE_HOME" demo
+	assert_eq 0 "$COMMAND_STATUS" 'GNU Stow Restow should succeed with Wallpaper canaries present' || return 1
+	assert_eq "$before" "$(snapshot_stow_isolation_wallpapers)" \
+		'GNU Stow Restow should remain isolated to config packages' || return 1
+
+	run_operation "$FIXTURE_ROOT" remove_package demo --yes
+	assert_eq 0 "$COMMAND_STATUS" 'Stow removal should succeed with Wallpaper canaries present' || return 1
+	assert_eq "$before" "$(snapshot_stow_isolation_wallpapers)" \
+		'Stow removal should preserve every Wallpaper ownership domain' || return 1
+
+	rm -- "$FIXTURE_REPO/config/demo/.config/demo/config"
+	mkdir -p "$FIXTURE_HOME/.config/demo"
+	printf 'migration candidate\n' >"$FIXTURE_HOME/.config/demo/config"
+	run_operation "$FIXTURE_ROOT" migrate_target demo .config/demo/config --yes --inspection-approved
+	assert_eq 0 "$COMMAND_STATUS" 'Stow migration should succeed with Wallpaper canaries present' || return 1
+	assert_eq "$before" "$(snapshot_stow_isolation_wallpapers)" \
+		'Stow migration should preserve every Wallpaper ownership domain' || return 1
+	run_operation "$FIXTURE_ROOT" remove_package demo --yes
+	assert_eq 0 "$COMMAND_STATUS" 'the migrated package should remove before relocation' || return 1
+
+	local relocated_repo=$FIXTURE_ROOT/moved-clone/dotfiles
+	mkdir -p -- "$(dirname -- "$relocated_repo")"
+	mv -- "$FIXTURE_REPO" "$relocated_repo"
+	FIXTURE_REPO=$relocated_repo
+	DOTFILES_TEST_INPUT='y\n' run_operation "$FIXTURE_ROOT" apply_packages demo
+	assert_eq 0 "$COMMAND_STATUS" 'Stow Apply should succeed from a relocated repository' || return 1
+	assert_eq "$before" "$(snapshot_stow_isolation_wallpapers)" \
+		'repository relocation and reapplication should preserve clone-independent Wallpaper state'
+}
+
 test_real_starship_pre_migration_lifecycle() (
 	new_fixture
 	set_installed_arch_packages thefuck tmux fzf less
@@ -1316,6 +1397,7 @@ run_test test_apply_includes_dependencies_in_visible_topological_order 'apply in
 run_test test_apply_stops_after_failure_and_preserves_prior_success 'apply stops after failure and preserves prior success'
 run_test test_remove_blocks_retained_linked_dependents_and_names_each 'remove blocks retained linked dependents and names each'
 run_test test_remove_simulates_unlinks_verifies_and_reports_retained_leftovers 'remove simulates, unlinks, verifies, and reports retained leftovers'
+run_test test_stow_lifecycle_and_relocation_preserve_wallpaper_domains 'Stow lifecycle and relocation preserve Wallpaper domains'
 run_test test_real_starship_pre_migration_lifecycle 'real Starship pre-migration lifecycle is enforced in isolation'
 run_test test_starship_validator_fails_on_nonzero_status_and_cleans_cache 'Starship validator fails on nonzero status and cleans its cache'
 run_test test_starship_validator_rejects_repeated_status_zero_diagnostics_and_cleans_cache 'Starship validator rejects repeated status-zero diagnostics and cleans its cache'

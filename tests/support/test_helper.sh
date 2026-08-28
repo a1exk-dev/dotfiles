@@ -5,6 +5,7 @@ set -u
 SOURCE_REPO=$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")/../.." && pwd)
 BWRAP=$(command -v bwrap)
 HOST_NODE_REAL=$(readlink -f -- "$(command -v node)")
+HOST_MAGICK_REAL=$(readlink -f -- "$(command -v magick)")
 BWRAP_EXTRA_ARGS=()
 TESTS_RUN=0
 TESTS_FAILED=0
@@ -40,6 +41,14 @@ assert_contains() {
 	fi
 }
 
+assert_path_absent() {
+	local path=$1 message=$2
+	if [[ -e $path || -L $path ]]; then
+		printf '  %s\n  unexpected path: %s\n' "$message" "$path" >&2
+		return 1
+	fi
+}
+
 new_fixture() {
 	BWRAP_EXTRA_ARGS=()
 	if [[ -n ${FIXTURE_ROOT-} && -d $FIXTURE_ROOT ]]; then
@@ -59,6 +68,7 @@ new_fixture() {
 	FIXTURE_TMP="$FIXTURE_ROOT/tmp"
 	FIXTURE_BIN="$FIXTURE_ROOT/fake-bin"
 	FIXTURE_OMARCHY="$FIXTURE_ROOT/packaged-omarchy"
+	FIXTURE_WALLPAPER_THEMES="$FIXTURE_OMARCHY/themes"
 	CALL_LOG="$FIXTURE_ROOT/external-calls"
 	ARCH_PACKAGE_STATE="$FIXTURE_ROOT/installed-arch-packages"
 	ARCH_PACKAGE_ADD_MARKER="$FIXTURE_ROOT/arch-package-add-attempted"
@@ -73,8 +83,10 @@ new_fixture() {
 
 	mkdir -p "$FIXTURE_REPO/bin" "$FIXTURE_REPO/lib/dotfiles" "$FIXTURE_HOME" "$FIXTURE_CONFIG" \
 		"$FIXTURE_STATE" "$FIXTURE_CACHE" "$FIXTURE_RUNTIME" "$FIXTURE_TMP" "$FIXTURE_BIN" "$FIXTURE_OMARCHY" \
+		"$FIXTURE_WALLPAPER_THEMES" \
 		"$BRAVE_METADATA_ROOT" "$BRAVE_FAILURE_MARKERS" "$BRAVE_CANARY_ROOT" "$FIXTURE_REAL_NODE_DIR" \
 		"$OUTSIDE_ROOT/user-config" "$OUTSIDE_ROOT/global-skills" "$OUTSIDE_ROOT/packaged-omarchy"
+	ln -s "$HOST_MAGICK_REAL" "$FIXTURE_BIN/magick"
 	BWRAP_EXTRA_ARGS+=(--ro-bind "$(dirname -- "$HOST_NODE_REAL")" "$FIXTURE_REAL_NODE_DIR")
 	printf 'outside user configuration\n' >"$OUTSIDE_ROOT/user-config/sentinel"
 	printf 'outside global skill\n' >"$OUTSIDE_ROOT/global-skills/sentinel"
@@ -98,6 +110,9 @@ new_fixture() {
 	fi
 	if [[ -d $SOURCE_REPO/docs ]]; then
 		cp -a "$SOURCE_REPO/docs" "$FIXTURE_REPO/docs"
+	fi
+	if [[ -d $SOURCE_REPO/wallpapers ]]; then
+		cp -a "$SOURCE_REPO/wallpapers" "$FIXTURE_REPO/wallpapers"
 	fi
 	if [[ -f $SOURCE_REPO/skills.json ]]; then
 		cp "$SOURCE_REPO/skills.json" "$FIXTURE_REPO/skills.json"
@@ -139,6 +154,29 @@ fi
 exec "$DOTFILES_TEST_REAL_NODE" "$@"'
 	make_fake npm 'exit 0'
 	make_fake opencode 'printf "unexpected generic opencode invocation\n" >>"$DOTFILES_TEST_CALL_LOG"; exit 99'
+}
+
+setup_wallpaper_fixture() {
+	mkdir -p "$FIXTURE_REPO/wallpapers/inbox" "$FIXTURE_REPO/wallpapers/library" \
+		"$FIXTURE_CONFIG/omarchy/themes" "$FIXTURE_CONFIG/omarchy/backgrounds" "$FIXTURE_WALLPAPER_THEMES"
+}
+
+make_wallpaper_image() {
+	local format=$1 destination=$2 color=${3-#2457a7} size=${4-4x3}
+	magick -size "$size" "xc:$color" "$format:$destination"
+}
+
+wallpaper_digest() {
+	sha256sum "$1" | { read -r digest _; printf '%s\n' "$digest"; }
+}
+
+assign_wallpaper_fixture() {
+	local source=$1 theme=$2 extension=$3 digest destination
+	digest=$(wallpaper_digest "$source") || return 1
+	destination="$FIXTURE_REPO/wallpapers/library/$theme/$digest.$extension"
+	mkdir -p "${destination%/*}"
+	cp "$source" "$destination"
+	printf '%s\n' "$destination"
 }
 
 brave_metadata_key() {
@@ -509,6 +547,7 @@ run_in_sandbox() {
 				XDG_RUNTIME_DIR="$FIXTURE_RUNTIME" \
 				TMPDIR="$FIXTURE_TMP" \
 				OMARCHY_PATH="$FIXTURE_OMARCHY" \
+				DOTFILES_WALLPAPER_PACKAGED_THEMES_ROOT="$FIXTURE_WALLPAPER_THEMES" \
 				PATH="$command_path" \
 				DOTFILES_TEST_CALL_LOG="$CALL_LOG" \
 				DOTFILES_TEST_REPO="$FIXTURE_REPO" \
@@ -564,6 +603,25 @@ run_in_sandbox() {
 				DOTFILES_TEST_BRAVE_LOG_RECOVERY_ORDER="${DOTFILES_TEST_BRAVE_LOG_RECOVERY_ORDER:-false}" \
 				DOTFILES_TEST_BRAVE_FALSE_SUCCESS="${DOTFILES_TEST_BRAVE_FALSE_SUCCESS-}" \
 				DOTFILES_TEST_BRAVE_RACE="${DOTFILES_TEST_BRAVE_RACE-}" \
+				DOTFILES_TEST_WALLPAPER_FAIL="${DOTFILES_TEST_WALLPAPER_FAIL-}" \
+				DOTFILES_TEST_WALLPAPER_FAIL_ROLLBACK="${DOTFILES_TEST_WALLPAPER_FAIL_ROLLBACK:-false}" \
+				DOTFILES_TEST_WALLPAPER_VERSION_CHANGES="${DOTFILES_TEST_WALLPAPER_VERSION_CHANGES:-false}" \
+				DOTFILES_TEST_WALLPAPER_RACE="${DOTFILES_TEST_WALLPAPER_RACE-}" \
+				DOTFILES_TEST_WALLPAPER_RACE_PATH="${DOTFILES_TEST_WALLPAPER_RACE_PATH-}" \
+				DOTFILES_TEST_WALLPAPER_FALSE_SUCCESS="${DOTFILES_TEST_WALLPAPER_FALSE_SUCCESS-}" \
+				DOTFILES_TEST_WALLPAPER_IMAGE_RACE_PATH="${DOTFILES_TEST_WALLPAPER_IMAGE_RACE_PATH-}" \
+				DOTFILES_TEST_WALLPAPER_IMAGE_RACE_REPLACEMENT="${DOTFILES_TEST_WALLPAPER_IMAGE_RACE_REPLACEMENT-}" \
+				DOTFILES_TEST_REAL_MAGICK="$HOST_MAGICK_REAL" \
+				DOTFILES_TEST_WALLPAPER_SIGNAL="${DOTFILES_TEST_WALLPAPER_SIGNAL-}" \
+				DOTFILES_TEST_WALLPAPER_POST_PENDING_RACE="${DOTFILES_TEST_WALLPAPER_POST_PENDING_RACE-}" \
+				DOTFILES_TEST_WALLPAPER_POST_PENDING_PATH="${DOTFILES_TEST_WALLPAPER_POST_PENDING_PATH-}" \
+				DOTFILES_TEST_WALLPAPER_POST_PENDING_REPLACEMENT="${DOTFILES_TEST_WALLPAPER_POST_PENDING_REPLACEMENT-}" \
+				DOTFILES_TEST_WALLPAPER_PREPARATION_FAIL="${DOTFILES_TEST_WALLPAPER_PREPARATION_FAIL-}" \
+				DOTFILES_TEST_WALLPAPER_DELETE_RACE_PATH="${DOTFILES_TEST_WALLPAPER_DELETE_RACE_PATH-}" \
+				DOTFILES_TEST_WALLPAPER_DELETE_RACE_REPLACEMENT="${DOTFILES_TEST_WALLPAPER_DELETE_RACE_REPLACEMENT-}" \
+				DOTFILES_TEST_WALLPAPER_SOURCE_AFTER_ACTIVE="${DOTFILES_TEST_WALLPAPER_SOURCE_AFTER_ACTIVE-}" \
+				DOTFILES_TEST_WALLPAPER_SOURCE_AFTER_ACTIVE_REPLACEMENT="${DOTFILES_TEST_WALLPAPER_SOURCE_AFTER_ACTIVE_REPLACEMENT-}" \
+				DOTFILES_TEST_WALLPAPER_STATE_ROOT_RACE="${DOTFILES_TEST_WALLPAPER_STATE_ROOT_RACE-}" \
 				DOTFILES_UI="${DOTFILES_UI:-bash}" \
 				"$BWRAP" \
 					--ro-bind / / \
@@ -605,6 +663,9 @@ run_operation() {
 			source "$repository/lib/dotfiles/brave.sh"
 			if [[ -f $repository/lib/dotfiles/telegram-theme.sh ]]; then
 				source "$repository/lib/dotfiles/telegram-theme.sh"
+			fi
+			if [[ -f $repository/lib/dotfiles/wallpapers.sh ]]; then
+				source "$repository/lib/dotfiles/wallpapers.sh"
 			fi
 			source "$repository/lib/dotfiles/wizard.sh"
 			"$operation" "$@"
@@ -947,6 +1008,167 @@ run_brave_operation() {
 			}
 
 			source "$repository/lib/dotfiles/wizard.sh"
+			"$operation" "$@"
+		' bash "$FIXTURE_REPO" "$operation" "$@"
+}
+
+run_wallpaper_operation() {
+	local working_directory=$1 operation=$2
+	shift 2
+	run_in_sandbox "$working_directory" "${DOTFILES_TEST_PATH:-$FIXTURE_BIN:/usr/bin:/bin}" \
+		bash -c '
+			set -euo pipefail
+			repository=$1
+			operation=$2
+			shift 2
+			source "$repository/lib/dotfiles/core.sh"
+			source "$repository/lib/dotfiles/wallpapers.sh"
+			source "$repository/lib/dotfiles/wizard.sh"
+			wallpaper_test_interrupt() {
+				if [[ $DOTFILES_TEST_WALLPAPER_SIGNAL == "$1-kill" ]]; then kill -KILL $$; fi
+				[[ $DOTFILES_TEST_WALLPAPER_SIGNAL != "$1" ]] || kill -TERM $$
+			}
+			wallpaper_test_replace_state_root() {
+				local replacement="$WALLPAPER_STATE_ROOT.wallpaper-race-replacement"
+				mv -T -- "$WALLPAPER_STATE_ROOT" "$replacement" || return
+				mkdir -m 0700 -- "$WALLPAPER_STATE_ROOT"
+				DOTFILES_TEST_WALLPAPER_STATE_ROOT_RACE=""
+			}
+			wallpaper_after_lock_acquired() {
+				[[ $DOTFILES_TEST_WALLPAPER_STATE_ROOT_RACE == after-lock ]] || return 0
+				wallpaper_test_replace_state_root
+			}
+			wallpaper_after_pending_planned() {
+				local path=$DOTFILES_TEST_WALLPAPER_POST_PENDING_PATH
+				if [[ $DOTFILES_TEST_WALLPAPER_STATE_ROOT_RACE == after-pending ]]; then
+					wallpaper_test_replace_state_root
+					return
+				fi
+				[[ $DOTFILES_TEST_WALLPAPER_POST_PENDING_RACE == parent ]] || return 0
+				mv -T -- "$path" "$path.wallpaper-post-pending-old" || return
+				mkdir -- "$path"
+				DOTFILES_TEST_WALLPAPER_POST_PENDING_RACE=""
+			}
+			wallpaper_after_pending_staged() {
+				local path=$DOTFILES_TEST_WALLPAPER_POST_PENDING_PATH replacement=$DOTFILES_TEST_WALLPAPER_POST_PENDING_REPLACEMENT
+				[[ -n $DOTFILES_TEST_WALLPAPER_POST_PENDING_RACE ]] || return 0
+				case $DOTFILES_TEST_WALLPAPER_POST_PENDING_RACE in
+					file)
+						cp --preserve=mode,timestamps -- "$path" "$path.wallpaper-post-pending" || return
+						mv -fT -- "$path.wallpaper-post-pending" "$path"
+						;;
+					active-link)
+						ln -s -- "$replacement" "$path.wallpaper-post-pending" || return
+						mv -fT -- "$path.wallpaper-post-pending" "$path"
+						;;
+				esac
+				DOTFILES_TEST_WALLPAPER_POST_PENDING_RACE=""
+			}
+			wallpaper_cleanup_checkpoint() {
+				wallpaper_test_interrupt "cleanup-$1"
+			}
+			wallpaper_preparation_checkpoint() {
+				wallpaper_test_interrupt "preparing-$1"
+				[[ $DOTFILES_TEST_WALLPAPER_PREPARATION_FAIL != "$1" ]] || return 86
+			}
+			wallpaper_test_replace_before_deletion() {
+				local path=$1 replacement=$DOTFILES_TEST_WALLPAPER_DELETE_RACE_REPLACEMENT temporary
+				[[ -n $DOTFILES_TEST_WALLPAPER_DELETE_RACE_PATH && $path == "$DOTFILES_TEST_WALLPAPER_DELETE_RACE_PATH" ]] || return 0
+				temporary="$path.wallpaper-delete-race"
+				cp --preserve=mode,timestamps -- "$replacement" "$temporary" || return
+				mv -fT -- "$temporary" "$path"
+				DOTFILES_TEST_WALLPAPER_DELETE_RACE_PATH=""
+			}
+			if [[ $DOTFILES_TEST_WALLPAPER_VERSION_CHANGES == true ]]; then
+				wallpaper_omarchy_version() {
+					local marker="$TMPDIR/wallpaper-version-inspected"
+					if [[ -e $marker ]]; then printf "5.0.0\n"; else : >"$marker"; printf "4.0.0\n"; fi
+				}
+			fi
+			wallpaper_test_replace_after_confirmation() {
+				local path=$DOTFILES_TEST_WALLPAPER_RACE_PATH replacement raw
+				[[ -n $DOTFILES_TEST_WALLPAPER_RACE ]] || return 0
+				replacement="$path.wallpaper-race"
+				case $DOTFILES_TEST_WALLPAPER_RACE in
+					file)
+						cp --preserve=mode,timestamps -- "$path" "$replacement" || return
+						mv -fT -- "$replacement" "$path"
+						;;
+					directory)
+						cp -a -- "$path" "$replacement" || return
+						mv -T -- "$path" "$path.wallpaper-race-old" || return
+						mv -T -- "$replacement" "$path"
+						;;
+					symlink)
+						raw=$(readlink -- "$path") || return
+						ln -s -- "$raw" "$replacement" || return
+						mv -fT -- "$replacement" "$path"
+						;;
+				esac
+				DOTFILES_TEST_WALLPAPER_RACE=''
+			}
+			wallpaper_confirm() {
+				wizard_confirm "$1" || return
+				wallpaper_test_replace_after_confirmation
+			}
+			wallpaper_publish_file() {
+				wallpaper_test_interrupt curation-before
+				local source=$1 destination=$2 digest=$3
+				if [[ $DOTFILES_TEST_WALLPAPER_FAIL == publish-before ]]; then return 77; fi
+				wallpaper_publish_file_impl "$@" || return
+				wallpaper_test_interrupt curation-after
+				if [[ $DOTFILES_TEST_WALLPAPER_FAIL == publish-after ]]; then return 78; fi
+			}
+			wallpaper_delete_file() {
+				[[ $DOTFILES_TEST_WALLPAPER_FALSE_SUCCESS != target-delete ]] || return 0
+				wallpaper_test_replace_before_deletion "$1" || return
+				wallpaper_delete_file_impl "$@" || return
+				wallpaper_test_interrupt curation-delete-after
+				if [[ $DOTFILES_TEST_WALLPAPER_FAIL == delete-after ]]; then return 79; fi
+			}
+			wallpaper_restore_file() {
+				[[ $DOTFILES_TEST_WALLPAPER_FAIL_ROLLBACK != true ]] || return 80
+				wallpaper_restore_file_impl "$@"
+			}
+			wallpaper_restore_from_quarantine() {
+				[[ $DOTFILES_TEST_WALLPAPER_FAIL_ROLLBACK != true ]] || return 80
+				wallpaper_restore_from_quarantine_impl "$@"
+			}
+			wallpaper_publish_live_file() {
+				wallpaper_test_interrupt live-before
+				if [[ $DOTFILES_TEST_WALLPAPER_FAIL == live-publish-before ]]; then return 82; fi
+				wallpaper_publish_live_file_impl "$@" || return
+				wallpaper_test_interrupt live-after
+				if [[ $DOTFILES_TEST_WALLPAPER_FAIL == live-publish-after ]]; then return 83; fi
+			}
+			wallpaper_delete_live_file() {
+				local target
+				target=$(wallpaper_live_target_path "$1") || return
+				[[ $DOTFILES_TEST_WALLPAPER_FALSE_SUCCESS != live-delete ]] || return 0
+				wallpaper_test_replace_before_deletion "$target" || return
+				wallpaper_delete_live_file_impl "$@" || return
+				wallpaper_test_interrupt live-delete-quarantine-after
+				if [[ $DOTFILES_TEST_WALLPAPER_FAIL == live-delete-after ]]; then return 84; fi
+			}
+			wallpaper_write_state_file() {
+				if [[ $DOTFILES_TEST_WALLPAPER_FALSE_SUCCESS == "state-$1-write" ]]; then return 0; fi
+				if [[ $DOTFILES_TEST_WALLPAPER_FAIL == "state-$1" ]]; then return 81; fi
+				[[ $1 != active ]] || wallpaper_test_interrupt active-before
+				wallpaper_write_state_file_impl "$@" || return
+				[[ $1 != active ]] || wallpaper_test_interrupt active-after
+				if [[ $1 == active && -n $DOTFILES_TEST_WALLPAPER_SOURCE_AFTER_ACTIVE ]]; then
+					cp -- "$DOTFILES_TEST_WALLPAPER_SOURCE_AFTER_ACTIVE_REPLACEMENT" "$DOTFILES_TEST_WALLPAPER_SOURCE_AFTER_ACTIVE"
+					DOTFILES_TEST_WALLPAPER_SOURCE_AFTER_ACTIVE=""
+				fi
+			}
+			wallpaper_quarantine_prior_active() {
+				[[ $DOTFILES_TEST_WALLPAPER_FALSE_SUCCESS != state-active.json-delete ]] || return 0
+				wallpaper_quarantine_prior_active_impl "$@"
+			}
+			wallpaper_remove_state_file() {
+				if [[ $DOTFILES_TEST_WALLPAPER_FALSE_SUCCESS == "state-$(basename -- "$1")-delete" ]]; then return 0; fi
+				wallpaper_remove_state_file_impl "$@"
+			}
 			"$operation" "$@"
 		' bash "$FIXTURE_REPO" "$operation" "$@"
 }

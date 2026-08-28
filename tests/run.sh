@@ -18,6 +18,9 @@ readonly SUITES=(
 	telegram_theme_generator_test.sh
 	telegram_theme_hook_test.sh
 	telegram_theme_lifecycle_test.sh
+	wallpaper_validator_test.sh
+	wallpaper_curation_test.sh
+	wallpaper_lifecycle_test.sh
 	wizard_test.sh
 )
 

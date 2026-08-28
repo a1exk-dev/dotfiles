@@ -1,2 +1,5 @@
 # Local plans, specs, tickets, and maps
 /.scratch/
+
+# Maintainer-supplied images awaiting curation
+/wallpapers/inbox/

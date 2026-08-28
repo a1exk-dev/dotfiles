@@ -18,6 +18,8 @@ source "$DOTFILES_ENTRY_ROOT/lib/dotfiles/modem.sh"
 source "$DOTFILES_ENTRY_ROOT/lib/dotfiles/brave.sh"
 # shellcheck source=../lib/dotfiles/telegram-theme.sh
 source "$DOTFILES_ENTRY_ROOT/lib/dotfiles/telegram-theme.sh"
+# shellcheck source=../lib/dotfiles/wallpapers.sh
+source "$DOTFILES_ENTRY_ROOT/lib/dotfiles/wallpapers.sh"
 # shellcheck source=../lib/dotfiles/wizard.sh
 source "$DOTFILES_ENTRY_ROOT/lib/dotfiles/wizard.sh"
 
@@ -26,6 +28,10 @@ if (($# == 0)); then
 elif (($# == 2)) && [[ $1 == --action ]]; then
 	wizard_run_action "$2"
 else
-	printf 'Usage: bin/dotfiles [--action <guided|status|check|apply|migrate|remove|prerequisites|cleanup|skills|skills-update|telegram-theme|modem|brave>]\n' >&2
+	printf '%s\n' \
+		'Usage: bin/dotfiles [--action <guided|status|check|apply|migrate|remove|prerequisites|cleanup|skills|skills-update|modem|brave|telegram-theme|wallpapers|wallpapers-apply|wallpapers-remove>]' \
+		'  wallpapers: curate the repository Wallpaper library' \
+		'  wallpapers-apply: deploy the Wallpaper library' \
+		'  wallpapers-remove: remove receipt-owned deployed wallpapers' >&2
 	exit 2
 fi

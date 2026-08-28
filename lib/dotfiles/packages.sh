@@ -146,6 +146,15 @@ check() {
 	if ! validate_brave_policy_source; then
 		missing=true
 	fi
+	if command -v magick >/dev/null 2>&1; then
+		printf 'ImageMagick: available (magick)\n'
+		if ! validate_wallpaper_library; then
+			missing=true
+		fi
+	else
+		printf 'Error: missing Wallpaper prerequisite: ImageMagick command magick\n' >&2
+		missing=true
+	fi
 
 	for command in git npx diff; do
 		if ! command -v "$command" >/dev/null 2>&1; then
@@ -659,8 +668,9 @@ setup_prerequisites() {
 	inspect_omarchy stderr
 
 	printf 'Phase: plan\n'
-	local stow_missing=false node_missing=false node_version=''
+	local stow_missing=false imagemagick_missing=false node_missing=false node_version=''
 	command -v stow >/dev/null 2>&1 || stow_missing=true
+	command -v magick >/dev/null 2>&1 || imagemagick_missing=true
 	if command -v node >/dev/null 2>&1; then
 		node_version=$(node --version)
 		node_version=${node_version#v}
@@ -669,8 +679,8 @@ setup_prerequisites() {
 		! command -v npm >/dev/null 2>&1 || ! command -v npx >/dev/null 2>&1; then
 		node_missing=true
 	fi
-	if [[ $stow_missing == false && $node_missing == false ]]; then
-		printf 'Prerequisites verified: GNU Stow, Node.js %s, npm, and npx.\n' "$node_version"
+	if [[ $stow_missing == false && $imagemagick_missing == false && $node_missing == false ]]; then
+		printf 'Prerequisites verified: GNU Stow, ImageMagick (magick), Node.js %s, npm, and npx.\n' "$node_version"
 		return 0
 	fi
 	if ! command -v omarchy >/dev/null 2>&1; then
@@ -681,6 +691,7 @@ setup_prerequisites() {
 	printf 'Dependencies: none\n'
 	printf 'Conflicts: none detected\n'
 	[[ $stow_missing == false ]] || printf 'Plan: install GNU Stow with omarchy pkg add stow.\n'
+	[[ $imagemagick_missing == false ]] || printf 'Plan: install ImageMagick with omarchy pkg add imagemagick.\n'
 	[[ $node_missing == false ]] || printf 'Plan: install Node.js %s or newer, npm, and npx with omarchy install dev-env node.\n' "$MINIMUM_NODE_VERSION"
 	printf 'Plan: verify every required tool after installation.\n'
 	printf 'Phase: confirm\n'
@@ -713,6 +724,11 @@ setup_prerequisites() {
 		printf 'Recovery: resolve the Omarchy package error, then choose Prepare prerequisites in the Dotfiles wizard.\n' >&2
 		return 1
 	fi
+	if [[ $imagemagick_missing == true ]] && ! omarchy pkg add imagemagick; then
+		printf 'Error: ImageMagick installation failed.\n' >&2
+		printf 'Recovery: resolve the Omarchy package error, then choose Prepare prerequisites in the Dotfiles wizard.\n' >&2
+		return 1
+	fi
 	if [[ $node_missing == true ]] && ! omarchy install dev-env node; then
 		printf 'Error: Node.js toolchain installation failed.\n' >&2
 		printf 'Recovery: resolve the Omarchy installer error, then choose Prepare prerequisites in the Dotfiles wizard.\n' >&2
@@ -721,6 +737,11 @@ setup_prerequisites() {
 	printf 'Phase: verify\n'
 	if ! command -v stow >/dev/null 2>&1; then
 		printf 'Error: GNU Stow is still unavailable after installation.\n' >&2
+		printf 'Recovery: fix the installation or PATH, then choose Prepare prerequisites in the Dotfiles wizard.\n' >&2
+		return 1
+	fi
+	if ! command -v magick >/dev/null 2>&1; then
+		printf 'Error: ImageMagick command magick is still unavailable after installation.\n' >&2
 		printf 'Recovery: fix the installation or PATH, then choose Prepare prerequisites in the Dotfiles wizard.\n' >&2
 		return 1
 	fi
@@ -736,7 +757,7 @@ setup_prerequisites() {
 		printf 'Recovery: fix the Node.js installation, then choose Prepare prerequisites in the Dotfiles wizard.\n' >&2
 		return 1
 	fi
-	printf 'Prerequisites installed and verified: GNU Stow, Node.js %s, npm, and npx.\n' "$node_version"
+	printf 'Prerequisites installed and verified: GNU Stow, ImageMagick (magick), Node.js %s, npm, and npx.\n' "$node_version"
 }
 
 apply_packages() {

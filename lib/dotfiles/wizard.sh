@@ -109,6 +109,9 @@ wizard_run_action() {
 		modem) recover_zte_usb_modem ;;
 		brave) manage_brave_policy ;;
 		telegram-theme) manage_telegram_theme ;;
+		wallpapers) manage_wallpapers ;;
+		wallpapers-apply) apply_wallpapers ;;
+		wallpapers-remove) remove_wallpapers ;;
 		exit) printf 'No action selected.\n' ;;
 		*) printf 'Error: unknown wizard action: %s\n' "$action" >&2; return 2 ;;
 	esac
@@ -128,7 +131,29 @@ guided_setup() {
 		return 1
 	fi
 	apply_packages "${WIZARD_PACKAGES[@]}" || { printf 'Recovery: choose Apply Stow packages in the Dotfiles wizard.\n' >&2; return 1; }
-	printf 'Guided phase 5: optional Brave policy\n'
+	printf 'Guided phase 5: Wallpaper library deployment\n'
+	local wallpaper_outcome
+	if apply_wallpapers; then
+		wallpaper_outcome=0
+	else
+		wallpaper_outcome=$?
+	fi
+	case $WALLPAPER_OPERATION_CONTEXT in
+		"$WALLPAPER_OPERATION_CONTEXT_ORDINARY") ;;
+		"$WALLPAPER_OPERATION_CONTEXT_RECOVERY_COMPLETED")
+			printf 'Recovery: choose Apply wallpapers in the Dotfiles wizard.\n' >&2
+			return 1
+			;;
+		*)
+			printf 'Recovery: choose Apply wallpapers in the Dotfiles wizard.\n' >&2
+			return 1
+			;;
+	esac
+	if ((wallpaper_outcome != 0)); then
+		printf 'Recovery: choose Apply wallpapers in the Dotfiles wizard.\n' >&2
+		return "$wallpaper_outcome"
+	fi
+	printf 'Guided phase 6: optional Brave policy\n'
 	local brave_outcome
 	if apply_brave_policy; then
 		brave_outcome=$BRAVE_OUTCOME_SUCCESS
@@ -148,8 +173,8 @@ guided_setup() {
 	esac
 	case $brave_outcome in
 		"$BRAVE_OUTCOME_SUCCESS") ;;
-		"$BRAVE_OUTCOME_DECLINED") printf 'Guided phase 5 skipped: Brave policy plan declined.\n' ;;
-		"$BRAVE_OUTCOME_UNAVAILABLE") printf 'Guided phase 5 skipped: no supported Brave browser is installed.\n' ;;
+		"$BRAVE_OUTCOME_DECLINED") printf 'Guided phase 6 skipped: Brave policy plan declined.\n' ;;
+		"$BRAVE_OUTCOME_UNAVAILABLE") printf 'Guided phase 6 skipped: no supported Brave browser is installed.\n' ;;
 		*)
 			printf 'Recovery: choose Manage Brave policy in the Dotfiles wizard.\n' >&2
 			return "$brave_outcome"
@@ -175,9 +200,12 @@ wizard() {
 		'Recover ZTE USB modem'
 		'Manage Brave policy'
 		'Manage Telegram theme'
+		'Manage wallpapers'
+		'Apply wallpapers'
+		'Remove deployed wallpapers'
 		'Exit'
 	)
-	local -a actions=(guided status check apply migrate remove prerequisites cleanup skills skills-update modem brave telegram-theme exit)
+	local -a actions=(guided status check apply migrate remove prerequisites cleanup skills skills-update modem brave telegram-theme wallpapers wallpapers-apply wallpapers-remove exit)
 	if ! choice=$(wizard_choose 'Choose an action (none selected by default)' "${labels[@]}"); then
 		printf 'No action selected.\n'
 		return 0
