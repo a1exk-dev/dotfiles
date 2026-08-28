@@ -56,6 +56,14 @@ Guidance: Preserve the stock black terminal background unless a separate ownersh
 
 Reason: The packaged runner sets the terminal background to black before immediately relaunching each exited `ttfx` process, while `ttfx` does not apply its background argument to the terminal itself.
 
+## Avoid idle-plugin reloads during an idle cycle
+
+Applies when: Installing or changing a personal Omarchy 4.0.1 idle plugin clone.
+
+Guidance: Install a complete validated clone before triggering one plugin rescan, and do not edit its installed files during an idle cycle. After any reload, start a fresh cycle and verify idle-service status before relying on screensaver or lock timing.
+
+Reason: Omarchy reloads the complete plugin registry after a plugin change, recreating the idle service and resetting its timers, active-cycle state, screensaver-window bookkeeping, and pending lock coordination.
+
 ## Keep the Omarchy root separate from command paths
 
 Applies when: Invoking packaged Omarchy commands from Bash, especially from a process that inherits exported `OMARCHY_PATH`.
