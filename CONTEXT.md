@@ -32,6 +32,10 @@ The root `skills.json` file containing exact source revisions, each repository's
 
 A dedicated `telegram-theme` Stow package that adapts the active Omarchy semantic colors to Telegram Desktop's native theming. The repository owns the color mapping and integration lifecycle; generated output is integration-owned, regenerable local state; Telegram owns saved theme and account state. The visual promise is Omarchy colors and clear native sections within Telegram's native structure, rather than structural TUI styling.
 
+## Screensaver effect allowlist
+
+The repository-owned nonempty set of verified `ttfx` effects available to the selective Omarchy screensaver integration. One member fixes the effect; several members are sampled independently and uniformly at each effect start. Members may have Full or Partial active-theme mappings, while effects without a verified mapping remain outside the allowlist.
+
 ## Wallpaper inbox
 
 The repository-local, untracked holding area for maintainer-supplied image files awaiting acceptance. Its contents are intake images, not repository-owned assets.

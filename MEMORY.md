@@ -64,6 +64,14 @@ Guidance: Install a complete validated clone before triggering one plugin rescan
 
 Reason: Omarchy reloads the complete plugin registry after a plugin change, recreating the idle service and resetting its timers, active-cycle state, screensaver-window bookkeeping, and pending lock coordination.
 
+## Keep the screensaver allowlist outside the plugin tree
+
+Applies when: Implementing or validating the Screensaver effect allowlist or its Make-driven selector.
+
+Guidance: Track the bare JSON array at `config/screensaver-effects/.config/dotfiles/screensaver-effects.json` and deploy it to `~/.config/dotfiles/screensaver-effects.json`. Read it at each effect start. Atomically replace the repository source through a sibling temporary file, then verify that any deployed leaf still resolves to it through Stow.
+
+Reason: A write below `~/.config/omarchy/plugins/` reloads the plugin registry and can reset idle coordination, while atomically replacing the deployed path would replace its Stow symlink and split repository and live state.
+
 ## Keep the Omarchy root separate from command paths
 
 Applies when: Invoking packaged Omarchy commands from Bash, especially from a process that inherits exported `OMARCHY_PATH`.
