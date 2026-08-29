@@ -1,5 +1,6 @@
 #!/usr/bin/env bash
 
+DOTFILES_TEST_FAST_WALLPAPER_MAGICK=true
 source "$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)/support/test_helper.sh"
 
 test_inspect_reports_empty_invalid_intake_and_installed_theme_origins_read_only() {
@@ -425,6 +426,78 @@ test_curation_deletion_uses_quarantine_and_rejects_replacement() {
 	assert_path_absent "$quarantine" 'quarantine recovery should consume the exact quarantine'
 }
 
+test_add_creates_one_exact_hook_free_commit_and_preserves_unrelated_git_state() {
+	new_fixture
+	setup_wallpaper_fixture
+	mkdir "$FIXTURE_WALLPAPER_THEMES/catppuccin"
+	local intake="$FIXTURE_REPO/wallpapers/inbox/managed.png" digest target relative base changed staged_before marker
+	make_wallpaper_image PNG "$intake" '#285a8c' || return 1
+	digest=$(wallpaper_digest "$intake") || return 1
+	target="$FIXTURE_REPO/wallpapers/library/catppuccin/$digest.png"
+	relative=${target#"$FIXTURE_REPO"/}
+	printf '\n' >>"$FIXTURE_REPO/packages.json"
+	fixture_git add -- packages.json || return 1
+	base=$(fixture_git rev-parse HEAD) || return 1
+	staged_before=$(fixture_git ls-files --stage -- packages.json) || return 1
+	marker="$FIXTURE_TMP/pre-commit-ran"
+	printf '#!/usr/bin/env bash\nprintf "ran\\n" >"%s"\nexit 91\n' "$marker" >"$FIXTURE_REPO/.git/hooks/pre-commit"
+	chmod +x "$FIXTURE_REPO/.git/hooks/pre-commit"
+	run_wallpaper_operation "$FIXTURE_ROOT" add_wallpaper "$intake" catppuccin --yes
+	assert_eq 0 "$COMMAND_STATUS" 'Add should publish one focused exact commit without ordinary hooks' || return 1
+	assert_eq 1 "$(fixture_git rev-list --count "$base"..HEAD)" 'Add should advance the branch by exactly one commit' || return 1
+	assert_eq "Add managed wallpaper ${digest:0:12}" "$(fixture_git log -1 --format=%s HEAD)" 'automatic commit should use the exact subject' || return 1
+	changed=$(fixture_git diff-tree --no-commit-id --name-only -r "$base" HEAD) || return 1
+	assert_eq "$relative" "$changed" 'automatic commit should contain only the new assignment path' || return 1
+	assert_eq "$staged_before" "$(fixture_git ls-files --stage -- packages.json)" 'Add should preserve the unrelated staged entry' || return 1
+	assert_path_absent "$marker" 'automatic Add must bypass pre-commit' || return 1
+	assert_path_absent "$intake" 'committed Add should delete Intake'
+}
+
+test_exact_committed_duplicate_deletes_intake_without_empty_commit() {
+	new_fixture
+	setup_wallpaper_fixture
+	mkdir "$FIXTURE_WALLPAPER_THEMES/catppuccin"
+	local source="$FIXTURE_TMP/committed.png" intake="$FIXTURE_REPO/wallpapers/inbox/duplicate.png" assignment digest head_before
+	make_wallpaper_image PNG "$source" '#386696' || return 1
+	digest=$(wallpaper_digest "$source") || return 1
+	assignment=$(assign_wallpaper_fixture "$source" catppuccin png) || return 1
+	fixture_git add -- "${assignment#"$FIXTURE_REPO"/}" || return 1
+	fixture_git commit -qm 'Seed committed Managed wallpaper' || return 1
+	cp "$source" "$intake"
+	head_before=$(fixture_git rev-parse HEAD) || return 1
+	run_wallpaper_operation "$FIXTURE_ROOT" add_wallpaper "$intake" catppuccin --yes
+	assert_eq 0 "$COMMAND_STATUS" 'exact committed duplicate cleanup should succeed' || return 1
+	assert_eq "$head_before" "$(fixture_git rev-parse HEAD)" 'exact committed duplicate should not create an empty commit' || return 1
+	assert_contains "$COMMAND_OUTPUT" 'Git commit skipped because every confirmed assignment was already exact in HEAD.' 'duplicate Add should report the skipped empty commit' || return 1
+	assert_path_absent "$intake" 'exact committed duplicate should delete duplicate Intake' || return 1
+	assert_eq "$digest" "$(wallpaper_digest "$assignment")" 'duplicate cleanup should preserve the committed assignment'
+}
+
+test_git_commit_failure_rolls_back_add_and_preserves_unrelated_staging() {
+	new_fixture
+	setup_wallpaper_fixture
+	mkdir "$FIXTURE_WALLPAPER_THEMES/catppuccin"
+	local intake="$FIXTURE_REPO/wallpapers/inbox/commit-failure.png" digest target head_before staged_before
+	make_wallpaper_image PNG "$intake" '#3d6b9b' || return 1
+	digest=$(wallpaper_digest "$intake") || return 1
+	target="$FIXTURE_REPO/wallpapers/library/catppuccin/$digest.png"
+	printf '\n' >>"$FIXTURE_REPO/packages.json"
+	fixture_git add -- packages.json || return 1
+	head_before=$(fixture_git rev-parse HEAD) || return 1
+	staged_before=$(fixture_git ls-files --stage -- packages.json) || return 1
+	rm "$FIXTURE_WALLPAPER_BIN/git"
+	printf '#!/usr/bin/env bash\nfor arg in "$@"; do [[ $arg != commit ]] || exit 97; done\nexec %q "$@"\n' \
+		"$HOST_GIT_REAL" >"$FIXTURE_WALLPAPER_BIN/git"
+	chmod +x "$FIXTURE_WALLPAPER_BIN/git"
+	run_wallpaper_operation "$FIXTURE_ROOT" add_wallpaper "$intake" catppuccin --yes
+	assert_eq 1 "$COMMAND_STATUS" 'ordinary Git commit failure should fail Add' || return 1
+	assert_eq "$head_before" "$(fixture_git rev-parse HEAD)" 'failed commit should leave HEAD unchanged' || return 1
+	assert_eq "$staged_before" "$(fixture_git ls-files --stage -- packages.json)" 'failed commit should preserve unrelated staging' || return 1
+	assert_eq "$digest" "$(wallpaper_digest "$intake")" 'ordinary rollback should restore Intake' || return 1
+	assert_path_absent "$target" 'ordinary rollback should remove the new assignment' || return 1
+	assert_path_absent "$FIXTURE_STATE/dotfiles/wallpapers/pending.json" 'ordinary rollback should clear pending evidence'
+}
+
 run_test test_inspect_reports_empty_invalid_intake_and_installed_theme_origins_read_only 'Inspect reports coherent curation state without mutation'
 run_test test_gitkeep_is_not_an_intake_image_during_inspect_or_add_scan '.gitkeep is not treated as an Intake image'
 run_test test_add_assigns_exact_bytes_to_one_or_many_themes_then_deletes_intake 'Add materializes exact-byte assignments before intake deletion'
@@ -441,4 +514,7 @@ run_test test_curation_sigterm_before_and_after_assignment_visibility_recovers_a
 run_test test_pending_publication_failure_precedes_all_transaction_resources 'pending publication failure leaves no transaction preparation side effects'
 run_test test_preparing_intent_without_identity_retains_evidence_and_substituted_resources 'preparing intent without identity retains evidence and substituted resources'
 run_test test_curation_deletion_uses_quarantine_and_rejects_replacement 'curation deletion quarantines expected identity and preserves replacements'
+run_test test_add_creates_one_exact_hook_free_commit_and_preserves_unrelated_git_state 'Add creates one exact hook-free commit and preserves unrelated Git work'
+run_test test_exact_committed_duplicate_deletes_intake_without_empty_commit 'exact committed duplicate deletes Intake without an empty commit'
+run_test test_git_commit_failure_rolls_back_add_and_preserves_unrelated_staging 'ordinary Git commit failure rolls back Add and preserves unrelated staging'
 finish_tests

@@ -447,6 +447,9 @@ declare -a WALLPAPER_THEME_LABELS=()
 declare -a WALLPAPER_TRANSACTION_PATHS=()
 declare -a WALLPAPER_TRANSACTION_DESIRED_PRESENT=()
 declare -a WALLPAPER_TRANSACTION_DESIRED_DIGEST=()
+WALLPAPER_GIT_ERROR=''
+declare -a WALLPAPER_GIT_PATHS=()
+declare -a WALLPAPER_GIT_NEW_PATHS=()
 
 wallpaper_initialize_paths() {
 	local state_home=${XDG_STATE_HOME:-"$HOME/.local/state"} canonical
@@ -961,6 +964,104 @@ wallpaper_curation_path_is_safe() {
 			;;
 		*) return 1 ;;
 	esac
+}
+
+wallpaper_git() {
+	env -u GIT_DIR -u GIT_WORK_TREE -u GIT_INDEX_FILE -u GIT_COMMON_DIR -u GIT_OBJECT_DIRECTORY \
+		-u GIT_ALTERNATE_OBJECT_DIRECTORIES -u GIT_QUARANTINE_PATH -u GIT_NAMESPACE \
+		git -C "$REPOSITORY_ROOT" "$@"
+}
+
+wallpaper_git_path_is_safe() {
+	local relative=$1 digest=$2 path="$REPOSITORY_ROOT/$1" name=${1##*/}
+	[[ $relative == wallpapers/library/*/* ]] && wallpaper_curation_path_is_safe "$path" && \
+		[[ $name =~ ^$digest[.](jpg|png|gif|bmp|webp)$ ]]
+}
+
+wallpaper_git_collect_paths() {
+	local digest=$1 path relative
+	local -a sorted=()
+	declare -A seen=()
+	shift
+	while IFS= read -r -d '' path; do
+		relative=${path#"$REPOSITORY_ROOT"/}
+		wallpaper_git_path_is_safe "$relative" "$digest" || return 1
+		seen[$relative]=1
+	done < <(find "$WALLPAPER_LIBRARY_ROOT" -mindepth 2 -maxdepth 2 -type f -name "$digest.*" -print0 2>/dev/null | sort -z)
+	for path in "$@"; do
+		[[ $path == "$REPOSITORY_ROOT/"* ]] || return 1
+		relative=${path#"$REPOSITORY_ROOT"/}
+		wallpaper_git_path_is_safe "$relative" "$digest" || return 1
+		seen[$relative]=1
+	done
+	WALLPAPER_GIT_PATHS=()
+	if ((${#seen[@]})); then mapfile -t sorted < <(printf '%s\n' "${!seen[@]}" | LC_ALL=C sort); fi
+	WALLPAPER_GIT_PATHS=("${sorted[@]}")
+	((${#WALLPAPER_GIT_PATHS[@]} > 0))
+}
+
+wallpaper_git_prepare_add() {
+	local digest=$1 top branch relative entry mode type object listed actual
+	WALLPAPER_GIT_ERROR=''
+	WALLPAPER_GIT_NEW_PATHS=()
+	top=$(wallpaper_git rev-parse --show-toplevel 2>/dev/null) || { WALLPAPER_GIT_ERROR='repository root is not a Git worktree'; return 1; }
+	[[ $top == "$REPOSITORY_ROOT" && $(wallpaper_git rev-parse --is-inside-work-tree) == true && $(wallpaper_git rev-parse --is-bare-repository) == false ]] || {
+		WALLPAPER_GIT_ERROR='REPOSITORY_ROOT must be exactly the top level of a normal Git worktree'
+		return 1
+	}
+	branch=$(wallpaper_git symbolic-ref -q HEAD 2>/dev/null) || { WALLPAPER_GIT_ERROR='Wallpaper Add requires a symbolic Git branch'; return 1; }
+	[[ $branch == refs/heads/* ]] || { WALLPAPER_GIT_ERROR='Wallpaper Add requires a normal local branch'; return 1; }
+	wallpaper_git rev-parse --verify 'HEAD^{commit}' >/dev/null 2>&1 || { WALLPAPER_GIT_ERROR='Wallpaper Add requires an existing Git HEAD'; return 1; }
+	wallpaper_git var GIT_AUTHOR_IDENT >/dev/null 2>&1 && wallpaper_git var GIT_COMMITTER_IDENT >/dev/null 2>&1 || {
+		WALLPAPER_GIT_ERROR='Git author or committer identity is not usable'
+		return 1
+	}
+	for relative in "${WALLPAPER_GIT_PATHS[@]}"; do
+		wallpaper_git diff --cached --quiet HEAD -- "$relative" || {
+			WALLPAPER_GIT_ERROR="preexisting staged or conflicting index state blocks $relative"
+			return 1
+		}
+		entry=$(wallpaper_git ls-tree HEAD -- "$relative") || { WALLPAPER_GIT_ERROR="could not inspect HEAD for $relative"; return 1; }
+		if [[ -z $entry ]]; then
+			WALLPAPER_GIT_NEW_PATHS+=("$relative")
+			continue
+		fi
+		IFS=$' \t' read -r mode type object listed <<<"$entry"
+		if [[ $mode != 100644 || $type != blob || $listed != "$relative" ]]; then
+			WALLPAPER_GIT_ERROR="HEAD has different content at $relative"
+			return 1
+		fi
+		actual=$(wallpaper_git cat-file blob "$object" | sha256sum) || { WALLPAPER_GIT_ERROR="could not read HEAD content for $relative"; return 1; }
+		[[ ${actual%% *} == "$digest" ]] || { WALLPAPER_GIT_ERROR="HEAD has different content at $relative"; return 1; }
+	done
+}
+
+wallpaper_git_restore_add_index() {
+	((${#WALLPAPER_GIT_NEW_PATHS[@]} == 0)) || wallpaper_git restore --staged --source=HEAD -- "${WALLPAPER_GIT_NEW_PATHS[@]}"
+}
+
+wallpaper_git_commit_add() {
+	local digest=$1 relative
+	wallpaper_git_prepare_add "$digest" || return 1
+	((${#WALLPAPER_GIT_NEW_PATHS[@]} > 0)) || return 2
+	for relative in "${WALLPAPER_GIT_PATHS[@]}"; do
+		wallpaper_regular_file_is_exact "$REPOSITORY_ROOT/$relative" "$digest" 0644 || {
+			WALLPAPER_GIT_ERROR="Managed assignment changed before commit: $relative"
+			return 1
+		}
+	done
+	if ! wallpaper_git add --intent-to-add -- "${WALLPAPER_GIT_NEW_PATHS[@]}"; then
+		WALLPAPER_GIT_ERROR='git add --intent-to-add failed'
+		wallpaper_git_restore_add_index || printf 'Error: could not restore Wallpaper Add target index entries to HEAD.\n' >&2
+		return 1
+	fi
+	if wallpaper_git -c core.hooksPath=/dev/null commit --only --no-verify --no-gpg-sign --cleanup=verbatim \
+		-m "Add managed wallpaper ${digest:0:12}" -- "${WALLPAPER_GIT_NEW_PATHS[@]}"; then
+		return 0
+	fi
+	WALLPAPER_GIT_ERROR='Git commit failed'
+	wallpaper_git_restore_add_index || printf 'Error: could not restore Wallpaper Add target index entries to HEAD.\n' >&2
+	return 1
 }
 
 wallpaper_validate_curation_pending() {
@@ -2108,12 +2209,13 @@ wallpaper_parse_common_flag() {
 
 add_wallpaper() {
 	WALLPAPER_OPERATION_CONTEXT=$WALLPAPER_OPERATION_CONTEXT_ORDINARY
+	WALLPAPER_GIT_PATHS=() WALLPAPER_GIT_NEW_PATHS=()
 	if (($# < 2)); then
 		printf 'Error: add_wallpaper requires one Intake path and at least one installed theme slug.\n' >&2
 		return 2
 	fi
-	local intake=$1 argument theme digest extension format identity library_before themes_before intake_before transaction lock_status target existing existing_theme
-	local duplicate=false mutation_started=false outcome=0
+	local intake=$1 argument theme digest extension format identity library_before themes_before intake_before assignment_plan transaction lock_status target existing existing_theme git_status
+	local duplicate=false mutation_started=false commit_created=false commit_skipped=false outcome=0
 	local -a themes=() new_targets=()
 	declare -A selected=()
 	shift
@@ -2158,6 +2260,15 @@ add_wallpaper() {
 			[[ ${existing##*/} != "$digest.$extension" ]] || duplicate=true
 		done < <(find "$WALLPAPER_LIBRARY_ROOT" -mindepth 2 -maxdepth 2 -type f -print0 2>/dev/null | sort -z)
 	fi
+	wallpaper_git_collect_paths "$digest" "${new_targets[@]}" || {
+		printf 'Error: could not build the exact Git assignment plan for this Managed wallpaper.\n' >&2
+		return 1
+	}
+	assignment_plan=$(printf '%s\n' "${WALLPAPER_GIT_PATHS[@]}")
+	if ! wallpaper_git_prepare_add "$digest"; then
+		printf 'Error: unsafe Git state blocks Wallpaper Add: %s.\n' "${WALLPAPER_GIT_ERROR:-Git preflight failed}" >&2
+		return 1
+	fi
 	printf 'Plan: Add one Intake image to the Wallpaper library\nValidation: valid\nFormat: %s\nSHA-256: %s\nDuplicate managed identity: %s\n' \
 		"$format" "$digest" "$([[ $duplicate == true ]] && printf yes || printf no)"
 	while IFS= read -r -d '' existing; do
@@ -2168,6 +2279,11 @@ add_wallpaper() {
 		target="$WALLPAPER_LIBRARY_ROOT/$theme/$digest.$extension"
 		if [[ -e $target ]]; then printf 'No-op assignment: %s (%s)\n' "$theme" "$target"; else printf 'New assignment: %s (%s)\n' "$theme" "$target"; fi
 	done
+	if ((${#WALLPAPER_GIT_NEW_PATHS[@]})); then
+		printf 'Git commit: Add managed wallpaper %s (%s assignment path(s) absent from HEAD; ordinary hooks disabled)\n' "${digest:0:12}" "${#WALLPAPER_GIT_NEW_PATHS[@]}"
+	else
+		printf 'Git commit: skipped because every confirmed assignment is already exact in HEAD\n'
+	fi
 	printf 'Delete Intake after complete verification: %s\n' "$intake"
 	[[ $WALLPAPER_OPTION_YES == true ]] || {
 		wallpaper_require_compatible_mutation false "$WALLPAPER_OPTION_OVERRIDE" || return 1
@@ -2184,6 +2300,13 @@ add_wallpaper() {
 	fi
 	wallpaper_validate_image_quiet "$intake" || { wallpaper_release_lock; return 1; }
 	[[ $WALLPAPER_IMAGE_DIGEST == "$digest" && $WALLPAPER_IMAGE_IDENTITY == "$identity" ]] || { wallpaper_release_lock; return 1; }
+	wallpaper_git_collect_paths "$digest" "${new_targets[@]}" || { wallpaper_release_lock; return 1; }
+	[[ $(printf '%s\n' "${WALLPAPER_GIT_PATHS[@]}") == "$assignment_plan" ]] || { printf 'Error: confirmed Wallpaper Add assignment scope changed before mutation.\n' >&2; wallpaper_release_lock; return 1; }
+	if ! wallpaper_git_prepare_add "$digest"; then
+		printf 'Error: confirmed wallpaper Add Git plan is unsafe: %s.\n' "${WALLPAPER_GIT_ERROR:-Git preflight failed}" >&2
+		wallpaper_release_lock
+		return 1
+	fi
 	WALLPAPER_TRANSACTION_PATHS=() WALLPAPER_TRANSACTION_DESIRED_PRESENT=() WALLPAPER_TRANSACTION_DESIRED_DIGEST=()
 	for target in "${new_targets[@]}"; do
 		WALLPAPER_TRANSACTION_PATHS+=("$target") WALLPAPER_TRANSACTION_DESIRED_PRESENT+=(true) WALLPAPER_TRANSACTION_DESIRED_DIGEST+=("$digest")
@@ -2205,6 +2328,19 @@ add_wallpaper() {
 	if ((outcome == 0)) && ! wallpaper_delete_file_verified "$intake" "$digest" \
 		"$(jq -c --arg path "$intake" '.changes[] | select(.path == $path) | .prior.identity' <<<"$WALLPAPER_PENDING_JSON")"; then outcome=1; fi
 	if ((outcome == 0)) && { [[ -e $intake || -L $intake ]] || ! wallpaper_validate_library_quiet; }; then outcome=1; fi
+	if ((outcome == 0)); then
+		if wallpaper_git_commit_add "$digest"; then
+			commit_created=true
+		else
+			git_status=$?
+			if ((git_status == 2)); then
+				commit_skipped=true
+			else
+				printf 'Error: Wallpaper Add Git commit failed: %s.\n' "${WALLPAPER_GIT_ERROR:-Git command failed}" >&2
+				outcome=1
+			fi
+		fi
+	fi
 	if ((outcome != 0)); then
 		[[ $mutation_started == false ]] || wallpaper_rollback_curation add-failure "$WALLPAPER_PENDING_JSON" || true
 		wallpaper_release_lock
@@ -2212,7 +2348,12 @@ add_wallpaper() {
 	fi
 	wallpaper_complete_transaction || { [[ ! -e $WALLPAPER_PENDING_RECEIPT ]] || wallpaper_write_recovery_required completion-cleanup "$WALLPAPER_PENDING_JSON" || true; wallpaper_release_lock; return 1; }
 	wallpaper_release_lock
-	printf 'Wallpaper Add committed and verified. Live Omarchy backgrounds are unchanged; run Apply wallpapers to deploy.\n'
+	if [[ $commit_created == true ]]; then
+		printf 'Wallpaper Add created Git commit "Add managed wallpaper %s" and was verified.\n' "${digest:0:12}"
+	elif [[ $commit_skipped == true ]]; then
+		printf 'Wallpaper Add was verified; Git commit skipped because every confirmed assignment was already exact in HEAD.\n'
+	fi
+	printf 'Live Omarchy backgrounds are unchanged; run Apply wallpapers to deploy.\n'
 }
 
 wallpaper_find_assignment() {

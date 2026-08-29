@@ -61,7 +61,7 @@ Choose `Recover ZTE USB modem` to inspect and, after confirmation, recover the k
 
 Choose `Manage Telegram theme` to inspect status, run the approved bootstrap refresh, or retry generation.
 
-Place candidate images in `wallpapers/inbox/`, then choose `Manage wallpapers` or run `make wallpapers`. The manager validates each Intake image before it adds tracked Theme assignments under `wallpapers/library/`. Choose `Apply wallpapers` to deploy the library as regular Omarchy background files. Choose `Remove deployed wallpapers` to remove unchanged receipt-owned copies.
+Place candidate images in `wallpapers/inbox/`, then choose `Manage wallpapers` or run `make wallpapers`. The manager validates each Intake image, adds its Theme assignments under `wallpapers/library/`, and creates one Git commit for new assignment paths. The commit subject is `Add managed wallpaper <digest-prefix>`. If every assignment is already in Git, Add removes the duplicate Intake image without creating an empty commit. Choose `Apply wallpapers` to deploy the library as regular Omarchy background files. Choose `Remove deployed wallpapers` to remove unchanged receipt-owned copies.
 
 ## Repository layout
 

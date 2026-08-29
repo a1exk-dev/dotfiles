@@ -6,6 +6,8 @@ SOURCE_REPO=$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")/../.." && pwd)
 BWRAP=$(command -v bwrap)
 HOST_NODE_REAL=$(readlink -f -- "$(command -v node)")
 HOST_MAGICK_REAL=$(readlink -f -- "$(command -v magick)")
+HOST_GIT_REAL=$(readlink -f -- "$(command -v git)")
+HOST_FILE_REAL=$(readlink -f -- "$(command -v file)")
 BWRAP_EXTRA_ARGS=()
 TESTS_RUN=0
 TESTS_FAILED=0
@@ -67,6 +69,7 @@ new_fixture() {
 	FIXTURE_RUNTIME="$FIXTURE_ROOT/user/runtime"
 	FIXTURE_TMP="$FIXTURE_ROOT/tmp"
 	FIXTURE_BIN="$FIXTURE_ROOT/fake-bin"
+	FIXTURE_WALLPAPER_BIN="$FIXTURE_ROOT/wallpaper-bin"
 	FIXTURE_OMARCHY="$FIXTURE_ROOT/packaged-omarchy"
 	FIXTURE_WALLPAPER_THEMES="$FIXTURE_OMARCHY/themes"
 	CALL_LOG="$FIXTURE_ROOT/external-calls"
@@ -82,11 +85,36 @@ new_fixture() {
 	FIXTURE_REAL_NODE_DIR="$FIXTURE_ROOT/real-node"
 
 	mkdir -p "$FIXTURE_REPO/bin" "$FIXTURE_REPO/lib/dotfiles" "$FIXTURE_HOME" "$FIXTURE_CONFIG" \
-		"$FIXTURE_STATE" "$FIXTURE_CACHE" "$FIXTURE_RUNTIME" "$FIXTURE_TMP" "$FIXTURE_BIN" "$FIXTURE_OMARCHY" \
+		"$FIXTURE_STATE" "$FIXTURE_CACHE" "$FIXTURE_RUNTIME" "$FIXTURE_TMP" "$FIXTURE_BIN" "$FIXTURE_WALLPAPER_BIN" "$FIXTURE_OMARCHY" \
 		"$FIXTURE_WALLPAPER_THEMES" \
 		"$BRAVE_METADATA_ROOT" "$BRAVE_FAILURE_MARKERS" "$BRAVE_CANARY_ROOT" "$FIXTURE_REAL_NODE_DIR" \
 		"$OUTSIDE_ROOT/user-config" "$OUTSIDE_ROOT/global-skills" "$OUTSIDE_ROOT/packaged-omarchy"
 	ln -s "$HOST_MAGICK_REAL" "$FIXTURE_BIN/magick"
+	ln -s "$HOST_GIT_REAL" "$FIXTURE_WALLPAPER_BIN/git"
+	if [[ ${DOTFILES_TEST_FAST_WALLPAPER_MAGICK:-false} == true ]]; then
+		make_fake magick "file_command=$(printf '%q' "$HOST_FILE_REAL")
+if [[ \${1-} == identify && \${2-} == -format && \${3-} == '%m|%w|%h\n' && \$# == 4 ]]; then
+	image=\$4
+	identify=true
+elif [[ \$# == 3 && \$2 == -coalesce && \$3 == null: ]]; then
+	image=\$1
+	identify=false
+else
+	exit 64
+fi
+[[ -f \$image && ! -L \$image ]] || exit 1
+mime=\$("\$file_command" --brief --mime-type -- "\$image") || exit 1
+case \$mime in
+	image/jpeg) format=JPEG ;;
+	image/png) format=PNG ;;
+	image/gif) format=GIF ;;
+	image/bmp|image/x-ms-bmp) format=BMP ;;
+	image/webp) format=WEBP ;;
+	*) exit 1 ;;
+esac
+if [[ \$identify == true ]]; then printf '%s|4|3\n' "\$format"; fi
+" "$FIXTURE_WALLPAPER_BIN"
+	fi
 	BWRAP_EXTRA_ARGS+=(--ro-bind "$(dirname -- "$HOST_NODE_REAL")" "$FIXTURE_REAL_NODE_DIR")
 	printf 'outside user configuration\n' >"$OUTSIDE_ROOT/user-config/sentinel"
 	printf 'outside global skill\n' >"$OUTSIDE_ROOT/global-skills/sentinel"
@@ -111,9 +139,8 @@ new_fixture() {
 	if [[ -d $SOURCE_REPO/docs ]]; then
 		cp -a "$SOURCE_REPO/docs" "$FIXTURE_REPO/docs"
 	fi
-	if [[ -d $SOURCE_REPO/wallpapers ]]; then
-		cp -a "$SOURCE_REPO/wallpapers" "$FIXTURE_REPO/wallpapers"
-	fi
+	mkdir -p "$FIXTURE_REPO/wallpapers/inbox" "$FIXTURE_REPO/wallpapers/library"
+	cp "$SOURCE_REPO/wallpapers/inbox/.gitkeep" "$FIXTURE_REPO/wallpapers/inbox/.gitkeep"
 	if [[ -f $SOURCE_REPO/skills.json ]]; then
 		cp "$SOURCE_REPO/skills.json" "$FIXTURE_REPO/skills.json"
 	fi
@@ -156,9 +183,27 @@ exec "$DOTFILES_TEST_REAL_NODE" "$@"'
 	make_fake opencode 'printf "unexpected generic opencode invocation\n" >>"$DOTFILES_TEST_CALL_LOG"; exit 99'
 }
 
+fixture_git() {
+	env -u GIT_DIR -u GIT_WORK_TREE -u GIT_INDEX_FILE -u GIT_COMMON_DIR -u GIT_OBJECT_DIRECTORY \
+		-u GIT_ALTERNATE_OBJECT_DIRECTORIES -u GIT_QUARANTINE_PATH -u GIT_NAMESPACE \
+		-u GIT_CONFIG -u GIT_CONFIG_PARAMETERS GIT_CONFIG_COUNT=0 \
+		GIT_CONFIG_NOSYSTEM=1 GIT_CONFIG_GLOBAL=/dev/null "$HOST_GIT_REAL" -C "$FIXTURE_REPO" "$@"
+}
+
 setup_wallpaper_fixture() {
 	mkdir -p "$FIXTURE_REPO/wallpapers/inbox" "$FIXTURE_REPO/wallpapers/library" \
 		"$FIXTURE_CONFIG/omarchy/themes" "$FIXTURE_CONFIG/omarchy/backgrounds" "$FIXTURE_WALLPAPER_THEMES"
+	if [[ ! -d $FIXTURE_REPO/.git ]]; then
+		fixture_git init -q --initial-branch=main || return 1
+	fi
+	fixture_git config --local user.name 'Wallpaper Fixture' || return 1
+	fixture_git config --local user.email 'wallpaper-fixture@example.invalid' || return 1
+	fixture_git config --local commit.gpgSign false || return 1
+	fixture_git config --local core.hooksPath "$FIXTURE_REPO/.git/hooks" || return 1
+	if ! fixture_git rev-parse --verify HEAD >/dev/null 2>&1; then
+		fixture_git add -- packages.json cleanup.json wallpapers/inbox/.gitkeep || return 1
+		fixture_git commit -qm 'Fixture baseline' || return 1
+	fi
 }
 
 make_wallpaper_image() {
@@ -411,13 +456,14 @@ fi'
 make_fake() {
 	local name=$1
 	local body=$2
+	local directory=${3:-$FIXTURE_BIN}
 
 	{
 		printf '#!/usr/bin/env bash\n'
 		printf 'set -u\n'
 		printf '%s\n' "$body"
-	} >"$FIXTURE_BIN/$name"
-	chmod +x "$FIXTURE_BIN/$name"
+	} >"$directory/$name"
+	chmod +x "$directory/$name"
 }
 
 make_gum_responder() {
@@ -1015,7 +1061,7 @@ run_brave_operation() {
 run_wallpaper_operation() {
 	local working_directory=$1 operation=$2
 	shift 2
-	run_in_sandbox "$working_directory" "${DOTFILES_TEST_PATH:-$FIXTURE_BIN:/usr/bin:/bin}" \
+	run_in_sandbox "$working_directory" "$FIXTURE_WALLPAPER_BIN:${DOTFILES_TEST_PATH:-$FIXTURE_BIN:/usr/bin:/bin}" \
 		bash -c '
 			set -euo pipefail
 			repository=$1
