@@ -23,8 +23,11 @@ The Dotfiles wizard has these Stow actions:
 - `Migrate existing target`
 - `Remove Stow package`
 - `Prepare prerequisites`
+- `Manage screensaver effects`
 
 The wizard uses Gum when it is available. Otherwise, it uses Bash prompts.
+
+`Manage screensaver effects` opens the selector for an applied `screensaver-effects` package. If the wizard finds another personal clone of `omarchy.idle` or `omarchy.indicators`, it also shows `Migrate competing screensaver clones`.
 
 ## Guided setup
 
@@ -63,6 +66,8 @@ The shared Brave policy is a copied system file, not a Stow package. It does not
 
 The Wallpaper library is also outside Stow. Git tracks source assignments under `wallpapers/library/`; `Apply wallpapers` creates receipt-owned regular files under `~/.config/omarchy/backgrounds/`. The operation preserves unrelated backgrounds and Omarchy theme state.
 
+The `screensaver-effects` package owns its allowlist, canonical plugin clone sources, launcher, runtime shim, and selector through Stow. Its lifecycle creates two complete live plugin-directory symlinks and manages only the `system.screensaver` entry that it inserted into the shared Omarchy menu extension. It does not own `shell.json`, the complete menu extension, Stay Awake state, lifecycle receipts, migration backups, diagnostics, preview state, or live plugin links through Stow.
+
 Stop before adding machine-specific values, generated files, or sensitive data. Decide how to handle the concrete case first.
 
 ## Package status
@@ -70,6 +75,8 @@ Stop before adding machine-specific values, generated files, or sensitive data. 
 Choose `Package status` to inspect all packages in the package catalog. The wizard reports each package as linked, absent, conflicting, or invalid.
 
 This action does not require GNU Stow.
+
+For `screensaver-effects`, Package status also reports the lifecycle as `active`, `inactive`, `drifted`, `conflicting`, or `recovery-required`. Use the printed standalone action before another mutation when the lifecycle is not active or inactive.
 
 ## Structural checks
 
@@ -85,6 +92,7 @@ Choose `Run structural checks` to validate:
 - The canonical shared Brave policy source
 - ImageMagick and the Wallpaper library
 - GNU Stow availability
+- The complete screensaver package inventory, copied Omarchy plugin baselines, host seams, allowlist, effect mappings, executable modes, and lifecycle ownership boundaries
 
 `Run structural checks` can run without GNU Stow, but it reports a structural error if GNU Stow is missing. It does not require an installed browser. It requires Node.js and npx. Brave source validation does not require a deployed policy or privilege and does not change system or user files.
 
@@ -109,6 +117,8 @@ For a nonempty selection, the wizard:
 The plan identifies selected packages and required dependencies. Existing normal files cause a conflict. The wizard does not replace them and does not use `stow --adopt`.
 
 Package-specific Arch requirements are part of the Stow plan and use the same confirmation. The wizard installs missing packages with `omarchy pkg add`, verifies them, and repeats the Stow simulation before it changes links.
+
+After Stow links and validators pass for `screensaver-effects`, the package lifecycle publishes both complete live plugin links. It performs one plugin rescan when needed, preserves the existing Indicators position and options, enables the idle clone, and adds the managed System-menu action. An exact repeated Apply is a no-op. Another idle or Indicators clone blocks normal Apply and directs recovery to `Migrate competing screensaver clones`.
 
 An empty selection or a declined plan makes no changes.
 
@@ -242,6 +252,8 @@ If Omarchy installs a missing Arch package, the wizard repeats the simulation be
 
 Choose `Migrate existing target`, select a package, and enter the `Home-relative target path`.
 
+Do not use generic target migration for `screensaver-effects`. When competing idle or Indicators clones are present, use `Migrate competing screensaver clones`. This operation records the prior activation state, stores complete clone backups below the lifecycle XDG state directory, and restores the prior state if migration fails.
+
 Migration accepts one existing regular file below the user's home directory. Inspect the file for credentials, account data, machine-specific values, and generated content before approval.
 
 The wizard:
@@ -281,6 +293,8 @@ For an allowed removal, the wizard:
 
 Removing a Stow package leaves its Arch packages installed. The cleanup notes list the retained packages.
 
+Removing `screensaver-effects` deactivates its lifecycle before Stow unlinks the package. It restores the prior idle and Indicators state, removes only an unchanged receipt-owned System-menu entry, and removes both live plugin links. Receipts, migration backups, diagnostics, successfully migrated old clones, and the `ttfx`, `jq`, and `socat` packages remain.
+
 Removal does not delete generated files, application state, migration backups, or other paths in the package cleanup notes.
 
 ## Package catalog
@@ -300,7 +314,7 @@ The wizard applies dependencies before dependent packages. A linked dependent bl
 
 ## Verification and recovery
 
-An Omarchy version mismatch requires separate confirmation before a mutation.
+An Omarchy version mismatch requires separate confirmation before most mutations. The `screensaver-effects` lifecycle is the exception. It reports supported and detected Omarchy and `ttfx` versions, warns on a mismatch, and continues when source, command, ownership, mapping, and lifecycle validation pass.
 
 Successful application or migration means that each expected target points to its tracked source, each validator passes, and each declared Arch package is installed. Successful removal means that all managed targets are unlinked.
 

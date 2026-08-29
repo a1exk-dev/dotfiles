@@ -390,6 +390,34 @@ test_catalog_declares_package_specific_arch_requirements() {
 		'tmux should have no command prerequisites' || return 1
 	assert_eq 'docs/tmux.md' "$(jq -r '.packages[] | select(.name == "tmux") | .documentation' "$FIXTURE_REPO/packages.json")" \
 		'tmux should reference its package guide' || return 1
+	assert_eq 'screensaver-effects' "$(jq -r '.packages[-1].name' "$FIXTURE_REPO/packages.json")" \
+		'screensaver-effects should be appended without renumbering existing packages' || return 1
+	assert_eq 'config/screensaver-effects' \
+		"$(jq -r '.packages[] | select(.name == "screensaver-effects") | .path' "$FIXTURE_REPO/packages.json")" \
+		'screensaver-effects should use its dedicated Stow package' || return 1
+	assert_eq '[]' \
+		"$(jq -c '.packages[] | select(.name == "screensaver-effects") | .dependencies' "$FIXTURE_REPO/packages.json")" \
+		'screensaver-effects should have no Stow dependencies' || return 1
+	assert_eq '["ttfx","jq","socat"]' \
+		"$(jq -c '.packages[] | select(.name == "screensaver-effects") | .arch_packages' "$FIXTURE_REPO/packages.json")" \
+		'screensaver-effects should declare its exact Arch requirements' || return 1
+	assert_eq '["node","omarchy","omarchy-shell","xdg-terminal-exec","hyprctl","omarchy-screensaver","omarchy-toggle-enabled","omarchy-hyprland-monitor-focused"]' \
+		"$(jq -c '.packages[] | select(.name == "screensaver-effects") | .prerequisites' "$FIXTURE_REPO/packages.json")" \
+		'screensaver-effects should declare its lifecycle and runtime commands' || return 1
+	assert_eq '["bash lib/dotfiles/screensaver-effects-validator.sh"]' \
+		"$(jq -c '.packages[] | select(.name == "screensaver-effects") | .validators' "$FIXTURE_REPO/packages.json")" \
+		'screensaver-effects should declare its structural validator' || return 1
+	assert_eq 'docs/screensaver-effects.md' \
+		"$(jq -r '.packages[] | select(.name == "screensaver-effects") | .documentation' "$FIXTURE_REPO/packages.json")" \
+		'screensaver-effects should reference its package guide' || return 1
+	local screensaver_cleanup
+	screensaver_cleanup=$(jq -r '.packages[] | select(.name == "screensaver-effects") | .cleanup[]' "$FIXTURE_REPO/packages.json")
+	assert_contains "$screensaver_cleanup" 'prior Omarchy idle and Indicators state' \
+		'screensaver-effects cleanup should disclose prior-state restoration' || return 1
+	assert_contains "$screensaver_cleanup" 'receipts, migration backups, and failure diagnostics' \
+		'screensaver-effects cleanup should disclose retained recovery evidence' || return 1
+	assert_contains "$screensaver_cleanup" 'ttfx, jq, and socat remain installed' \
+		'screensaver-effects cleanup should disclose retained Arch packages' || return 1
 	assert_eq '[]' "$(jq -c '.packages[] | select(.name == "ghostty") | .arch_packages' "$FIXTURE_REPO/packages.json")" \
 		'Ghostty should declare no Arch packages' || return 1
 	assert_eq 'Complete Omarchy-based Starship prompt configuration' \
@@ -504,7 +532,7 @@ test_check_accepts_tmux_validator_before_tmux_is_installed() {
 
 	assert_eq 0 "$COMMAND_STATUS" \
 		'check should accept the shell-fronted tmux validator before its declared Arch package is installed' || return 1
-	assert_contains "$COMMAND_OUTPUT" 'Package catalog: valid (7 packages)' \
+	assert_contains "$COMMAND_OUTPUT" 'Package catalog: valid (8 packages)' \
 		'preflight should still inspect the complete real catalog'
 }
 

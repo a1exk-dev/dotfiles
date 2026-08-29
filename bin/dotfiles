@@ -6,6 +6,8 @@ readonly DOTFILES_ENTRY_ROOT=$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")/.." && p
 
 # shellcheck source=../lib/dotfiles/core.sh
 source "$DOTFILES_ENTRY_ROOT/lib/dotfiles/core.sh"
+# shellcheck source=../lib/dotfiles/screensaver-effects.sh
+source "$DOTFILES_ENTRY_ROOT/lib/dotfiles/screensaver-effects.sh"
 # shellcheck source=../lib/dotfiles/packages.sh
 source "$DOTFILES_ENTRY_ROOT/lib/dotfiles/packages.sh"
 # shellcheck source=../lib/dotfiles/skills.sh
@@ -29,9 +31,11 @@ elif (($# == 2)) && [[ $1 == --action ]]; then
 	wizard_run_action "$2"
 else
 	printf '%s\n' \
-		'Usage: bin/dotfiles [--action <guided|status|check|apply|migrate|remove|prerequisites|cleanup|skills|skills-update|modem|brave|telegram-theme|wallpapers|wallpapers-apply|wallpapers-remove>]' \
+		'Usage: bin/dotfiles [--action <guided|status|check|apply|migrate|remove|prerequisites|cleanup|skills|skills-update|modem|brave|telegram-theme|wallpapers|wallpapers-apply|wallpapers-remove|screensaver-effects|screensaver-effects-migrate>]' \
 		'  wallpapers: curate the repository Wallpaper library' \
 		'  wallpapers-apply: deploy the Wallpaper library' \
-		'  wallpapers-remove: remove receipt-owned deployed wallpapers' >&2
+		'  wallpapers-remove: remove receipt-owned deployed wallpapers' \
+		'  screensaver-effects: manage and preview the deployed effect allowlist' \
+		'  screensaver-effects-migrate: migrate competing Omarchy idle or Indicators clones' >&2
 	exit 2
 fi

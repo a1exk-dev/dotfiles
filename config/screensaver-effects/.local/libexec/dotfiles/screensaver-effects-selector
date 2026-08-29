@@ -1,0 +1,690 @@
+#!/usr/bin/env bash
+
+set -u
+
+readonly SUPPORTED_OMARCHY=4.0.1-1
+readonly SUPPORTED_TTFX=0.3.2
+
+fail() {
+	printf 'screensaver-effects: %s\n' "$1" >&2
+	exit 2
+}
+
+exists() {
+	if [[ $1 == */* ]]; then
+		[[ -x $1 ]]
+	else
+		command -v "$1" >/dev/null 2>&1
+	fi
+}
+
+script=$(realpath -e -- "${BASH_SOURCE[0]}") || fail 'cannot resolve selector source'
+package_root=$(cd -- "$(dirname -- "$script")/../../.." && pwd -P) || fail 'cannot resolve package source'
+allowlist=$package_root/.config/dotfiles/screensaver-effects.json
+shim=$package_root/.local/share/dotfiles/screensaver-effects/plugins/dotfiles.idle/bin/ttfx
+deployed=${XDG_CONFIG_HOME:-$HOME/.config}/dotfiles/screensaver-effects.json
+runtime_root=${XDG_RUNTIME_DIR:-}
+omarchy_root=${OMARCHY_PATH:-/usr/share/omarchy}
+test_mode=${DOTFILES_SCREENSAVER_TEST:-0}
+test_picker=${DOTFILES_SCREENSAVER_TEST_PICKER:-direct}
+test_preview_lifecycle=${DOTFILES_SCREENSAVER_TEST_PREVIEW_LIFECYCLE:-0}
+
+if (($# != 0)); then
+	fail 'this interactive manager accepts no arguments'
+fi
+if [[ $test_mode != 1 && (! -t 0 || ! -t 1) ]]; then
+	fail 'stdin and stdout must be terminals; run make screensaver-effects in a terminal'
+fi
+if [[ $test_mode == 1 && ! $test_picker =~ ^(direct|gum|bash)$ ]]; then
+	fail 'test picker must be direct, gum, or bash'
+fi
+if [[ $test_mode == 1 && ! $test_preview_lifecycle =~ ^[01]$ ]]; then
+	fail 'test preview lifecycle must be 0 or 1'
+fi
+for command in jq omarchy realpath ttfx; do
+	exists "$command" || fail "core command is unavailable: $command"
+done
+[[ -x $shim ]] || fail "runtime mapping shim is unavailable: $shim"
+[[ -f $allowlist && ! -L $allowlist ]] || fail "tracked allowlist is unavailable: $allowlist"
+DOTFILES_SCREENSAVER_SOURCE_ONLY=1
+source "$shim" || fail 'cannot load runtime process helpers'
+unset DOTFILES_SCREENSAVER_SOURCE_ONLY
+
+discover_effects() {
+	local line name in_commands=0
+	while IFS= read -r line; do
+		if [[ $line == Commands: ]]; then
+			in_commands=1
+			continue
+		fi
+		((in_commands)) || continue
+		[[ -n ${line//[[:space:]]/} ]] || break
+		line=${line#"${line%%[![:space:]]*}"}
+		name=${line%%[[:space:]]*}
+		[[ $name == help || ! $name =~ ^[a-z0-9]+$ ]] || printf '%s\n' "$name"
+	done < <(ttfx --help 2>/dev/null)
+}
+
+declare -a effects=()
+declare -A installed=() mapping_status=()
+mapfile -t effects < <(discover_effects | LC_ALL=C sort -u)
+((${#effects[@]} > 0)) || fail 'ttfx exposed no effects through --help'
+for effect in "${effects[@]}"; do installed[$effect]=1; done
+while IFS=$'\t' read -r effect status; do
+	[[ -n $effect && $status =~ ^(Full|Partial)$ ]] || fail 'runtime mapping catalog is invalid'
+	mapping_status[$effect]=$status
+done < <(DOTFILES_SCREENSAVER_INTERNAL=selector "$shim" --dotfiles-mapping-catalog)
+((${#mapping_status[@]} == 37)) || fail 'runtime mapping catalog must classify 37 tracked effects'
+
+detected_omarchy=$(omarchy version 2>/dev/null | tr -d '\r') || fail 'could not detect Omarchy version'
+detected_ttfx=$(ttfx --version 2>/dev/null | tr -d '\r') || fail 'could not detect ttfx version'
+detected_ttfx=${detected_ttfx#ttfx }
+
+if ! jq -e '
+	type == "array" and length > 0 and
+	all(.[]; type == "string") and
+	(length == (unique | length))
+' "$allowlist" >/dev/null 2>&1; then
+	fail 'tracked allowlist must be a nonempty array of unique strings'
+fi
+
+declare -A original=() pending=() invalid=()
+while IFS= read -r effect; do
+	original[$effect]=1
+	pending[$effect]=1
+	if [[ -z ${installed[$effect]+set} || -z ${mapping_status[$effect]+set} ]]; then
+		invalid[$effect]=1
+	fi
+done < <(jq -r '.[]' "$allowlist")
+
+preview_reason=
+terminal_id=
+if [[ $test_mode == 1 && $test_preview_lifecycle != 1 ]]; then
+	:
+else
+	for command in hyprctl mktemp pgrep socat xdg-terminal-exec omarchy-hyprland-monitor-focused omarchy-screensaver; do
+		if ! exists "$command"; then
+			preview_reason="required preview command is unavailable: $command"
+			break
+		fi
+	done
+	if [[ -z $preview_reason ]]; then
+		terminal_id=$(xdg-terminal-exec --print-id 2>/dev/null || true)
+		case $terminal_id in
+		*Alacritty* | *ghostty* | *foot* | *kitty*) ;;
+		*) preview_reason="unsupported terminal: ${terminal_id:-unknown}" ;;
+		esac
+	fi
+	if [[ -z $preview_reason && ($runtime_root != /* || ! -d $runtime_root || -L $runtime_root) ]]; then
+		preview_reason='XDG_RUNTIME_DIR is not a safe absolute directory'
+	fi
+	if [[ -z $preview_reason && ($omarchy_root != /* || ! -d $omarchy_root) ]]; then
+		preview_reason='OMARCHY_PATH is not an absolute installation root'
+	fi
+fi
+
+pending_names() {
+	local effect first=1
+	for effect in "${effects[@]}"; do
+		[[ -n ${pending[$effect]+set} ]] || continue
+		((first)) || printf ', '
+		printf '%s' "$effect"
+		first=0
+	done
+	for effect in "${!invalid[@]}"; do
+		[[ -n ${pending[$effect]+set} && -z ${installed[$effect]+set} ]] || continue
+		((first)) || printf ', '
+		printf '%s' "$effect"
+		first=0
+	done
+	((first)) && printf '(none)'
+}
+
+show_state() {
+	local effect mark status current
+	printf '\nSupported Omarchy: %s\nDetected Omarchy: %s\n' "$SUPPORTED_OMARCHY" "${detected_omarchy:-unknown}"
+	printf 'Supported ttfx CLI: %s\nDetected ttfx CLI: %s\n' "$SUPPORTED_TTFX" "${detected_ttfx:-unknown}"
+	[[ $detected_omarchy == "$SUPPORTED_OMARCHY" ]] ||
+		printf 'Warning: Omarchy version mismatch; concrete validation still applies.\n'
+	[[ $detected_ttfx == "$SUPPORTED_TTFX" ]] ||
+		printf 'Warning: ttfx version mismatch; only tracked mapped effects still discovered are eligible.\n'
+	printf 'Pending: '
+	pending_names
+	printf '\n'
+	[[ -z $preview_reason ]] || printf 'Preview unavailable: %s\n' "$preview_reason"
+	if ((${#invalid[@]} > 0)); then
+		printf 'REPAIR MODE: configured Unavailable or Unmapped entries must be removed explicitly.\n'
+	fi
+	for effect in "${effects[@]}"; do
+		mark=' '
+		[[ -n ${pending[$effect]+set} ]] && mark='*'
+		status=${mapping_status[$effect]:-Unmapped}
+		current=
+		[[ -n ${original[$effect]+set} ]] && current=' current'
+		printf ' [%s] %-16s %-11s%s\n' "$mark" "$effect" "$status" "$current"
+	done
+	for effect in "${!invalid[@]}"; do
+		[[ -z ${installed[$effect]+set} ]] || continue
+		printf ' [*] %-16s %-11s current\n' "$effect" Unavailable
+	done
+}
+
+available_effects() {
+	local effect
+	for effect in "${effects[@]}"; do
+		[[ -n ${mapping_status[$effect]+set} ]] && printf '%s\n' "$effect"
+	done
+}
+
+confirm_partial() {
+	local prompt=$1 answer
+	printf 'Partial acknowledgement required: %s\n' "$prompt"
+	if [[ $test_mode == 1 ]]; then
+		[[ ${DOTFILES_SCREENSAVER_TEST_PARTIAL_RESPONSE:-yes} == yes ]]
+		return
+	fi
+	if exists gum; then
+		gum confirm "$prompt"
+		return
+	fi
+	read -r -p "$prompt [y/N] " answer
+	[[ $answer == [yY] ]]
+}
+
+change_effects() {
+	local internal_names=${1:-} effect input selected_file selected_csv number
+	local -a selected=() choices=() partial_added=()
+	declare -A candidate=() before=() seen_numbers=()
+	for effect in "${!pending[@]}"; do before[$effect]=1; done
+
+	if [[ $test_mode == 1 && $test_picker == direct ]]; then
+		read -ra selected <<<"$internal_names"
+	elif { [[ $test_mode == 1 && $test_picker == gum ]] || [[ $test_mode != 1 ]] && exists gum; }; then
+		exists gum || {
+			printf 'Change failed: Gum test picker is unavailable. Pending selection is unchanged.\n' >&2
+			return 1
+		}
+		mapfile -t choices < <(available_effects)
+		selected_csv=
+		for effect in "${choices[@]}"; do
+			[[ -n ${pending[$effect]+set} ]] || continue
+			[[ -z $selected_csv ]] || selected_csv+=,
+			selected_csv+=$effect
+		done
+		selected_file=$(mktemp "${TMPDIR:-/tmp}/screensaver-effects-selection.XXXXXX") || return 1
+		gum_args=(choose --no-limit)
+		[[ -z $selected_csv ]] || gum_args+=(--selected "$selected_csv")
+		if ! gum "${gum_args[@]}" "${choices[@]}" >"$selected_file"; then
+			rm -f -- "$selected_file"
+			printf 'Change cancelled; pending selection is unchanged.\n' >&2
+			return 1
+		fi
+		mapfile -t selected <"$selected_file"
+		rm -f -- "$selected_file"
+	else
+		mapfile -t choices < <(available_effects)
+		printf '\nNumbered effect selection (space-separated numbers; blank means empty):\n'
+		for number in "${!choices[@]}"; do
+			printf ' %2d. [%s] %-16s %s\n' "$((number + 1))" \
+				"$([[ -n ${pending[${choices[number]}]+set} ]] && printf x || printf ' ')" \
+				"${choices[number]}" "${mapping_status[${choices[number]}]}"
+		done
+		if [[ $test_mode == 1 ]]; then
+			input=${DOTFILES_SCREENSAVER_TEST_BASH_SELECTION:-}
+		elif ! read -r -p 'Select: ' input; then
+			printf 'Change cancelled; pending selection is unchanged.\n' >&2
+			return 1
+		fi
+		if [[ -n ${input//[[:space:]]/} ]]; then read -ra selected <<<"$input"; fi
+		for number in "${selected[@]}"; do
+			if [[ ! $number =~ ^[0-9]+$ ]] || ((number < 1 || number > ${#choices[@]})) ||
+				[[ -n ${seen_numbers[$number]+set} ]]; then
+				printf 'Change rejected; use each in-range number once. Pending selection is unchanged.\n' >&2
+				return 1
+			fi
+			seen_numbers[$number]=1
+			candidate[${choices[number-1]}]=1
+		done
+		selected=()
+	fi
+
+	for effect in "${selected[@]}"; do
+		if [[ -z ${installed[$effect]+set} || -z ${mapping_status[$effect]+set} ]]; then
+			printf 'Change rejected: %s is Unavailable or Unmapped. Pending selection is unchanged.\n' "$effect" >&2
+			return 1
+		fi
+		candidate[$effect]=1
+	done
+	for effect in "${!candidate[@]}"; do
+		if [[ ${mapping_status[$effect]} == Partial && -z ${before[$effect]+set} ]]; then
+			partial_added+=("$effect")
+		fi
+	done
+	if ((${#partial_added[@]} > 0)) &&
+		! confirm_partial "Add Partial effects (${partial_added[*]}) with fixed upstream colors?"; then
+		for effect in "${partial_added[@]}"; do unset 'candidate[$effect]'; done
+		printf 'Partial additions declined and excluded from pending selection.\n'
+	fi
+	pending=()
+	invalid=()
+	for effect in "${!candidate[@]}"; do pending[$effect]=1; done
+	printf 'Pending selection changed in memory.\n'
+}
+
+save_reason() {
+	((${#invalid[@]} == 0)) || {
+		printf 'repair required: invalid configured entries remain'
+		return
+	}
+	((${#pending[@]} > 0)) || {
+		printf 'select at least one mapped effect'
+		return
+	}
+}
+
+same_membership() {
+	local effect
+	((${#pending[@]} == ${#original[@]})) || return 1
+	for effect in "${!pending[@]}"; do [[ -n ${original[$effect]+set} ]] || return 1; done
+}
+
+validate_leaf() {
+	local resolved_source resolved_leaf
+	if [[ -e $deployed || -L $deployed ]]; then
+		[[ -L $deployed ]] || {
+			SAVE_ERROR="deployed leaf is not a symlink: $deployed"
+			return 1
+		}
+		resolved_source=$(realpath -e -- "$allowlist") || return 1
+		resolved_leaf=$(realpath -e -- "$deployed") || {
+			SAVE_ERROR="deployed leaf is dangling: $deployed"
+			return 1
+		}
+		[[ $resolved_leaf == "$resolved_source" ]] || {
+			SAVE_ERROR='deployed leaf does not resolve to the tracked source'
+			return 1
+		}
+	fi
+}
+
+save_effects() {
+	local reason temporary effect first=1
+	reason=$(save_reason)
+	if [[ -n $reason ]]; then
+		printf 'Save unavailable: %s\n' "$reason" >&2
+		return 1
+	fi
+	if same_membership; then
+		printf 'No changes; tracked source was not rewritten.\n'
+		return 10
+	fi
+	SAVE_ERROR=
+	validate_leaf || {
+		printf 'Save failed: %s\n' "$SAVE_ERROR" >&2
+		return 1
+	}
+	temporary=$(mktemp "$allowlist.tmp.XXXXXX") || {
+		printf 'Save failed: could not create sibling temporary.\n' >&2
+		return 1
+	}
+	{
+		printf '[\n'
+		for effect in "${effects[@]}"; do
+			[[ -n ${pending[$effect]+set} ]] || continue
+			((first)) || printf ',\n'
+			printf '  %s' "$(printf '%s' "$effect" | jq -R .)"
+			first=0
+		done
+		printf '\n]\n'
+	} >"$temporary"
+	if ! jq -e '
+		type == "array" and length > 0 and
+		all(.[]; type == "string") and
+		(length == (unique | length))
+	' "$temporary" >/dev/null 2>&1; then
+		rm -f -- "$temporary"
+		printf 'Save failed: candidate validation failed.\n' >&2
+		return 1
+	fi
+	if ! chmod 0644 -- "$temporary"; then
+		rm -f -- "$temporary"
+		printf 'Save failed: could not preserve tracked source mode.\n' >&2
+		return 1
+	fi
+	if ! mv -fT -- "$temporary" "$allowlist"; then
+		rm -f -- "$temporary"
+		printf 'Save failed: atomic source replacement failed.\n' >&2
+		return 1
+	fi
+	SAVE_ERROR=
+	validate_leaf || {
+		printf 'Save failed after source publish: %s\n' "$SAVE_ERROR" >&2
+		return 1
+	}
+	printf 'Saved screensaver effect allowlist.\n'
+	return 10
+}
+
+preflight_theme() {
+	local token value
+	for token in \
+		background foreground accent muted bright_foreground red bright_red bright_yellow \
+		yellow green blue bright_blue magenta orange darker_background dark_background; do
+		value=$(omarchy theme color "$token" 2>/dev/null) || {
+			PREVIEW_ERROR="theme token could not be resolved: $token"
+			return 1
+		}
+		[[ $value =~ ^#[0-9A-Fa-f]{6}$ ]] || {
+			PREVIEW_ERROR="theme token returned an invalid color: $token"
+			return 1
+		}
+	done
+}
+
+preview_runtime=
+preview_focus=
+preview_events=
+preview_active=0
+preview_address=
+preview_process_dir=
+preview_identity=
+
+hypr_close_window() {
+	local address=${1#0x}
+	[[ $address =~ ^[0-9A-Fa-f]+$ ]] || return 1
+	hyprctl dispatch closewindow "address:0x$address" >/dev/null 2>&1
+}
+
+cleanup_preview() {
+	if ((preview_active)) && [[ -n $preview_process_dir && -n $preview_identity ]]; then
+		screensaver_stop_dispatch "$preview_process_dir" "$preview_identity" || true
+	fi
+	if ((preview_active)) && [[ -n $preview_address ]]; then
+		hypr_close_window "$preview_address" || true
+	fi
+	if [[ $preview_events =~ ^[0-9]+$ ]]; then
+		eval "exec ${preview_events}<&-" 2>/dev/null || true
+	fi
+	[[ -z $preview_focus ]] || {
+		hyprctl dispatch "hl.dsp.focus({ monitor = \"$preview_focus\" })" >/dev/null 2>&1 ||
+			hyprctl dispatch focusmonitor "$preview_focus" >/dev/null 2>&1 || true
+	}
+	[[ -z $preview_runtime ]] || rm -rf -- "$preview_runtime"
+	preview_runtime=
+	preview_focus=
+	preview_events=
+	preview_active=0
+	preview_address=
+	preview_process_dir=
+	preview_identity=
+}
+
+preview_signal() {
+	local status=$1
+	trap - HUP INT TERM
+	cleanup_preview
+	exit "$status"
+}
+trap 'preview_signal 129' HUP
+trap 'preview_signal 130' INT
+trap 'preview_signal 143' TERM
+
+hypr_exec() {
+	local command
+	printf -v command '%q ' "$@"
+	hyprctl dispatch "hl.dsp.exec_cmd([[$command]])" >/dev/null 2>&1 ||
+		hyprctl dispatch exec -- bash -lc "$command" >/dev/null 2>&1
+}
+
+wait_for_preview_window() {
+	local line payload address class title remaining deadline=$((SECONDS + 5))
+	preview_address=
+	while ((SECONDS < deadline)); do
+		remaining=$((deadline - SECONDS))
+		IFS= read -r -t "$remaining" -u "$preview_events" line || return 1
+		[[ $line == openwindow\>\>* ]] || continue
+		payload=${line#openwindow>>}
+		address=${payload%%,*}
+		payload=${payload#*,}
+		payload=${payload#*,}
+		class=${payload%%,*}
+		title=${payload#*,}
+		if [[ $class == org.omarchy.screensaver && $title == "$preview_identity" &&
+			${address#0x} =~ ^[0-9A-Fa-f]+$ ]]; then
+			preview_address=$address
+			return 0
+		fi
+	done
+	return 1
+}
+
+wait_for_preview_close() {
+	local wanted=${1#0x} line address
+	while IFS= read -r -u "$preview_events" line; do
+		[[ $line == closewindow\>\>* ]] || continue
+		address=${line#closewindow>>}
+		address=${address#0x}
+		[[ ${address,,} == "${wanted,,}" ]] && return 0
+	done
+	return 1
+}
+
+preview_effect() {
+	local effect=$1 status socket failure=
+	local real_ttfx wrapper allowlist_preview terminal_payload runner_command runner_pid runner_start
+	status=${mapping_status[$effect]:-}
+	[[ -z $preview_reason ]] || {
+		printf 'Preview unavailable: %s\n' "$preview_reason" >&2
+		return 1
+	}
+	[[ -n ${installed[$effect]+set} && -n $status ]] || {
+		printf 'Preview unavailable: %s is Unavailable or Unmapped.\n' "$effect" >&2
+		return 1
+	}
+	if [[ $status == Partial ]] &&
+		! confirm_partial "Preview Partial effect $effect? Fixed upstream colors remain visible."; then
+		printf 'Partial preview declined; pending selection is unchanged.\n' >&2
+		return 1
+	fi
+	PREVIEW_ERROR=
+	preflight_theme || {
+		printf 'Preview failed: preflight: %s\n' "$PREVIEW_ERROR" >&2
+		return 1
+	}
+	if [[ $test_mode == 1 && $test_preview_lifecycle != 1 ]]; then
+		if [[ ${DOTFILES_SCREENSAVER_TEST_PREVIEW:-success} == fail ]]; then
+			printf 'Preview failed: controlled test failure; pending selection is unchanged.\n' >&2
+			return 1
+		fi
+		printf 'Preview dismissed; pending selection is unchanged.\n'
+		return 0
+	fi
+	if pgrep -f '[o]rg.omarchy.screensaver' >/dev/null; then
+		printf 'Preview failed: preflight: a screensaver is already running.\n' >&2
+		return 1
+	fi
+	preview_runtime=$(mktemp -d "$runtime_root/dotfiles-screensaver-preview.XXXXXX") || {
+		printf 'Preview failed: setup: private runtime directory.\n' >&2
+		return 1
+	}
+	chmod 0700 -- "$preview_runtime"
+	mkdir -m 0700 -- "$preview_runtime/bin"
+	: >"$preview_runtime/launch-attempt"
+	preview_process_dir=$preview_runtime/dispatch-0
+	preview_identity=dotfiles-screensaver-preview-${preview_runtime##*.}-0
+	mkdir -m 0700 -- "$preview_process_dir"
+	printf '%s\n' "$preview_identity" >"$preview_process_dir/identity"
+	allowlist_preview=$preview_runtime/allowlist.json
+	printf '[\n  "%s"\n]\n' "$effect" >"$allowlist_preview"
+	real_ttfx=$(realpath -e -- "$(command -v ttfx)") || {
+		cleanup_preview
+		printf 'Preview failed: setup: real ttfx resolution.\n' >&2
+		return 1
+	}
+	wrapper=$preview_runtime/bin/ttfx
+	{
+		printf '%s\n' '#!/usr/bin/env bash' 'set -u'
+		printf 'export DOTFILES_SCREENSAVER_PREVIEW_EFFECT=%q\n' "$effect"
+		printf 'export DOTFILES_SCREENSAVER_FOREGROUND=1\n'
+		printf 'export DOTFILES_SCREENSAVER_ALLOWLIST=%q\n' "$allowlist_preview"
+		printf 'exec %q "$@"\n' "$shim"
+	} >"$wrapper"
+	chmod 0700 -- "$wrapper"
+	preview_focus=$(omarchy-hyprland-monitor-focused 2>/dev/null || true)
+	if [[ -z $preview_focus ]]; then
+		cleanup_preview
+		printf 'Preview failed: focus: focused monitor is unavailable.\n' >&2
+		return 1
+	fi
+	hyprctl dispatch "hl.dsp.focus({ monitor = \"$preview_focus\" })" >/dev/null 2>&1 ||
+		hyprctl dispatch focusmonitor "$preview_focus" >/dev/null 2>&1 || {
+		cleanup_preview
+		printf 'Preview failed: focus: monitor dispatch failed.\n' >&2
+		return 1
+	}
+	socket=$runtime_root/hypr/${HYPRLAND_INSTANCE_SIGNATURE:-}/.socket2.sock
+	if [[ ! -S $socket ]]; then
+		cleanup_preview
+		printf 'Preview failed: events: Hyprland event socket is unavailable.\n' >&2
+		return 1
+	fi
+	exec {preview_events}< <(socat -U - "UNIX-CONNECT:$socket")
+	runner_command='
+process_dir=$1
+DOTFILES_SCREENSAVER_SOURCE_ONLY=1
+source "$DOTFILES_SCREENSAVER_SHIM" || exit 1
+unset DOTFILES_SCREENSAVER_SOURCE_ONLY
+screensaver_register_process runner || exit 1
+while [[ ! -e $process_dir/start && ! -e $process_dir/cancel ]]; do sleep 0.02; done
+[[ -e $process_dir/start && ! -e $process_dir/cancel ]] || exit 0
+exec omarchy-screensaver
+'
+	terminal_payload=(env
+		"PATH=$preview_runtime/bin:$PATH"
+		"DOTFILES_SCREENSAVER_REAL_TTFX=$real_ttfx"
+		"DOTFILES_SCREENSAVER_ATTEMPT_DIR=$preview_runtime"
+		"DOTFILES_SCREENSAVER_PROCESS_DIR=$preview_process_dir"
+		"DOTFILES_SCREENSAVER_ATTEMPT_ID=$preview_identity"
+		"DOTFILES_SCREENSAVER_SHIM=$shim"
+		"DOTFILES_SCREENSAVER_FOREGROUND=1"
+		"OMARCHY_PATH=$omarchy_root"
+		bash -c "$runner_command" bash "$preview_process_dir")
+	preview_active=1
+	case $terminal_id in
+	*Alacritty*) hypr_exec alacritty --class=org.omarchy.screensaver --title "$preview_identity" --config-file "$omarchy_root/default/alacritty/screensaver.toml" -e "${terminal_payload[@]}" ;;
+	*ghostty*) hypr_exec ghostty --class=org.omarchy.screensaver --title="$preview_identity" --config-file="$omarchy_root/default/ghostty/screensaver" --font-size=18 -e "${terminal_payload[@]}" ;;
+	*foot*) hypr_exec foot --app-id=org.omarchy.screensaver --title="$preview_identity" --config="$omarchy_root/default/foot/screensaver.ini" -e "${terminal_payload[@]}" ;;
+	*kitty*) hypr_exec kitty --class=org.omarchy.screensaver --title "$preview_identity" --override font_size=18 --override window_padding_width=0 -e "${terminal_payload[@]}" ;;
+	*) false ;;
+	esac || {
+		cleanup_preview
+		printf 'Preview failed: dispatch: terminal launch failed.\n' >&2
+		return 1
+	}
+	if ! screensaver_wait_for_process "$preview_process_dir" runner "$preview_identity" runner_pid runner_start; then
+		cleanup_preview
+		printf 'Preview failed: process: attempt-owned screensaver runner did not start.\n' >&2
+		return 1
+	fi
+	: >"$preview_process_dir/start"
+	if ! wait_for_preview_window; then
+		cleanup_preview
+		printf 'Preview failed: window: screensaver did not map.\n' >&2
+		return 1
+	fi
+	if ! wait_for_preview_close "$preview_address"; then
+		cleanup_preview
+		printf 'Preview failed: window: screensaver event stream ended before dismissal.\n' >&2
+		return 1
+	fi
+	preview_active=0
+	if [[ -f $preview_runtime/failure && ! -L $preview_runtime/failure ]]; then
+		failure=$(<"$preview_runtime/failure")
+	fi
+	cleanup_preview
+	if [[ -n $failure ]]; then
+		printf 'Preview failed: effect: %s\n' "$failure" >&2
+		return 1
+	fi
+	printf 'Preview dismissed; pending selection is unchanged.\n'
+}
+
+choose_preview_effect() {
+	local effect input number
+	local -a choices=()
+	mapfile -t choices < <(available_effects)
+	if exists gum; then
+		effect=$(gum choose "${choices[@]}") || return 1
+	else
+		printf '\nNumbered preview effects:\n'
+		for number in "${!choices[@]}"; do
+			printf ' %2d. %-16s %s\n' "$((number + 1))" "${choices[number]}" "${mapping_status[${choices[number]}]}"
+		done
+		read -r -p 'Preview number: ' input || return 1
+		[[ $input =~ ^[0-9]+$ ]] && ((input >= 1 && input <= ${#choices[@]})) || return 1
+		effect=${choices[input-1]}
+	fi
+	preview_effect "$effect"
+}
+
+manager_action() {
+	local action=$1 argument=${2:-} result
+	case $action in
+	change) change_effects "$argument" ;;
+	preview) preview_effect "$argument" ;;
+	save) save_effects ;;
+	cancel)
+		printf 'Cancelled; pending changes were discarded.\n'
+		return 10
+		;;
+	*) printf 'Unknown manager action: %s\n' "$action" >&2; return 1 ;;
+	esac
+}
+
+if [[ $test_mode == 1 ]]; then
+	actions=${DOTFILES_SCREENSAVER_TEST_ACTIONS:-}
+	[[ -f $actions && ! -L $actions ]] || fail 'test action file is unavailable'
+	show_state
+	while IFS= read -r line; do
+		[[ -n ${line//[[:space:]]/} && ${line:0:1} != '#' ]] || continue
+		action=${line%%[[:space:]]*}
+		argument=${line#"$action"}
+		argument=${argument# }
+		manager_action "$action" "$argument"
+		result=$?
+		if ((result == 10)); then exit 0; fi
+	done <"$actions"
+	fail 'test actions ended without Save or Cancel'
+fi
+
+while :; do
+	show_state
+	reason=$(save_reason)
+	printf '\nActions: Change effects | Preview effect'
+	[[ -z $reason ]] && printf ' | Save' || printf ' | Save [unavailable: %s]' "$reason"
+	printf ' | Cancel\n'
+	if exists gum; then
+		choices=('Change effects')
+		[[ -z $preview_reason ]] && choices+=('Preview effect') || choices+=('Preview effect [unavailable]')
+		[[ -z $reason ]] && choices+=(Save) || choices+=('Save [unavailable]')
+		choices+=(Cancel)
+		action=$(gum choose "${choices[@]}") || action=Cancel
+		case $action in
+		'Change effects') manager_action change '' || true ;;
+		'Preview effect') choose_preview_effect || true ;;
+		'Preview effect [unavailable]') printf 'Preview unavailable: %s\n' "$preview_reason" >&2 ;;
+		Save) manager_action save; result=$?; ((result == 10)) && exit 0 ;;
+		'Save [unavailable]') printf 'Save unavailable: %s\n' "$reason" >&2 ;;
+		Cancel) manager_action cancel; exit 0 ;;
+		esac
+	else
+		read -r -p 'Select 1 Change, 2 Preview, 3 Save, 4 Cancel: ' action || action=4
+		case $action in
+		1) manager_action change '' || true ;;
+		2) [[ -z $preview_reason ]] && choose_preview_effect || printf 'Preview unavailable: %s\n' "$preview_reason" >&2 ;;
+		3) manager_action save; result=$?; ((result == 10)) && exit 0 ;;
+		4) manager_action cancel; exit 0 ;;
+		*) printf 'Choose 1-4.\n' >&2 ;;
+		esac
+	fi
+done

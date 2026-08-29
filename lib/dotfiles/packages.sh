@@ -124,6 +124,9 @@ status() {
 		documentation=$(jq -r --arg package "$package" '.packages[] | select(.name == $package) | .documentation // empty' "$PACKAGE_CATALOG")
 		printf '  %s: %s - %s\n' "$package" "$state" "$description"
 		[[ -z $documentation ]] || printf '    Documentation: %s\n' "$documentation"
+		if [[ $package == screensaver-effects ]]; then
+			screensaver_effects_status
+		fi
 	done < <(jq -r '.packages[].name' "$PACKAGE_CATALOG")
 }
 
@@ -186,6 +189,11 @@ check() {
 		printf 'GNU Stow: available\n'
 	else
 		printf 'GNU Stow: unavailable (nonfatal until a package operation is selected)\n'
+	fi
+	if jq -e --arg package screensaver-effects 'any(.packages[]; .name == $package)' "$PACKAGE_CATALOG" >/dev/null; then
+		if ! screensaver_effects_check; then
+			missing=true
+		fi
 	fi
 	[[ $missing == false ]]
 }
@@ -273,6 +281,11 @@ migrate_target() {
 	shift 2 2>/dev/null || true
 	if [[ -z $package || -z $relative ]]; then
 		printf 'Migration needs a package and home-relative target; choose Migrate existing target in the Dotfiles wizard.\n' >&2
+		return 2
+	fi
+	if [[ $package == screensaver-effects ]]; then
+		printf 'Error: screensaver-effects cannot use generic target migration.\n' >&2
+		printf 'Recovery: choose Migrate competing screensaver clones in the Dotfiles wizard.\n' >&2
 		return 2
 	fi
 
@@ -557,6 +570,12 @@ remove_package() {
 	fi
 
 	inspect_omarchy stdout
+	if [[ $package == screensaver-effects ]]; then
+		screensaver_effects_prepare_remove || {
+			phase_error plan "$package" 'resolve the reported lifecycle state, then choose Remove Stow package in the Dotfiles wizard'
+			return 1
+		}
+	fi
 
 	printf 'Phase: plan\n'
 	local -a blockers=()
@@ -597,12 +616,12 @@ remove_package() {
 		printf 'No changes made.\n'
 		return 0
 	fi
-	if [[ $OMARCHY_VERSION_MISMATCH == true && $allow_mismatch != true ]]; then
+	if [[ $package != screensaver-effects && $OMARCHY_VERSION_MISMATCH == true && $allow_mismatch != true ]]; then
 		if [[ $interactive == true ]] && wizard_confirm "Continue despite the Omarchy version mismatch?"; then
 			allow_mismatch=true
 		fi
 	fi
-	if [[ $OMARCHY_VERSION_MISMATCH == true && $allow_mismatch != true ]]; then
+	if [[ $package != screensaver-effects && $OMARCHY_VERSION_MISMATCH == true && $allow_mismatch != true ]]; then
 		phase_error confirm "$package" 'review compatibility, then choose Remove Stow package in the Dotfiles wizard'
 		return 1
 	fi
@@ -613,7 +632,17 @@ remove_package() {
 	fi
 
 	printf 'Phase: remove\n'
+	if [[ $package == screensaver-effects ]]; then
+		if ! screensaver_effects_deactivate; then
+			screensaver_effects_restore_active_after_remove_failure || true
+			phase_error remove "$package" 'inspect Package status, then retry Remove Stow package after lifecycle recovery'
+			return 1
+		fi
+	fi
 	if ! stow --no-folding --delete --verbose=2 --dir "$REPOSITORY_ROOT/config" --target "$HOME" "$package"; then
+		if [[ $package == screensaver-effects && $SCREENSAVER_EFFECTS_REMOVAL_DEACTIVATED == true ]]; then
+			screensaver_effects_restore_active_after_remove_failure || true
+		fi
 		phase_error remove "$package" 'inspect HOME for remaining links, then choose Remove Stow package in the Dotfiles wizard'
 		return 1
 	fi
@@ -625,10 +654,19 @@ remove_package() {
 		target=$HOME/$relative
 		if [[ -e $target || -L $target ]]; then
 			printf 'Managed link target remains after removal: %s\n' "$target" >&2
+			if [[ $package == screensaver-effects && $SCREENSAVER_EFFECTS_REMOVAL_DEACTIVATED == true ]]; then
+				screensaver_effects_restore_active_after_remove_failure || true
+			fi
 			phase_error verify "$package" 'inspect and remove only the remaining repository-owned link, then choose Remove Stow package in the Dotfiles wizard'
 			return 1
 		fi
 	done < <(find "$REPOSITORY_ROOT/config/$package" \( -type f -o -type l \) -print0)
+	if [[ $package == screensaver-effects ]]; then
+		screensaver_effects_finish_remove || {
+			phase_error verify "$package" 'inspect retained lifecycle state in Package status before another mutation'
+			return 1
+		}
+	fi
 	printf 'Removed and verified package: %s\n' "$package"
 	printf 'Cleanup notes (not deleted):\n'
 	if [[ $(jq '.cleanup | length' <<<"$package_json") -eq 0 ]]; then
@@ -791,6 +829,16 @@ apply_packages() {
 		return 1
 	fi
 	plan_arch_packages "${packages[@]}"
+	local includes_screensaver_effects=false
+	for package in "${packages[@]}"; do
+		if [[ $package == screensaver-effects ]]; then
+			includes_screensaver_effects=true
+			screensaver_effects_prepare_apply false || {
+				phase_error plan "$package" 'resolve the reported lifecycle conflict, then choose Apply Stow packages in the Dotfiles wizard'
+				return 1
+			}
+		fi
+	done
 	for package in "${packages[@]}"; do simulate_apply_package "$package" || return 1; done
 	printf 'Plan: apply packages in dependency order:\n'
 	local position=1 candidate package_json
@@ -812,7 +860,11 @@ apply_packages() {
 		printf 'No changes made.\n'
 		return 0
 	fi
-	if [[ $OMARCHY_VERSION_MISMATCH == true ]] && ! wizard_confirm 'Continue despite the Omarchy version mismatch?'; then
+	local screensaver_only=true
+	for package in "${selected[@]}"; do
+		[[ $package == screensaver-effects ]] || screensaver_only=false
+	done
+	if [[ $screensaver_only != true && $OMARCHY_VERSION_MISMATCH == true ]] && ! wizard_confirm 'Continue despite the Omarchy version mismatch?'; then
 		printf 'Recovery: review compatibility, then choose Apply Stow packages in the Dotfiles wizard.\n' >&2
 		return 1
 	fi
@@ -822,8 +874,19 @@ apply_packages() {
 		printf 'Phase: repeat conflict simulation after Arch package installation\n'
 		for package in "${packages[@]}"; do simulate_apply_package "$package" || return 1; done
 	fi
+	if [[ $includes_screensaver_effects == true ]]; then
+		screensaver_effects_preflight_common false || {
+			phase_error apply screensaver-effects 'state changed after confirmation; inspect Package status, then retry Apply Stow packages'
+			return 1
+		}
+	fi
 	for package in "${packages[@]}"; do
 		if apply_one_package "$package"; then
+			if [[ $package == screensaver-effects ]] && ! screensaver_effects_activate; then
+				printf 'Package state: %s: Stow linked, lifecycle inactive\n' "$package" >&2
+				printf 'Recovery: rerun the Dotfiles wizard and choose Apply Stow packages.\n' >&2
+				return 1
+			fi
 			printf 'Package state: %s: succeeded\n' "$package"
 		else
 			printf 'Package state: %s: failed\n' "$package" >&2

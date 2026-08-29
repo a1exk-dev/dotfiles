@@ -36,6 +36,12 @@ remove_wallpapers() { printf 'Stub wallpaper removal\n'; }
 EOF
 }
 
+stub_screensaver_effects_manager() {
+	cat >>"$FIXTURE_REPO/lib/dotfiles/wizard.sh" <<'EOF'
+manage_screensaver_effects() { printf 'Stub screensaver effects manager\n'; }
+EOF
+}
+
 stub_guided_phases_after_prerequisites() {
 	cat >>"$FIXTURE_REPO/lib/dotfiles/wizard.sh" <<'EOF'
 install_skills() { printf 'Stub guided skills\n'; }
@@ -52,8 +58,8 @@ test_top_level_menu_starts_with_guided_setup() {
 	run_dotfiles "$FIXTURE_ROOT"
 
 	assert_eq 0 "$COMMAND_STATUS" 'an empty menu choice should safely exit' || return 1
-	assert_contains "$COMMAND_OUTPUT" $'  1. Guided setup\n  2. Package status\n  3. Run structural checks\n  4. Apply Stow packages\n  5. Migrate existing target\n  6. Remove Stow package\n  7. Prepare prerequisites\n  8. Clean up Omarchy applications\n  9. Install pinned global skills\n  10. Update pinned global skills\n  11. Recover ZTE USB modem\n  12. Manage Brave policy\n  13. Manage Telegram theme\n  14. Manage wallpapers\n  15. Apply wallpapers\n  16. Remove deployed wallpapers\n  17. Exit' \
-		'wallpaper actions should be appended before Exit without renumbering existing actions' || return 1
+	assert_contains "$COMMAND_OUTPUT" $'  1. Guided setup\n  2. Package status\n  3. Run structural checks\n  4. Apply Stow packages\n  5. Migrate existing target\n  6. Remove Stow package\n  7. Prepare prerequisites\n  8. Clean up Omarchy applications\n  9. Install pinned global skills\n  10. Update pinned global skills\n  11. Recover ZTE USB modem\n  12. Manage Brave policy\n  13. Manage Telegram theme\n  14. Manage wallpapers\n  15. Apply wallpapers\n  16. Remove deployed wallpapers\n  17. Manage screensaver effects\n  18. Exit' \
+		'screensaver effects should be appended before Exit without renumbering existing actions' || return 1
 	assert_contains "$COMMAND_OUTPUT" 'No action selected.' 'no action should be selected by default'
 }
 
@@ -90,12 +96,16 @@ test_legacy_and_invalid_entry_forms_are_rejected() {
 	run_dotfiles "$FIXTURE_ROOT" status
 	assert_eq 2 "$COMMAND_STATUS" 'a removed public route should be rejected' || return 1
 	assert_contains "$COMMAND_OUTPUT" 'Usage: bin/dotfiles [--action' 'invalid entry use should explain the supported interface' || return 1
-	assert_contains "$COMMAND_OUTPUT" 'telegram-theme|wallpapers|wallpapers-apply|wallpapers-remove>]' \
-		'usage should advertise every wallpaper public action' || return 1
+	assert_contains "$COMMAND_OUTPUT" 'telegram-theme|wallpapers|wallpapers-apply|wallpapers-remove|screensaver-effects|screensaver-effects-migrate>]' \
+		'usage should advertise every wallpaper and screensaver public action' || return 1
 	assert_contains "$COMMAND_OUTPUT" 'wallpapers-apply: deploy the Wallpaper library' \
 		'usage should distinguish deployment Apply from curation' || return 1
 	assert_contains "$COMMAND_OUTPUT" 'wallpapers-remove: remove receipt-owned deployed wallpapers' \
 		'usage should identify the standalone deployment recovery route' || return 1
+	assert_contains "$COMMAND_OUTPUT" 'screensaver-effects: manage and preview the deployed effect allowlist' \
+		'usage should identify the public screensaver manager route' || return 1
+	assert_contains "$COMMAND_OUTPUT" 'screensaver-effects-migrate: migrate competing Omarchy idle or Indicators clones' \
+		'usage should identify the dedicated screensaver migration route' || return 1
 	run_dotfiles "$FIXTURE_ROOT" --arbitrary
 	assert_eq 2 "$COMMAND_STATUS" 'arbitrary flags should be rejected' || return 1
 	run_dotfiles "$FIXTURE_ROOT" --action unknown
@@ -169,6 +179,21 @@ test_wallpaper_deployment_public_action_preselections_dispatch() {
 	assert_eq 0 "$COMMAND_STATUS" 'the wallpaper removal preselection should dispatch successfully' || return 1
 	assert_contains "$COMMAND_OUTPUT" 'Stub wallpaper removal' \
 		'the public wallpaper removal action should call the deployment removal operation'
+}
+
+test_screensaver_effects_public_action_and_make_target_dispatch() {
+	new_fixture
+	stub_screensaver_effects_manager
+	run_dotfiles "$FIXTURE_ROOT" --action screensaver-effects
+	assert_eq 0 "$COMMAND_STATUS" 'the screensaver effects preselection should dispatch successfully' || return 1
+	assert_contains "$COMMAND_OUTPUT" 'Stub screensaver effects manager' \
+		'the public screensaver action should call the manager' || return 1
+
+	run_in_sandbox "$FIXTURE_ROOT" "$FIXTURE_BIN:/usr/bin:/bin" \
+		make --no-print-directory -C "$FIXTURE_REPO" screensaver-effects
+	assert_eq 0 "$COMMAND_STATUS" 'make screensaver-effects should dispatch successfully' || return 1
+	assert_contains "$COMMAND_OUTPUT" 'Stub screensaver effects manager' \
+		'make screensaver-effects should route through the public action'
 }
 
 test_default_make_menu_dispatches_telegram_theme_management() {
@@ -774,6 +799,7 @@ run_test test_modem_menu_selection_dispatches 'modem menu selection dispatches'
 run_test test_brave_public_action_preselection_dispatches 'Brave public action preselection dispatches'
 run_test test_wallpaper_manager_public_action_preselection_dispatches 'wallpaper manager public action preselection dispatches'
 run_test test_wallpaper_deployment_public_action_preselections_dispatch 'wallpaper deployment public action preselections dispatch'
+run_test test_screensaver_effects_public_action_and_make_target_dispatch 'screensaver effects public action and Make target dispatch'
 run_test test_default_make_menu_dispatches_telegram_theme_management 'default Make menu dispatches Telegram theme management'
 run_test test_status_and_check_standalone_actions 'status and checks remain standalone actions'
 run_test test_bash_apply_standalone_uses_one_multiselect_and_dependency_order 'Bash apply resolves a multi-selection in dependency order'

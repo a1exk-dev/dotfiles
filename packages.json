@@ -113,5 +113,31 @@
 			"Telegram's saved theme selection remains in Telegram-owned state; select another theme in Telegram before deleting retained generated state",
 			"Arch packages telegram-desktop and zip remain installed"
 		]
+	}, {
+		"name": "screensaver-effects",
+		"path": "config/screensaver-effects",
+		"description": "Selective active-theme effects for automatic and System-menu Omarchy screensavers",
+		"dependencies": [],
+		"arch_packages": ["ttfx", "jq", "socat"],
+		"prerequisites": [
+			"node",
+			"omarchy",
+			"omarchy-shell",
+			"xdg-terminal-exec",
+			"hyprctl",
+			"omarchy-screensaver",
+			"omarchy-toggle-enabled",
+			"omarchy-hyprland-monitor-focused"
+		],
+		"validators": [
+			"bash lib/dotfiles/screensaver-effects-validator.sh"
+		],
+		"documentation": "docs/screensaver-effects.md",
+		"cleanup": [
+			"Removal restores the prior Omarchy idle and Indicators state and removes only unchanged receipt-owned System-menu state",
+			"Lifecycle receipts, migration backups, and failure diagnostics under the Dotfiles screensaver-effects XDG state directory remain in place",
+			"Successfully migrated competing plugin clones remain in lifecycle backups and are not restored by normal package removal",
+			"Arch packages ttfx, jq, and socat remain installed"
+		]
 	}]
 }

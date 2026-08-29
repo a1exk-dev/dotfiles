@@ -1,0 +1,503 @@
+#!/usr/bin/env bash
+
+set -u
+
+readonly SCREENSAVER_SUPPORTED_TTFX_CLI=0.3.2
+SCREENSAVER_MAP_STATUS=
+SCREENSAVER_MAP_ARGS=()
+
+screensaver_mapping() {
+	SCREENSAVER_MAP_STATUS=
+	SCREENSAVER_MAP_ARGS=()
+	case $1 in
+	beams) SCREENSAVER_MAP_STATUS=Full; SCREENSAVER_MAP_ARGS=(--beam-gradient-stops @muted @accent @bright_foreground @FINAL) ;;
+	binarypath) SCREENSAVER_MAP_STATUS=Partial; SCREENSAVER_MAP_ARGS=(@FINAL --binary-colors @muted @accent) ;;
+	blackhole) SCREENSAVER_MAP_STATUS=Partial; SCREENSAVER_MAP_ARGS=(--blackhole-color @accent --star-colors @muted @bright_foreground @FINAL) ;;
+	bouncyballs) SCREENSAVER_MAP_STATUS=Full; SCREENSAVER_MAP_ARGS=(--ball-colors @accent @foreground @bright_foreground @FINAL) ;;
+	bubbles) SCREENSAVER_MAP_STATUS=Full; SCREENSAVER_MAP_ARGS=(--bubble-colors @accent @blue @foreground --pop-color @bright_foreground @FINAL) ;;
+	burn) SCREENSAVER_MAP_STATUS=Partial; SCREENSAVER_MAP_ARGS=(--starting-color @muted --burn-colors @red @bright_red @bright_yellow @FINAL) ;;
+	colorshift) SCREENSAVER_MAP_STATUS=Full; SCREENSAVER_MAP_ARGS=(--gradient-stops @red @yellow @green @blue @magenta @FINAL) ;;
+	crumble) SCREENSAVER_MAP_STATUS=Partial; SCREENSAVER_MAP_ARGS=(@FINAL) ;;
+	decrypt) SCREENSAVER_MAP_STATUS=Partial; SCREENSAVER_MAP_ARGS=(--ciphertext-colors @muted @accent @bright_foreground @FINAL) ;;
+	errorcorrect) SCREENSAVER_MAP_STATUS=Partial; SCREENSAVER_MAP_ARGS=(--error-color @bright_red --correct-color @green @FINAL) ;;
+	expand) SCREENSAVER_MAP_STATUS=Full; SCREENSAVER_MAP_ARGS=(@FINAL) ;;
+	fireworks) SCREENSAVER_MAP_STATUS=Partial; SCREENSAVER_MAP_ARGS=(--firework-colors @red @yellow @blue @magenta @bright_foreground @FINAL) ;;
+	highlight) SCREENSAVER_MAP_STATUS=Full; SCREENSAVER_MAP_ARGS=(@FINAL) ;;
+	laseretch) SCREENSAVER_MAP_STATUS=Partial; SCREENSAVER_MAP_ARGS=(--cool-gradient-stops @muted @accent @foreground --laser-gradient-stops @bright_red @bright_yellow @bright_foreground --spark-gradient-stops @bright_yellow @foreground @FINAL) ;;
+	matrix) SCREENSAVER_MAP_STATUS=Full; SCREENSAVER_MAP_ARGS=(--highlight-color @bright_foreground --rain-color-gradient @muted @accent @foreground @FINAL) ;;
+	middleout) SCREENSAVER_MAP_STATUS=Full; SCREENSAVER_MAP_ARGS=(--starting-color @muted @FINAL) ;;
+	orbittingvolley) SCREENSAVER_MAP_STATUS=Full; SCREENSAVER_MAP_ARGS=(@FINAL) ;;
+	overflow) SCREENSAVER_MAP_STATUS=Full; SCREENSAVER_MAP_ARGS=(--overflow-gradient-stops @dark_background @muted @accent @foreground @FINAL) ;;
+	pour) SCREENSAVER_MAP_STATUS=Full; SCREENSAVER_MAP_ARGS=(--starting-color @muted @FINAL) ;;
+	print) SCREENSAVER_MAP_STATUS=Partial; SCREENSAVER_MAP_ARGS=(@FINAL) ;;
+	rain) SCREENSAVER_MAP_STATUS=Full; SCREENSAVER_MAP_ARGS=(--rain-colors @muted @accent @bright_foreground @FINAL) ;;
+	randomsequence) SCREENSAVER_MAP_STATUS=Full; SCREENSAVER_MAP_ARGS=(@FINAL) ;;
+	rings) SCREENSAVER_MAP_STATUS=Full; SCREENSAVER_MAP_ARGS=(--ring-colors @accent @blue @foreground @FINAL) ;;
+	scattered) SCREENSAVER_MAP_STATUS=Full; SCREENSAVER_MAP_ARGS=(@FINAL) ;;
+	slice) SCREENSAVER_MAP_STATUS=Full; SCREENSAVER_MAP_ARGS=(@FINAL) ;;
+	slide) SCREENSAVER_MAP_STATUS=Full; SCREENSAVER_MAP_ARGS=(@FINAL) ;;
+	smoke) SCREENSAVER_MAP_STATUS=Full; SCREENSAVER_MAP_ARGS=(--starting-color @muted --smoke-gradient-stops @dark_background @muted @accent @FINAL) ;;
+	spotlights) SCREENSAVER_MAP_STATUS=Full; SCREENSAVER_MAP_ARGS=(@FINAL) ;;
+	spray) SCREENSAVER_MAP_STATUS=Full; SCREENSAVER_MAP_ARGS=(@FINAL) ;;
+	swarm) SCREENSAVER_MAP_STATUS=Full; SCREENSAVER_MAP_ARGS=(--base-color @muted @accent --flash-color @bright_foreground @FINAL) ;;
+	sweep) SCREENSAVER_MAP_STATUS=Partial; SCREENSAVER_MAP_ARGS=(@FINAL) ;;
+	synthgrid) SCREENSAVER_MAP_STATUS=Full; SCREENSAVER_MAP_ARGS=(--grid-gradient-stops @muted @accent @bright_foreground --text-gradient-stops @accent @foreground @bright_foreground) ;;
+	thunderstorm) SCREENSAVER_MAP_STATUS=Partial; SCREENSAVER_MAP_ARGS=(--lightning-color @bright_blue --glowing-text-color @orange --spark-glow-color @bright_yellow @FINAL) ;;
+	unstable) SCREENSAVER_MAP_STATUS=Full; SCREENSAVER_MAP_ARGS=(--unstable-color @bright_red @FINAL) ;;
+	vhstape) SCREENSAVER_MAP_STATUS=Partial; SCREENSAVER_MAP_ARGS=(--glitch-line-colors @bright_foreground @bright_red @green @blue @bright_foreground --glitch-wave-colors @bright_foreground @bright_red @green @blue @bright_foreground --noise-colors @darker_background @dark_background @muted @foreground @bright_foreground @FINAL) ;;
+	waves) SCREENSAVER_MAP_STATUS=Full; SCREENSAVER_MAP_ARGS=(--wave-gradient-stops @muted @accent @bright_foreground @FINAL) ;;
+	wipe) SCREENSAVER_MAP_STATUS=Full; SCREENSAVER_MAP_ARGS=(@FINAL) ;;
+	*) return 1 ;;
+	esac
+}
+
+screensaver_mapping_catalog() {
+	local effect
+	for effect in \
+		beams binarypath blackhole bouncyballs bubbles burn colorshift crumble decrypt \
+		errorcorrect expand fireworks highlight laseretch matrix middleout orbittingvolley \
+		overflow pour print rain randomsequence rings scattered slice slide smoke spotlights \
+		spray swarm sweep synthgrid thunderstorm unstable vhstape waves wipe; do
+		screensaver_mapping "$effect" || return 1
+		printf '%s\t%s\n' "$effect" "$SCREENSAVER_MAP_STATUS"
+	done
+}
+
+screensaver_discover_catalog() {
+	local line name in_commands=0
+	while IFS= read -r line; do
+		if [[ $line == Commands: ]]; then
+			in_commands=1
+			continue
+		fi
+		((in_commands)) || continue
+		[[ -n ${line//[[:space:]]/} ]] || break
+		line=${line#"${line%%[![:space:]]*}"}
+		name=${line%%[[:space:]]*}
+		[[ $name == help || ! $name =~ ^[a-z0-9]+$ ]] || printf '%s\n' "$name"
+	done < <("$1" --help 2>/dev/null)
+}
+
+screensaver_is_stock_invocation() {
+	local expected_branding=$HOME/.config/omarchy/branding/screensaver.txt
+	(($# == 16)) || return 1
+	[[ $1 == -i && $2 == "$expected_branding" && $3 == --frame-rate && $4 == 120 &&
+		$5 == --canvas-width && $6 == 0 && $7 == --canvas-height && $8 == 0 &&
+		$9 == --reuse-canvas && ${10} == --anchor-canvas && ${11} == c &&
+		${12} == --anchor-text && ${13} == c && ${14} == --random-effect &&
+		${15} == --no-eol && ${16} == --no-restore-cursor ]] && return 0
+
+	# Omarchy's runner has no arguments after --no-restore-cursor. The expanded
+	# branding path may remain under ~/.config when XDG_CONFIG_HOME differs.
+	return 1
+}
+
+screensaver_process_start_time() {
+	local pid=$1 stat
+	local -a fields=()
+	[[ $pid =~ ^[0-9]+$ && -r /proc/$pid/stat ]] || return 1
+	stat=$(</proc/$pid/stat) || return 1
+	stat=${stat##*) }
+	read -ra fields <<<"$stat"
+	((${#fields[@]} > 19)) && [[ ${fields[19]} =~ ^[0-9]+$ ]] || return 1
+	printf '%s\n' "${fields[19]}"
+}
+
+screensaver_process_parent() {
+	local pid=$1 stat
+	local -a fields=()
+	[[ $pid =~ ^[0-9]+$ && -r /proc/$pid/stat ]] || return 1
+	stat=$(</proc/$pid/stat) || return 1
+	stat=${stat##*) }
+	read -ra fields <<<"$stat"
+	((${#fields[@]} > 1)) && [[ ${fields[1]} =~ ^[0-9]+$ ]] || return 1
+	printf '%s\n' "${fields[1]}"
+}
+
+screensaver_process_environment_matches() {
+	local pid=$1 process_dir=$2 identity=$3 entry
+	local found_attempt=0 found_process=0 found_identity=0
+	[[ -r /proc/$pid/environ ]] || return 1
+	while IFS= read -r -d '' entry; do
+		case $entry in
+		"DOTFILES_SCREENSAVER_ATTEMPT_DIR=${process_dir%/dispatch-*}") found_attempt=1 ;;
+		"DOTFILES_SCREENSAVER_PROCESS_DIR=$process_dir") found_process=1 ;;
+		"DOTFILES_SCREENSAVER_ATTEMPT_ID=$identity") found_identity=1 ;;
+		esac
+	done <"/proc/$pid/environ"
+	((found_attempt && found_process && found_identity))
+}
+
+screensaver_process_matches() {
+	local pid=$1 expected_start=$2 process_dir=$3 identity=$4 actual_start
+	actual_start=$(screensaver_process_start_time "$pid") || return 1
+	[[ $actual_start == "$expected_start" ]] || return 1
+	screensaver_process_environment_matches "$pid" "$process_dir" "$identity"
+}
+
+screensaver_process_is_descendant() {
+	local pid=$1 ancestor=$2 parent depth=0
+	while ((pid > 1 && depth < 64)); do
+		parent=$(screensaver_process_parent "$pid") || return 1
+		[[ $parent == "$ancestor" ]] && return 0
+		pid=$parent
+		depth=$((depth + 1))
+	done
+	return 1
+}
+
+screensaver_register_process() {
+	local role=$1 pid=${2:-$$}
+	local attempt_dir=${DOTFILES_SCREENSAVER_ATTEMPT_DIR:-}
+	local process_dir=${DOTFILES_SCREENSAVER_PROCESS_DIR:-}
+	local identity=${DOTFILES_SCREENSAVER_ATTEMPT_ID:-}
+	local start temporary recorded_identity
+	[[ $role =~ ^(runner|shim|effect)$ && $pid =~ ^[0-9]+$ ]] || return 1
+	[[ $attempt_dir == /* && -d $attempt_dir && ! -L $attempt_dir ]] || return 1
+	[[ $process_dir == "$attempt_dir"/dispatch-[0-9]* && -d $process_dir && ! -L $process_dir ]] || return 1
+	[[ $identity =~ ^dotfiles-screensaver-[A-Za-z0-9._-]+$ ]] || return 1
+	[[ -f $process_dir/identity && ! -L $process_dir/identity ]] || return 1
+	recorded_identity=$(<"$process_dir/identity")
+	[[ $recorded_identity == "$identity" ]] || return 1
+	start=$(screensaver_process_start_time "$pid") || return 1
+	temporary=$process_dir/.$role.pid.$$
+	printf '%s %s\n' "$pid" "$start" >"$temporary" || return 1
+	mv -fT -- "$temporary" "$process_dir/$role.pid" || {
+		rm -f -- "$temporary"
+		return 1
+	}
+}
+
+screensaver_read_process() {
+	local process_dir=$1 role=$2
+	local -n process_pid_result=$3 process_start_result=$4
+	local state=$process_dir/$role.pid recorded_pid recorded_start extra
+	[[ -f $state && ! -L $state ]] || return 1
+	read -r recorded_pid recorded_start extra <"$state" || return 1
+	[[ $recorded_pid =~ ^[0-9]+$ && $recorded_start =~ ^[0-9]+$ && -z $extra ]] || return 1
+	process_pid_result=$recorded_pid
+	process_start_result=$recorded_start
+}
+
+screensaver_wait_for_process() {
+	local process_dir=$1 role=$2 identity=$3
+	local -n wait_pid_result=$4 wait_start_result=$5
+	local deadline=$((SECONDS + 5)) state_pid state_start
+	while ((SECONDS < deadline)); do
+		if screensaver_read_process "$process_dir" "$role" state_pid state_start &&
+			screensaver_process_matches "$state_pid" "$state_start" "$process_dir" "$identity"; then
+			wait_pid_result=$state_pid
+			wait_start_result=$state_start
+			return 0
+		fi
+		sleep 0.02
+	done
+	return 1
+}
+
+screensaver_wait_process_gone() {
+	local pid=$1 start=$2 attempts=${3:-50} actual
+	while ((attempts-- > 0)); do
+		actual=$(screensaver_process_start_time "$pid" 2>/dev/null || true)
+		[[ $actual == "$start" ]] || return 0
+		sleep 0.02
+	done
+	return 1
+}
+
+screensaver_stop_dispatch() {
+	local process_dir=$1 identity=$2
+	local runner_pid= runner_start= shim_pid= shim_start= effect_pid= effect_start=
+	: >"$process_dir/cancel" 2>/dev/null || true
+	if ! screensaver_read_process "$process_dir" runner runner_pid runner_start ||
+		! screensaver_process_matches "$runner_pid" "$runner_start" "$process_dir" "$identity"; then
+		return 0
+	fi
+
+	# Freeze the runner before touching descendants so it cannot enter another
+	# iteration or invoke its global signal cleanup trap.
+	kill -STOP "$runner_pid" 2>/dev/null || true
+	if screensaver_read_process "$process_dir" shim shim_pid shim_start &&
+		screensaver_process_matches "$shim_pid" "$shim_start" "$process_dir" "$identity" &&
+		screensaver_process_is_descendant "$shim_pid" "$runner_pid"; then
+		kill -TERM "$shim_pid" 2>/dev/null || true
+	fi
+	if screensaver_read_process "$process_dir" effect effect_pid effect_start &&
+		screensaver_process_matches "$effect_pid" "$effect_start" "$process_dir" "$identity" &&
+		{ [[ -n $shim_pid ]] && screensaver_process_is_descendant "$effect_pid" "$shim_pid" ||
+			screensaver_process_is_descendant "$effect_pid" "$runner_pid"; }; then
+		screensaver_wait_process_gone "$effect_pid" "$effect_start" 50 || {
+			if screensaver_process_matches "$effect_pid" "$effect_start" "$process_dir" "$identity"; then
+				kill -TERM "$effect_pid" 2>/dev/null || true
+			fi
+			screensaver_wait_process_gone "$effect_pid" "$effect_start" 25 || {
+				if screensaver_process_matches "$effect_pid" "$effect_start" "$process_dir" "$identity"; then
+					kill -KILL "$effect_pid" 2>/dev/null || true
+				fi
+			}
+		}
+	fi
+	if [[ -n $shim_pid ]] && screensaver_process_matches "$shim_pid" "$shim_start" "$process_dir" "$identity"; then
+		kill -KILL "$shim_pid" 2>/dev/null || true
+	fi
+	if screensaver_process_matches "$runner_pid" "$runner_start" "$process_dir" "$identity"; then
+		kill -KILL "$runner_pid" 2>/dev/null || true
+	fi
+	screensaver_wait_process_gone "$runner_pid" "$runner_start" 50 || return 1
+	[[ -z $shim_pid ]] || screensaver_wait_process_gone "$shim_pid" "$shim_start" 50 || return 1
+	[[ -z $effect_pid ]] || screensaver_wait_process_gone "$effect_pid" "$effect_start" 50 || return 1
+}
+
+screensaver_record_failure() {
+	local stage=$1 reason=$2 message claim
+	message="Screensaver effects failed at $stage: $reason. Run make screensaver-effects to repair configuration."
+	printf '%s\n' "$message" >&2
+
+	if [[ -n ${DOTFILES_SCREENSAVER_ATTEMPT_DIR:-} &&
+		-d $DOTFILES_SCREENSAVER_ATTEMPT_DIR && ! -L $DOTFILES_SCREENSAVER_ATTEMPT_DIR &&
+		-f $DOTFILES_SCREENSAVER_ATTEMPT_DIR/launch-attempt && ! -L $DOTFILES_SCREENSAVER_ATTEMPT_DIR/launch-attempt ]]; then
+		claim=$DOTFILES_SCREENSAVER_ATTEMPT_DIR/diagnostic.claim
+		if mkdir -- "$claim" 2>/dev/null; then
+			printf '%s\n' "$message" >"$DOTFILES_SCREENSAVER_ATTEMPT_DIR/failure"
+			if [[ ${DOTFILES_SCREENSAVER_FOREGROUND:-0} != 1 ]]; then
+				command -v logger >/dev/null 2>&1 && logger -t dotfiles-screensaver -- "$message" || true
+				command -v omarchy-notification-send >/dev/null 2>&1 &&
+					omarchy-notification-send -g 'Screensaver' 'Screensaver effects' "$message" >/dev/null 2>&1 || true
+			fi
+		fi
+	fi
+}
+
+screensaver_retain_failure() {
+	local retention_child=
+	if [[ ${DOTFILES_SCREENSAVER_TEST:-0} == 1 ]]; then
+		return 1
+	fi
+	trap '[[ -z $retention_child ]] || kill -TERM "$retention_child" 2>/dev/null || true; [[ -z $retention_child ]] || wait "$retention_child" 2>/dev/null || true; exit 0' HUP INT QUIT TERM
+	while :; do
+		sleep 2147483647 &
+		retention_child=$!
+		screensaver_register_process effect "$retention_child" || true
+		wait "$retention_child" || true
+		retention_child=
+	done
+}
+
+screensaver_fail() {
+	screensaver_record_failure "$1" "$2"
+	screensaver_retain_failure
+}
+
+if [[ ${DOTFILES_SCREENSAVER_SOURCE_ONLY:-0} == 1 ]]; then
+	return 0 2>/dev/null || exit 0
+fi
+
+if [[ ${DOTFILES_SCREENSAVER_INTERNAL:-} =~ ^(selector|validator|test)$ ]]; then
+	case ${1:-} in
+	--dotfiles-mapping-catalog)
+		screensaver_mapping_catalog
+		exit
+		;;
+	--dotfiles-mapping-status)
+		(($# == 2)) || exit 2
+		screensaver_mapping "$2" || exit 1
+		printf '%s\n' "$SCREENSAVER_MAP_STATUS"
+		exit
+		;;
+	esac
+fi
+
+if ! printf %s ttfx >"/proc/$$/comm" 2>/dev/null; then
+	screensaver_record_failure runtime 'could not establish the required ttfx process identity'
+	screensaver_retain_failure
+	exit 1
+fi
+if ! screensaver_register_process shim; then
+	screensaver_fail runtime 'could not register the attempt-owned ttfx shim process'
+	exit 1
+fi
+
+real_ttfx=${DOTFILES_SCREENSAVER_REAL_TTFX:-}
+if [[ $real_ttfx != /* || ! -f $real_ttfx || ! -x $real_ttfx ]]; then
+	screensaver_fail preflight 'real ttfx is not an executable absolute file'
+	exit 1
+fi
+real_ttfx=$(realpath -e -- "$real_ttfx" 2>/dev/null) || {
+	screensaver_fail preflight 'real ttfx could not be resolved'
+	exit 1
+}
+shim=$(realpath -e -- "${BASH_SOURCE[0]}" 2>/dev/null) || {
+	screensaver_fail preflight 'ttfx shim source could not be resolved'
+	exit 1
+}
+if [[ $real_ttfx == "$shim" ]]; then
+	screensaver_fail preflight 'refusing recursive ttfx execution'
+	exit 1
+fi
+
+if ! screensaver_is_stock_invocation "$@"; then
+	screensaver_fail invocation 'ttfx arguments did not match the audited Omarchy screensaver runner'
+	exit 1
+fi
+
+package_root=$(cd -- "$(dirname -- "$shim")/../../../../../../.." && pwd -P) || {
+	screensaver_fail configuration 'could not resolve the screensaver-effects package source'
+	exit 1
+}
+allowlist_source=$package_root/.config/dotfiles/screensaver-effects.json
+deployed_allowlist=${XDG_CONFIG_HOME:-$HOME/.config}/dotfiles/screensaver-effects.json
+preview_effect=${DOTFILES_SCREENSAVER_PREVIEW_EFFECT:-}
+if [[ ${DOTFILES_SCREENSAVER_ALLOWLIST+x} || -n $preview_effect ]]; then
+	allowlist=${DOTFILES_SCREENSAVER_ALLOWLIST:-}
+	expected_preview_allowlist=${DOTFILES_SCREENSAVER_ATTEMPT_DIR:-}/allowlist.json
+	if [[ ${DOTFILES_SCREENSAVER_FOREGROUND:-0} != 1 || -z $preview_effect ||
+		${DOTFILES_SCREENSAVER_ATTEMPT_DIR:-} != /* ||
+		! -d ${DOTFILES_SCREENSAVER_ATTEMPT_DIR:-} || -L ${DOTFILES_SCREENSAVER_ATTEMPT_DIR:-} ||
+		! -f ${DOTFILES_SCREENSAVER_ATTEMPT_DIR:-}/launch-attempt ||
+		-L ${DOTFILES_SCREENSAVER_ATTEMPT_DIR:-}/launch-attempt ||
+		$allowlist != "$expected_preview_allowlist" || ! -f $allowlist || -L $allowlist ]]; then
+		screensaver_fail configuration 'an untrusted preview allowlist was rejected'
+		exit 1
+	fi
+else
+	if [[ ! -f $allowlist_source || -L $allowlist_source ]]; then
+		screensaver_fail configuration "repository allowlist source is unavailable: $allowlist_source"
+		exit 1
+	fi
+	if [[ ! -L $deployed_allowlist ]]; then
+		screensaver_fail configuration "deployed allowlist is not a Stow symlink: $deployed_allowlist"
+		exit 1
+	fi
+	resolved_source=$(realpath -e -- "$allowlist_source" 2>/dev/null || true)
+	resolved_deployed=$(realpath -e -- "$deployed_allowlist" 2>/dev/null || true)
+	if [[ -z $resolved_source || $resolved_deployed != "$resolved_source" ]]; then
+		screensaver_fail configuration 'deployed allowlist does not resolve to this package source'
+		exit 1
+	fi
+	allowlist=$resolved_source
+fi
+if [[ ! -f $allowlist ]] || ! jq -e '
+	type == "array" and length > 0 and
+	all(.[]; type == "string" and test("^[a-z0-9]+$")) and
+	(length == (unique | length))
+' "$allowlist" >/dev/null 2>&1; then
+	screensaver_fail configuration "invalid allowlist: $allowlist"
+	exit 1
+fi
+
+declare -A discovered=()
+while IFS= read -r effect; do
+	[[ -n $effect ]] && discovered[$effect]=1
+done < <(screensaver_discover_catalog "$real_ttfx")
+if ((${#discovered[@]} == 0)); then
+	screensaver_fail catalog 'ttfx exposed no effects'
+	exit 1
+fi
+
+mapfile -t configured < <(jq -r '.[]' "$allowlist")
+for effect in "${configured[@]}"; do
+	if [[ -z ${discovered[$effect]+set} ]] || ! screensaver_mapping "$effect"; then
+		screensaver_fail configuration "allowlisted effect is unavailable or unmapped: $effect"
+		exit 1
+	fi
+done
+
+version=$({ "$real_ttfx" --version 2>/dev/null || true; } | tr -d '\r')
+if [[ $version != "ttfx $SCREENSAVER_SUPPORTED_TTFX_CLI" ]]; then
+	printf 'Warning: supported ttfx CLI %s; detected %s. Using only tracked mapped effects still discovered.\n' \
+		"$SCREENSAVER_SUPPORTED_TTFX_CLI" "${version:-unknown}" >&2
+fi
+
+if [[ -n $preview_effect ]]; then
+	effect=$preview_effect
+	if [[ -z ${discovered[$effect]+set} ]] || ! screensaver_mapping "$effect"; then
+		screensaver_fail mapping "preview effect is unavailable or unmapped: $effect"
+		exit 1
+	fi
+elif ((${#configured[@]} == 1)); then
+	effect=${configured[0]}
+	screensaver_mapping "$effect" || {
+		screensaver_fail mapping "selected effect lost its mapping: $effect"
+		exit 1
+	}
+else
+	if [[ ${DOTFILES_SCREENSAVER_TEST:-0} == 1 && ${DOTFILES_SCREENSAVER_TEST_INDEX:-} =~ ^[0-9]+$ ]]; then
+		index=$((DOTFILES_SCREENSAVER_TEST_INDEX % ${#configured[@]}))
+	else
+		limit=$((32768 - (32768 % ${#configured[@]})))
+		while :; do
+			sample=$RANDOM
+			((sample < limit)) && break
+		done
+		index=$((sample % ${#configured[@]}))
+	fi
+	effect=${configured[index]}
+	screensaver_mapping "$effect" || {
+		screensaver_fail mapping "selected effect lost its mapping: $effect"
+		exit 1
+	}
+fi
+
+declare -A colors=()
+for token in \
+	background foreground accent muted bright_foreground red bright_red bright_yellow \
+	yellow green blue bright_blue magenta orange darker_background dark_background; do
+	value=$(omarchy theme color "$token" 2>/dev/null) || {
+		screensaver_fail theme "could not resolve token: $token"
+		exit 1
+	}
+	if [[ ! $value =~ ^#[0-9A-Fa-f]{6}$ ]]; then
+		screensaver_fail theme "invalid color for token: $token"
+		exit 1
+	fi
+	colors[$token]=$value
+done
+
+mapped=()
+for token in "${SCREENSAVER_MAP_ARGS[@]}"; do
+	if [[ $token == @FINAL ]]; then
+		mapped+=(--final-gradient-stops "${colors[accent]}" "${colors[foreground]}" "${colors[bright_foreground]}")
+	elif [[ $token == @* ]]; then
+		key=${token#@}
+		mapped+=("${colors[$key]}")
+	else
+		mapped+=("$token")
+	fi
+done
+
+root_args=()
+for arg in "$@"; do
+	[[ $arg == --random-effect ]] || root_args+=("$arg")
+done
+root_args+=(--terminal-background-color "${colors[background]}" --existing-color-handling ignore)
+
+child=
+dismiss() {
+	trap - HUP INT QUIT TERM
+	[[ -z $child ]] || kill -TERM "$child" 2>/dev/null || true
+	[[ -z $child ]] || wait "$child" 2>/dev/null || true
+	exit 0
+}
+trap dismiss HUP INT QUIT TERM
+
+"$real_ttfx" "${root_args[@]}" "$effect" "${mapped[@]}" &
+child=$!
+if ! screensaver_register_process effect "$child"; then
+	kill -TERM "$child" 2>/dev/null || true
+	wait "$child" 2>/dev/null || true
+	child=
+	screensaver_fail runtime 'could not register the attempt-owned effect process'
+	exit 1
+fi
+wait "$child"
+status=$?
+child=
+trap - HUP INT QUIT TERM
+if ((status == 0)); then
+	exit 0
+fi
+case $status in
+129|130|131|143) exit 0 ;;
+esac
+screensaver_fail runtime "effect $effect exited with status $status"
+exit 1

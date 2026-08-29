@@ -112,6 +112,8 @@ wizard_run_action() {
 		wallpapers) manage_wallpapers ;;
 		wallpapers-apply) apply_wallpapers ;;
 		wallpapers-remove) remove_wallpapers ;;
+		screensaver-effects) manage_screensaver_effects ;;
+		screensaver-effects-migrate) migrate_screensaver_effects --interactive ;;
 		exit) printf 'No action selected.\n' ;;
 		*) printf 'Error: unknown wizard action: %s\n' "$action" >&2; return 2 ;;
 	esac
@@ -203,9 +205,16 @@ wizard() {
 		'Manage wallpapers'
 		'Apply wallpapers'
 		'Remove deployed wallpapers'
-		'Exit'
 	)
-	local -a actions=(guided status check apply migrate remove prerequisites cleanup skills skills-update modem brave telegram-theme wallpapers wallpapers-apply wallpapers-remove exit)
+	local -a actions=(guided status check apply migrate remove prerequisites cleanup skills skills-update modem brave telegram-theme wallpapers wallpapers-apply wallpapers-remove)
+	screensaver_effects_set_paths
+	screensaver_effects_find_competing_clones
+	if ((${#SCREENSAVER_EFFECTS_COMPETING_CLONES[@]} > 0)); then
+		labels+=('Migrate competing screensaver clones')
+		actions+=(screensaver-effects-migrate)
+	fi
+	labels+=('Manage screensaver effects' 'Exit')
+	actions+=(screensaver-effects exit)
 	if ! choice=$(wizard_choose 'Choose an action (none selected by default)' "${labels[@]}"); then
 		printf 'No action selected.\n'
 		return 0

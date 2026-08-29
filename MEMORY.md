@@ -64,6 +64,14 @@ Guidance: Install a complete validated clone before triggering one plugin rescan
 
 Reason: Omarchy reloads the complete plugin registry after a plugin change, recreating the idle service and resetting its timers, active-cycle state, screensaver-window bookkeeping, and pending lock coordination.
 
+## Keep screensaver-effects tests focused
+
+Applies when: Adding or maintaining tests for the Selective screensaver integration.
+
+Guidance: Keep each focused suite under one minute on the supported machine. Refactor or remove redundant coverage when a suite exceeds that limit, and verify this feature with its four focused suites instead of unrelated repository suites.
+
+Reason: Fast feature tests keep routine verification practical without growing an exhaustive edge-case matrix.
+
 ## Deploy watched Omarchy plugins through complete sources
 
 Applies when: A Stow package provides a complete Omarchy plugin clone whose live directory is recursively watched.

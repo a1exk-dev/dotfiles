@@ -121,7 +121,7 @@ if [[ \$identify == true ]]; then printf '%s|4|3\n' "\$format"; fi
 	printf 'outside packaged Omarchy\n' >"$OUTSIDE_ROOT/packaged-omarchy/sentinel"
 	OUTSIDE_SNAPSHOT=$(snapshot_outside_canaries)
 	: >"$CALL_LOG"
-	printf '%s\n' thefuck tmux fzf less starship btop telegram-desktop zip >"$ARCH_PACKAGE_STATE"
+	printf '%s\n' thefuck tmux fzf less starship btop telegram-desktop zip ttfx jq socat >"$ARCH_PACKAGE_STATE"
 	cp "$SOURCE_REPO/bin/dotfiles" "$FIXTURE_REPO/bin/dotfiles"
 	cp "$SOURCE_REPO/lib/dotfiles/"*.sh "$FIXTURE_REPO/lib/dotfiles/"
 	cp "$SOURCE_REPO/lib/dotfiles/"*.mjs "$FIXTURE_REPO/lib/dotfiles/"
@@ -170,6 +170,12 @@ if [[ ${1-} == pkg && ${2-} == add ]]; then
 	exit 0
 fi
 exit 64'
+	make_fake omarchy-shell 'exit 64'
+	make_fake xdg-terminal-exec 'exit 64'
+	make_fake hyprctl 'exit 64'
+	make_fake omarchy-screensaver 'exit 64'
+	make_fake omarchy-toggle-enabled 'exit 64'
+	make_fake omarchy-hyprland-monitor-focused 'exit 64'
 	make_fake stow 'printf "stow %s\n" "$*" >>"$DOTFILES_TEST_CALL_LOG"'
 	make_fake omarchy-pkg-add 'printf "omarchy-pkg-add %s\n" "$*" >>"$DOTFILES_TEST_CALL_LOG"'
 	make_fake git 'printf "git %s\n" "$*" >>"$DOTFILES_TEST_CALL_LOG"'
@@ -326,7 +332,7 @@ EOF
 restricted_path_without_stow() {
 	local restricted_bin=$FIXTURE_ROOT/restricted-bin command command_path
 	mkdir -p "$restricted_bin"
-	for command in bash basename cp date diff dirname env find flock grep head jq ln mktemp mv readlink rm sha256sum sort; do
+	for command in bash basename cmp cp date diff dirname env find flock grep head jq ln mkdir mktemp mv pacman realpath readlink rm sha256sum sort stat tr ttfx; do
 		command_path=$(command -v "$command") || return 1
 		ln -s "$command_path" "$restricted_bin/$command"
 	done
@@ -702,6 +708,9 @@ run_operation() {
 			operation=$2
 			shift 2
 			source "$repository/lib/dotfiles/core.sh"
+			if [[ -f $repository/lib/dotfiles/screensaver-effects.sh ]]; then
+				source "$repository/lib/dotfiles/screensaver-effects.sh"
+			fi
 			source "$repository/lib/dotfiles/packages.sh"
 			source "$repository/lib/dotfiles/skills.sh"
 			source "$repository/lib/dotfiles/cleanup.sh"

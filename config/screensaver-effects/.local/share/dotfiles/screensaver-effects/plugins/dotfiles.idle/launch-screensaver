@@ -1,0 +1,293 @@
+#!/usr/bin/env bash
+
+set -u
+
+plugin_dir=$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd -P) || exit 1
+shim_dir=$plugin_dir/bin
+shim=$shim_dir/ttfx
+runtime_root=${XDG_RUNTIME_DIR:-}
+omarchy_root=${OMARCHY_PATH:-/usr/share/omarchy}
+attempt_dir=
+focused=
+events=
+screensaver_window=
+launched_windows=()
+dispatch_dirs=()
+dispatch_ids=()
+
+DOTFILES_SCREENSAVER_SOURCE_ONLY=1
+source "$shim" || exit 1
+unset DOTFILES_SCREENSAVER_SOURCE_ONLY
+
+diagnose() {
+	local stage=$1 reason=$2 message claim
+	message="Screensaver effects failed at $stage: $reason. Run make screensaver-effects to repair configuration."
+	if [[ -n $attempt_dir && -d $attempt_dir && ! -L $attempt_dir ]]; then
+		claim=$attempt_dir/diagnostic.claim
+		if mkdir -- "$claim" 2>/dev/null; then
+			printf '%s\n' "$message" >"$attempt_dir/failure"
+			command -v logger >/dev/null 2>&1 && logger -t dotfiles-screensaver -- "$message" || true
+			command -v omarchy-notification-send >/dev/null 2>&1 &&
+				omarchy-notification-send -g 'Screensaver' 'Screensaver effects' "$message" >/dev/null 2>&1 || true
+		fi
+	else
+		command -v logger >/dev/null 2>&1 && logger -t dotfiles-screensaver -- "$message" || true
+		command -v omarchy-notification-send >/dev/null 2>&1 &&
+			omarchy-notification-send -g 'Screensaver' 'Screensaver effects' "$message" >/dev/null 2>&1 || true
+	fi
+	printf '%s\n' "$message" >&2
+}
+
+hypr_focus_monitor() {
+	hyprctl dispatch "hl.dsp.focus({ monitor = \"$1\" })" >/dev/null 2>&1 ||
+		hyprctl dispatch focusmonitor "$1" >/dev/null 2>&1
+}
+
+hypr_close_window() {
+	local address=${1#0x}
+	[[ $address =~ ^[0-9A-Fa-f]+$ ]] || return 1
+	hyprctl dispatch closewindow "address:0x$address" >/dev/null 2>&1
+}
+
+restore_focus() {
+	local status=$?
+	trap - EXIT HUP INT TERM
+	if [[ $events =~ ^[0-9]+$ ]]; then
+		eval "exec ${events}<&-" 2>/dev/null || true
+	fi
+	if ((status != 0)); then
+		for index in "${!dispatch_dirs[@]}"; do
+			screensaver_stop_dispatch "${dispatch_dirs[index]}" "${dispatch_ids[index]}" || true
+		done
+		for screensaver_window in "${launched_windows[@]}"; do
+			hypr_close_window "$screensaver_window" || true
+		done
+	fi
+	[[ -z $focused ]] || hypr_focus_monitor "$focused" || true
+	if ((status != 0)) && [[ -n $attempt_dir ]]; then
+		rm -rf -- "$attempt_dir"
+	fi
+	exit "$status"
+}
+trap restore_focus EXIT
+trap 'exit 1' HUP INT TERM
+
+for command in jq mktemp pgrep realpath socat xdg-terminal-exec hyprctl omarchy omarchy-screensaver \
+	omarchy-toggle-enabled omarchy-hyprland-monitor-focused; do
+	if ! command -v "$command" >/dev/null 2>&1; then
+		diagnose preflight "required command is unavailable: $command"
+		exit 1
+	fi
+done
+
+if pgrep -f '[o]rg.omarchy.screensaver' >/dev/null; then
+	exit 0
+fi
+
+if omarchy-toggle-enabled screensaver-off && [[ ${1:-} != force ]]; then
+	exit 1
+fi
+
+real_ttfx=$(command -v ttfx 2>/dev/null || true)
+if [[ $real_ttfx != /* ]]; then
+	diagnose preflight 'ttfx is unavailable'
+	exit 1
+fi
+real_ttfx=$(realpath -e -- "$real_ttfx" 2>/dev/null || true)
+if [[ ! -f $real_ttfx || ! -x $real_ttfx || $real_ttfx == "$shim_dir/ttfx" ]]; then
+	diagnose preflight 'real ttfx could not be resolved'
+	exit 1
+fi
+
+if [[ $runtime_root != /* || ! -d $runtime_root || -L $runtime_root ]]; then
+	diagnose preflight 'XDG_RUNTIME_DIR is not a safe absolute directory'
+	exit 1
+fi
+if [[ $omarchy_root != /* || ! -d $omarchy_root ]]; then
+	diagnose preflight 'OMARCHY_PATH is not an absolute installation root'
+	exit 1
+fi
+attempt_dir=$(mktemp -d "$runtime_root/dotfiles-screensaver.XXXXXX") || {
+	diagnose preflight 'could not create private launch state'
+	exit 1
+}
+chmod 0700 -- "$attempt_dir"
+: >"$attempt_dir/launch-attempt"
+attempt_base=dotfiles-screensaver-${attempt_dir##*.}
+
+focused=$(omarchy-hyprland-monitor-focused 2>/dev/null || true)
+if [[ -z $focused ]]; then
+	diagnose focus 'focused monitor is unavailable'
+	exit 1
+fi
+terminal=$(xdg-terminal-exec --print-id 2>/dev/null || true)
+case $terminal in
+*Alacritty*) terminal_config=$omarchy_root/default/alacritty/screensaver.toml ;;
+*ghostty*) terminal_config=$omarchy_root/default/ghostty/screensaver ;;
+*foot*) terminal_config=$omarchy_root/default/foot/screensaver.ini ;;
+*kitty*) terminal_config= ;;
+*)
+	diagnose terminal "unsupported terminal: ${terminal:-unknown}"
+	exit 1
+	;;
+esac
+if [[ -n $terminal_config && ! -f $terminal_config ]]; then
+	diagnose terminal "screensaver terminal configuration is unavailable: $terminal_config"
+	exit 1
+fi
+
+socket=$runtime_root/hypr/${HYPRLAND_INSTANCE_SIGNATURE:-}/.socket2.sock
+if [[ ! -S $socket ]]; then
+	diagnose events 'Hyprland event socket is unavailable'
+	exit 1
+fi
+exec {events}< <(socat -U - "UNIX-CONNECT:$socket")
+
+mapfile -t monitors < <(hyprctl monitors -j 2>/dev/null | jq -er '.[] | .name')
+if ((${#monitors[@]} == 0)); then
+	diagnose monitors 'no connected monitor was discovered'
+	exit 1
+fi
+
+hypr_exec() {
+	local command
+	printf -v command '%q ' "$@"
+	hyprctl dispatch "hl.dsp.exec_cmd([[$command]])" >/dev/null 2>&1 ||
+		hyprctl dispatch exec -- bash -lc "$command" >/dev/null 2>&1
+}
+
+wait_for_screensaver_window() {
+	local expected_identity=$1 line payload address class title remaining deadline=$((SECONDS + 5))
+	screensaver_window=
+	while ((SECONDS < deadline)); do
+		remaining=$((deadline - SECONDS))
+		IFS= read -r -t "$remaining" -u "$events" line || return 1
+		[[ $line == openwindow\>\>* ]] || continue
+		payload=${line#openwindow>>}
+		address=${payload%%,*}
+		payload=${payload#*,}
+		payload=${payload#*,}
+		class=${payload%%,*}
+		title=${payload#*,}
+		if [[ $class == org.omarchy.screensaver && $title == "$expected_identity" &&
+			${address#0x} =~ ^[0-9A-Fa-f]+$ ]]; then
+			screensaver_window=$address
+			return 0
+		fi
+	done
+	return 1
+}
+
+runner_command='
+process_dir=$1
+DOTFILES_SCREENSAVER_SOURCE_ONLY=1
+source "$DOTFILES_SCREENSAVER_SHIM" || exit 1
+unset DOTFILES_SCREENSAVER_SOURCE_ONLY
+screensaver_register_process runner || exit 1
+while [[ ! -e $process_dir/start && ! -e $process_dir/cancel ]]; do sleep 0.02; done
+[[ -e $process_dir/start && ! -e $process_dir/cancel ]] || exit 0
+exec omarchy-screensaver
+'
+
+for index in "${!monitors[@]}"; do
+	monitor=${monitors[index]}
+	process_dir=$attempt_dir/dispatch-$index
+	dispatch_id=$attempt_base-$index
+	mkdir -m 0700 -- "$process_dir" || {
+		diagnose setup "could not create process state for $monitor"
+		exit 1
+	}
+	printf '%s\n' "$dispatch_id" >"$process_dir/identity"
+	dispatch_dirs+=("$process_dir")
+	dispatch_ids+=("$dispatch_id")
+	screensaver_command=(env
+		"PATH=$shim_dir:$PATH"
+		"DOTFILES_SCREENSAVER_REAL_TTFX=$real_ttfx"
+		"DOTFILES_SCREENSAVER_ATTEMPT_DIR=$attempt_dir"
+		"DOTFILES_SCREENSAVER_PROCESS_DIR=$process_dir"
+		"DOTFILES_SCREENSAVER_ATTEMPT_ID=$dispatch_id"
+		"DOTFILES_SCREENSAVER_SHIM=$shim"
+		"OMARCHY_PATH=$omarchy_root"
+		bash -c "$runner_command" bash "$process_dir")
+	if ! hypr_focus_monitor "$monitor"; then
+		diagnose focus "could not focus monitor: $monitor"
+		exit 1
+	fi
+
+	case $terminal in
+	*Alacritty*)
+		hypr_exec alacritty --class=org.omarchy.screensaver \
+			--title "$dispatch_id" \
+			--config-file "$omarchy_root/default/alacritty/screensaver.toml" \
+			-e "${screensaver_command[@]}" || {
+			diagnose dispatch "terminal dispatch failed on $monitor"
+			exit 1
+		}
+		;;
+	*ghostty*)
+		hypr_exec ghostty --class=org.omarchy.screensaver \
+			--title="$dispatch_id" \
+			--config-file="$omarchy_root/default/ghostty/screensaver" --font-size=18 \
+			-e "${screensaver_command[@]}" || {
+			diagnose dispatch "terminal dispatch failed on $monitor"
+			exit 1
+		}
+		;;
+	*foot*)
+		hypr_exec foot --app-id=org.omarchy.screensaver \
+			--title="$dispatch_id" \
+			--config="$omarchy_root/default/foot/screensaver.ini" \
+			-e "${screensaver_command[@]}" || {
+			diagnose dispatch "terminal dispatch failed on $monitor"
+			exit 1
+		}
+		;;
+	*kitty*)
+		hypr_exec kitty --class=org.omarchy.screensaver --title "$dispatch_id" --override font_size=18 \
+			--override window_padding_width=0 -e "${screensaver_command[@]}" || {
+			diagnose dispatch "terminal dispatch failed on $monitor"
+			exit 1
+		}
+		;;
+	esac
+	if ! screensaver_wait_for_process "$process_dir" runner "$dispatch_id" runner_pid runner_start; then
+		diagnose process "attempt-owned screensaver runner did not start on $monitor"
+		exit 1
+	fi
+	: >"$process_dir/start"
+	if ! wait_for_screensaver_window "$dispatch_id"; then
+		diagnose window "screensaver window did not map on $monitor"
+		exit 1
+	fi
+	launched_windows+=("$screensaver_window")
+done
+
+eval "exec ${events}<&-" 2>/dev/null || true
+events=
+hypr_focus_monitor "$focused" || true
+focused=
+
+# Launch state must outlive this helper because the runner starts through
+# Hyprland. A detached guardian follows only this attempt's window addresses.
+nohup bash -c '
+	attempt=$1
+	shift
+	while :; do
+		clients=$(hyprctl clients -j 2>/dev/null) || break
+		active=0
+		for address in "$@"; do
+			address=0x${address#0x}
+			if jq -e --arg address "${address,,}" \
+				"any(.[]; ((.address // \"\") | ascii_downcase) == \$address)" \
+				<<<"$clients" >/dev/null 2>&1; then
+				active=1
+				break
+			fi
+		done
+		((active)) || break
+		sleep 1
+	done
+	rm -rf -- "$attempt"
+' bash "$attempt_dir" "${launched_windows[@]}" >/dev/null 2>&1 &
+attempt_dir=
+exit 0
