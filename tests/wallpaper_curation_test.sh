@@ -20,6 +20,26 @@ test_inspect_reports_empty_invalid_intake_and_installed_theme_origins_read_only(
 	assert_eq "$before" "$(find "$FIXTURE_REPO/wallpapers" -printf '%P|%y|%m|%s|%T@\n' | sort)" 'Inspect must be read-only'
 }
 
+test_gitkeep_is_not_an_intake_image_during_inspect_or_add_scan() {
+	new_fixture
+	setup_wallpaper_fixture
+	local gitkeep="$FIXTURE_REPO/wallpapers/inbox/.gitkeep" before
+	[[ -f $gitkeep && ! -L $gitkeep ]] || { printf '  fixture did not retain the Wallpaper inbox .gitkeep\n' >&2; return 1; }
+	before=$(stat -c '%d|%i|%a|%s|%y|%z' "$gitkeep")
+	run_wallpaper_operation "$FIXTURE_ROOT" wallpaper_intake_snapshot
+	assert_eq 0 "$COMMAND_STATUS" 'intake snapshot should accept the tracked placeholder' || return 1
+	assert_contains "$COMMAND_OUTPUT" '/.gitkeep|' '.gitkeep should remain part of stale-plan snapshots' || return 1
+	DOTFILES_TEST_INPUT='2\n1\n5\n' run_wallpaper_operation "$FIXTURE_ROOT" manage_wallpapers
+	assert_eq 0 "$COMMAND_STATUS" 'Inspect and Add should accept an inbox containing only .gitkeep' || return 1
+	assert_contains "$COMMAND_OUTPUT" $'Wallpaper inbox:\n  empty' 'Inspect should report no Intake images for .gitkeep' || return 1
+	assert_contains "$COMMAND_OUTPUT" 'No valid Intake images are available' 'Add should find no Intake images for .gitkeep' || return 1
+	if [[ $COMMAND_OUTPUT == *'.gitkeep'* ]]; then
+		printf '  Inspect or Add exposed .gitkeep as an Intake image: %q\n' "$COMMAND_OUTPUT" >&2
+		return 1
+	fi
+	assert_eq "$before" "$(stat -c '%d|%i|%a|%s|%y|%z' "$gitkeep")" '.gitkeep should remain unchanged'
+}
+
 test_add_assigns_exact_bytes_to_one_or_many_themes_then_deletes_intake() {
 	new_fixture
 	setup_wallpaper_fixture
@@ -406,6 +426,7 @@ test_curation_deletion_uses_quarantine_and_rejects_replacement() {
 }
 
 run_test test_inspect_reports_empty_invalid_intake_and_installed_theme_origins_read_only 'Inspect reports coherent curation state without mutation'
+run_test test_gitkeep_is_not_an_intake_image_during_inspect_or_add_scan '.gitkeep is not treated as an Intake image'
 run_test test_add_assigns_exact_bytes_to_one_or_many_themes_then_deletes_intake 'Add materializes exact-byte assignments before intake deletion'
 run_test test_duplicate_add_reuses_identity_adds_only_missing_assignments_and_explicitly_cleans_intake 'Add reuses duplicate managed identity'
 run_test test_add_cancellation_invalid_theme_and_failure_preserve_intake_and_library 'Add preserves intake and prior library on cancellation or failure'

@@ -736,7 +736,7 @@ inspect_wallpapers() {
 				fi
 				invalid_count=$((invalid_count + 1))
 			fi
-		done < <(find "$WALLPAPER_INBOX_ROOT" -mindepth 1 -maxdepth 1 -print0 | sort -z)
+		done < <(find "$WALLPAPER_INBOX_ROOT" -mindepth 1 -maxdepth 1 ! -name .gitkeep -print0 | sort -z)
 	fi
 	if ((valid_count == 0 && invalid_count == 0)); then printf '  empty\n'; fi
 	printf 'Wallpaper library: valid\nManaged wallpapers: %s\nTheme assignments: %s\n' \
@@ -2371,7 +2371,7 @@ manage_wallpapers() {
 								printf 'Rejected Intake: %q (%s)\n' "$name" "$WALLPAPER_IMAGE_ERROR"
 							fi
 						fi
-					done < <(find "$WALLPAPER_INBOX_ROOT" -mindepth 1 -maxdepth 1 -print0 | sort -z)
+					done < <(find "$WALLPAPER_INBOX_ROOT" -mindepth 1 -maxdepth 1 ! -name .gitkeep -print0 | sort -z)
 				fi
 				if ((${#paths[@]} == 0)); then
 					printf 'No valid Intake images are available; Add made no changes. Use Inspect for rejection details.\n'

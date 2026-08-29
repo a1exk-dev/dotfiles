@@ -98,6 +98,14 @@ test_wallpaper_inbox_is_ignored_without_ignoring_library() {
 		printf '  Wallpaper inbox candidates should be ignored\n' >&2
 		return 1
 	fi
+	if [[ ! -f $SOURCE_REPO/wallpapers/inbox/.gitkeep ]]; then
+		printf '  Wallpaper inbox should be retained by .gitkeep\n' >&2
+		return 1
+	fi
+	if git -C "$SOURCE_REPO" check-ignore --no-index --quiet -- wallpapers/inbox/.gitkeep; then
+		printf '  Wallpaper inbox .gitkeep should remain trackable\n' >&2
+		return 1
+	fi
 	if git -C "$SOURCE_REPO" check-ignore --no-index --quiet -- wallpapers/library/theme/managed.png; then
 		printf '  Wallpaper library assignments should remain trackable\n' >&2
 		return 1

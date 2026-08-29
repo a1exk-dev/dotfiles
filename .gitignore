@@ -2,4 +2,5 @@
 /.scratch/
 
 # Maintainer-supplied images awaiting curation
-/wallpapers/inbox/
+/wallpapers/inbox/*
+!/wallpapers/inbox/.gitkeep
