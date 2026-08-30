@@ -56,13 +56,13 @@ Guidance: Preserve the stock black terminal background unless a separate ownersh
 
 Reason: The packaged runner sets the terminal background to black before immediately relaunching each exited `ttfx` process, while `ttfx` does not apply its background argument to the terminal itself.
 
-## Avoid idle-plugin reloads during an idle cycle
+## Restart the shell for active idle-plugin source changes
 
 Applies when: Installing or changing a personal Omarchy 4.0.1 idle plugin clone.
 
-Guidance: Install a complete validated clone before triggering one plugin rescan, and do not edit its installed files during an idle cycle. After any reload, start a fresh cycle and verify idle-service status before relying on screensaver or lock timing.
+Guidance: Install a complete validated clone before publication. Use one plugin rescan for first publication or link repair only while the tracked source fingerprints match and no active runtime identity is stale or missing. Use `omarchy restart shell` when an active clone's source bytes change or its loaded source identity does not match, including when source change and link repair coincide; a recreated service instance after `rescanPlugins` does not prove that Quickshell discarded its cached QML component. Apply either reload outside an idle cycle, then start a fresh cycle and verify idle-service status before relying on screensaver or lock timing.
 
-Reason: Omarchy reloads the complete plugin registry after a plugin change, recreating the idle service and resetting its timers, active-cycle state, screensaver-window bookkeeping, and pending lock coordination.
+Reason: Omarchy's plugin rescan recreates the idle service and resets its timers, active-cycle state, screensaver-window bookkeeping, and pending lock coordination, but it can construct the replacement from stale cached QML. A full shell-process restart provides the cache-safe source-update boundary.
 
 ## Keep repository tests focused
 

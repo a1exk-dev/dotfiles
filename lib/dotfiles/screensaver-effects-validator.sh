@@ -135,7 +135,7 @@ fi
 declare -A source_hashes=(
 	[.local/libexec/dotfiles/screensaver-effects-selector]=dc8909a347d8b47679c1cb24e0e6c9b44041a73f80d246ecfbbaba9fb7d79eb2
 	[.local/share/dotfiles/screensaver-effects/plugins/dotfiles.idle/IdleModel.js]=58226a67d5fc2f33b1a23b55cb32764a8b2091cc94c4d02af1b67f369440b9b8
-	[.local/share/dotfiles/screensaver-effects/plugins/dotfiles.idle/Service.qml]=251d72b85db4d8bba50362eabda4709aa906a9017c113b8086ba829ca22fa4a1
+	[.local/share/dotfiles/screensaver-effects/plugins/dotfiles.idle/Service.qml]=9cd39779605c71ae2fd2edd41326cb6f97c242b42f8e5ef546a424f252b0e3c8
 	[.local/share/dotfiles/screensaver-effects/plugins/dotfiles.idle/bin/ttfx]=823226321fd69cc4e39db88103c08713469c0ab0d3521ad393708df1d78bc61e
 	[.local/share/dotfiles/screensaver-effects/plugins/dotfiles.idle/launch-screensaver]=eefb3625b572106c9d59cb3da2da3c073c930d49e40609cdab3e9f0ad56b999e
 	[.local/share/dotfiles/screensaver-effects/plugins/dotfiles.idle/manifest.json]=364274a35801ce043bdd725e5ed8e03f9e8134b05c9515985e9f6cc089980cb0
@@ -181,6 +181,8 @@ require_text() {
 	[[ -f $file ]] && grep -Fq -- "$text" "$file" || error "$description"
 }
 require_text "$idle/Service.qml" 'function screensaver(): string' 'idle IPC screensaver route is missing'
+require_text "$idle/Service.qml" 'dotfilesSourceIdentity: "' 'idle service does not embed its source identity'
+require_text "$idle/Service.qml" 'dotfilesInstanceId: root.dotfilesInstanceId' 'idle status lacks its runtime instance marker'
 require_text "$idle/Service.qml" 'Qt.resolvedUrl("launch-screensaver")' 'idle service does not resolve its plugin-local launcher'
 require_text "$indicators/indicators/StayAwake.qml" 'resolveEnabledId("omarchy.idle")' 'Stay Awake does not resolve the enabled idle implementation'
 require_text "$launcher" '"PATH=$shim_dir:$PATH"' 'launcher does not carry the terminal-scoped shim through dispatch'
@@ -360,6 +362,10 @@ declare -A host_hashes=(
 	[bin/omarchy-plugin-remove]=ea4e4462ab75b28f249d5e03c03890a1821fd9f095346df34bcb431b2c1e3cc2
 	[bin/omarchy-plugin-catalog]=f995166899b794b49ac15a256cce4b1513648870a9c951c680c8fac18f627ab8
 	[bin/omarchy-plugin-list]=81b990d021a53cbe597c09d8bef92c8909879003db30fb8f56d9f0e03bbcb461
+	[bin/omarchy-launch-shell]=484f3af00ee3d13b8f4e33b118d9b7355c72d254a631fc740a160f5f1d140cff
+	[bin/omarchy-hyprland-session-locked]=e5004580e41475932f852d622b36ec07bfb0e98633c4d3c3055071a54d0eda07
+	[bin/omarchy-restart-shell]=e4c996275a15025c9aac829d34913d6bcaf8a30a17fae5ce5e260df2ddf21cd7
+	[bin/omarchy-shell]=538ece231aba80154c76ab48df8ab013b2f02c5171241d08bddbf08a5fe5ac34
 	[bin/omarchy-launch-screensaver]=b58b82a6b9edc901c83da50a3e2b2ac7fee8d1311a7f327a9ec8901ff8028338
 	[bin/omarchy-screensaver]=9ad1b57d322b5ed04112824ef48c98b7f14f1f08a60b583395558afbfd9fb7d2
 	[bin/omarchy-theme-color]=a429ed1b18114ff3e784fc4479c6b829e9effb64c0f9d22d3b15eda4c62d86b5

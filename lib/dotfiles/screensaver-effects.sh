@@ -1,6 +1,7 @@
 readonly SCREENSAVER_EFFECTS_PACKAGE=screensaver-effects
 readonly SCREENSAVER_EFFECTS_SUPPORTED_OMARCHY_VERSION=4.0.1-1
 readonly SCREENSAVER_EFFECTS_SUPPORTED_TTFX_VERSION=0.3.2-1
+readonly SCREENSAVER_EFFECTS_SOURCE_IDENTITY_SENTINEL=0000000000000000000000000000000000000000000000000000000000000000
 
 SCREENSAVER_EFFECTS_STATE_ROOT=''
 SCREENSAVER_EFFECTS_RECEIPT=''
@@ -20,13 +21,23 @@ SCREENSAVER_EFFECTS_JSONC_HELPER=''
 SCREENSAVER_EFFECTS_PLUGIN_JSON='[]'
 SCREENSAVER_EFFECTS_SHELL_JSON='{}'
 SCREENSAVER_EFFECTS_MENU_JSON='{}'
+SCREENSAVER_EFFECTS_IDLE_INSTANCE_ID=''
+SCREENSAVER_EFFECTS_IDLE_STARTED_AT_MS=''
+SCREENSAVER_EFFECTS_IDLE_SOURCE_IDENTITY=''
+SCREENSAVER_EFFECTS_IDLE_IN_CYCLE=''
 SCREENSAVER_EFFECTS_IDLE_FINGERPRINT=''
 SCREENSAVER_EFFECTS_INDICATORS_FINGERPRINT=''
+SCREENSAVER_EFFECTS_SOURCE_IDENTITY=''
+SCREENSAVER_EFFECTS_EMBEDDED_SOURCE_IDENTITY=''
+SCREENSAVER_EFFECTS_IDLE_SHAPE_SIGNATURE=''
+SCREENSAVER_EFFECTS_INDICATORS_SHAPE_SIGNATURE=''
 SCREENSAVER_EFFECTS_LIFECYCLE_STATE=inactive
 SCREENSAVER_EFFECTS_APPLY_NOOP=false
+SCREENSAVER_EFFECTS_PRE_MUTATION_IDLE_GUARD=false
 SCREENSAVER_EFFECTS_APPLY_RECEIPT=''
 SCREENSAVER_EFFECTS_APPLY_PRIOR=''
 SCREENSAVER_EFFECTS_REMOVAL_DEACTIVATED=false
+SCREENSAVER_EFFECTS_RECOVERY_EVIDENCE_REQUIRED=false
 declare -a SCREENSAVER_EFFECTS_COMPETING_CLONES=()
 declare -A SCREENSAVER_EFFECTS_PREEXISTING_REMOVE_BACKUPS=()
 
@@ -87,7 +98,8 @@ screensaver_effects_validate_receipt() {
 		def exact_keys($keys): (keys | sort) == ($keys | sort);
 		def digest: type == "string" and test("^[0-9a-f]{64}$");
 		def plugin_id: type == "string" and test("^[A-Za-z0-9][A-Za-z0-9._-]*$") and (contains("..") | not);
-		exact_keys(["schema_version","package","state","recoverability","source_fingerprints","prior","owned_edges","migration","activated_at","removed_at"])
+		((exact_keys(["schema_version","package","state","recoverability","source_fingerprints","source_identity","prior","owned_edges","migration","activated_at","removed_at"]))
+		 or (exact_keys(["schema_version","package","state","recoverability","source_fingerprints","prior","owned_edges","migration","activated_at","removed_at"])))
 		and .schema_version == 1
 		and .package == "screensaver-effects"
 		and (.state == "active" or .state == "inactive")
@@ -95,6 +107,7 @@ screensaver_effects_validate_receipt() {
 		and (.source_fingerprints | exact_keys(["dotfiles.idle","dotfiles.indicators"]))
 		and (.source_fingerprints["dotfiles.idle"] | digest)
 		and (.source_fingerprints["dotfiles.indicators"] | digest)
+		and ((has("source_identity") | not) or (.source_identity | digest))
 		and (.prior | exact_keys(["plugin_states","indicators_entries","menu","shell_fields"]))
 		and (.prior.plugin_states | exact_keys(["omarchy.idle","omarchy.indicators","dotfiles.idle","dotfiles.indicators"]))
 		and (.prior.plugin_states | all(.[]; type == "boolean"))
@@ -105,6 +118,7 @@ screensaver_effects_validate_receipt() {
 			and (.index | type == "number" and . >= 0 and floor == .)
 			and (.entry | type == "object" and .id == "omarchy.indicators")))
 		and ((.prior.indicators_entries | map(.section + ":" + (.index | tostring)) | unique | length) == (.prior.indicators_entries | length))
+		and (.prior.plugin_states["omarchy.indicators"] == ((.prior.indicators_entries | length) > 0))
 		and (.prior.menu | exact_keys(["file_existed","entry_present","identical"]))
 		and (.prior.menu | all(.[]; type == "boolean"))
 		and (.prior.menu.identical == .prior.menu.entry_present)
@@ -226,7 +240,11 @@ screensaver_effects_mark_recovery() {
 	timestamp=$(screensaver_effects_timestamp)
 	recovery=$(jq -cn --arg operation "$operation" --arg reason "$reason" --arg timestamp "$timestamp" \
 		'{schema_version:1,package:"screensaver-effects",state:"recovery-required",operation:$operation,reason:$reason,recorded_at:$timestamp}')
-	screensaver_effects_write_json "$SCREENSAVER_EFFECTS_RECOVERY" "$recovery" || true
+	if ! screensaver_effects_write_json "$SCREENSAVER_EFFECTS_RECOVERY" "$recovery"; then
+		SCREENSAVER_EFFECTS_RECOVERY_EVIDENCE_REQUIRED=true
+		return 1
+	fi
+	return 0
 }
 
 screensaver_effects_record_diagnostic() {
@@ -240,24 +258,142 @@ screensaver_effects_record_diagnostic() {
 	chmod 0600 -- "$file" || true
 }
 
+screensaver_effects_fingerprint_normalized_service() {
+	local file=$1 digest data prefix='  readonly property string dotfilesSourceIdentity: "' before after line normalized
+	local LC_ALL=C
+	[[ -f $file && ! -L $file ]] || return 1
+	IFS= read -r -d '' data <"$file" || [[ -n $data ]] || return 1
+	[[ $data == *"$prefix"* ]] || return 1
+	before=${data%%"$prefix"*}
+	after=${data#*"$prefix"}
+	[[ $after != *"$prefix"* ]] || return 1
+	[[ -z $before || ${before: -1} == $'\n' ]] || return 1
+	line=${after%%$'\n'*}
+	[[ ${#line} == 65 && ${line:64:1} == '"' && ${line:0:64} =~ ^[0-9a-f]{64}$ ]] || return 1
+	normalized=${before}${prefix}${SCREENSAVER_EFFECTS_SOURCE_IDENTITY_SENTINEL}${after:64}
+	digest=$(printf '%s' "$normalized" | LC_ALL=C sha256sum) || return 1
+	digest=${digest%% *}
+	printf '%s\n' "$digest"
+}
+
+screensaver_effects_extract_source_identity() {
+	local line prefix='  readonly property string dotfilesSourceIdentity: "' value count=0
+	SCREENSAVER_EFFECTS_EMBEDDED_SOURCE_IDENTITY=''
+	[[ -f $SCREENSAVER_EFFECTS_IDLE_SOURCE/Service.qml && ! -L $SCREENSAVER_EFFECTS_IDLE_SOURCE/Service.qml ]] || return 1
+	while IFS= read -r line || [[ -n $line ]]; do
+		if [[ $line == "$prefix"* ]]; then
+			value=${line#"$prefix"}
+			value=${value%\"}
+			[[ $value =~ ^[0-9a-f]{64}$ ]] || return 1
+			SCREENSAVER_EFFECTS_EMBEDDED_SOURCE_IDENTITY=$value
+			count=$((count + 1))
+		fi
+	done <"$SCREENSAVER_EFFECTS_IDLE_SOURCE/Service.qml"
+	[[ $count == 1 && -n $SCREENSAVER_EFFECTS_EMBEDDED_SOURCE_IDENTITY ]]
+}
+
 screensaver_effects_fingerprint_tree() {
-	local root=$1
+	local root=$1 normalize_identity=${2-false}
 	[[ -d $root && ! -L $root ]] || return 1
 	(
 		cd -- "$root" || exit 1
-		local file digest mode
-		while IFS= read -r -d '' file; do
-			digest=$(sha256sum -- "$file") || exit 1
-			digest=${digest%% *}
-			mode=$(stat -c %a -- "$file") || exit 1
+		local file digest mode record index
+		local -a files=() hash_inputs=() hash_records=() modes=()
+		local -A hashes=() normalized_hashes=()
+		mapfile -d '' -t files < <(find . -type f -print0 | LC_ALL=C sort -z)
+		((${#files[@]} > 0)) || exit 1
+		for file in "${files[@]}"; do
+			if [[ $normalize_identity == true && $file == ./Service.qml ]]; then
+				normalized_hashes["$file"]=$(screensaver_effects_fingerprint_normalized_service "$file") || exit 1
+			else
+				hash_inputs+=("$file")
+			fi
+		done
+		if ((${#hash_inputs[@]} > 0)); then
+			mapfile -d '' -t hash_records < <(sha256sum --zero -- "${hash_inputs[@]}")
+			((${#hash_records[@]} == ${#hash_inputs[@]})) || exit 1
+			for index in "${!hash_inputs[@]}"; do
+				record=${hash_records[index]}
+				hashes["${hash_inputs[index]}"]=${record%% *}
+			done
+		fi
+		mapfile -t modes < <(stat -c %a -- "${files[@]}")
+		((${#modes[@]} == ${#files[@]})) || exit 1
+		for index in "${!files[@]}"; do
+			file=${files[index]}
+			if [[ $normalize_identity == true && $file == ./Service.qml ]]; then
+				digest=${normalized_hashes["$file"]}
+			else
+				digest=${hashes["$file"]}
+			fi
+			mode=${modes[index]}
 			printf '%s %s %s\0' "$mode" "$digest" "${file#./}"
-		done < <(find . -type f -print0 | sort -z)
+		done
 	) | sha256sum | { read -r digest _; printf '%s\n' "$digest"; }
+}
+
+screensaver_effects_fingerprint_tree_pair() {
+	local root=$1
+	(
+		cd -- "$root" || exit 1
+		local file digest mode record index raw_digest normalized_digest
+		local -a files=() hash_records=() modes=()
+		local -A hashes=()
+		mapfile -d '' -t files < <(find . -type f -print0 | LC_ALL=C sort -z)
+		((${#files[@]} > 0)) || exit 1
+		mapfile -d '' -t hash_records < <(sha256sum --zero -- "${files[@]}")
+		((${#hash_records[@]} == ${#files[@]})) || exit 1
+		for index in "${!files[@]}"; do
+			record=${hash_records[index]}
+			hashes["${files[index]}"]=${record%% *}
+		done
+		mapfile -t modes < <(stat -c %a -- "${files[@]}")
+		((${#modes[@]} == ${#files[@]})) || exit 1
+		raw_digest=$(
+			for index in "${!files[@]}"; do
+				file=${files[index]}
+				printf '%s %s %s\0' "${modes[index]}" "${hashes["$file"]}" "${file#./}"
+			done | sha256sum | { read -r digest _; printf '%s' "$digest"; }
+		)
+		normalized_digest=$(
+			for index in "${!files[@]}"; do
+				file=${files[index]}
+				if [[ $file == ./Service.qml ]]; then
+					digest=$(screensaver_effects_fingerprint_normalized_service "$file") || exit 1
+				else
+					digest=${hashes["$file"]}
+				fi
+				printf '%s %s %s\0' "${modes[index]}" "$digest" "${file#./}"
+			done | sha256sum | { read -r digest _; printf '%s' "$digest"; }
+		)
+		printf '%s\t%s\n' "$raw_digest" "$normalized_digest"
+	)
+}
+
+screensaver_effects_source_shape_signature() {
+	local root=$1 digest
+	digest=$(find "$root" -mindepth 1 -printf '%P\t%y\t%m\0' | LC_ALL=C sort -z | sha256sum) || return 1
+	digest=${digest%% *}
+	printf '%s\n' "$digest"
+}
+
+screensaver_effects_source_identity() {
+	local idle indicators idle_raw idle_normalized indicators_raw indicators_normalized
+	IFS=$'\t' read -r idle_raw idle_normalized < <(screensaver_effects_fingerprint_tree_pair "$SCREENSAVER_EFFECTS_IDLE_SOURCE") || return 1
+	IFS=$'\t' read -r indicators_raw indicators_normalized < <(screensaver_effects_fingerprint_tree_pair "$SCREENSAVER_EFFECTS_INDICATORS_SOURCE") || return 1
+	idle=$idle_normalized
+	indicators=$indicators_raw
+	printf 'dotfiles.idle\t%s\ndotfiles.indicators\t%s\n' "$idle" "$indicators" |
+		LC_ALL=C sha256sum | { read -r digest _; printf '%s\n' "$digest"; }
 }
 
 screensaver_effects_validate_source_shape() {
 	screensaver_effects_set_paths
-	local package_json manifest id cloned
+	local package_json manifest id cloned idle_raw idle_normalized indicators_raw indicators_normalized
+	SCREENSAVER_EFFECTS_SOURCE_IDENTITY=''
+	SCREENSAVER_EFFECTS_EMBEDDED_SOURCE_IDENTITY=''
+	SCREENSAVER_EFFECTS_IDLE_SHAPE_SIGNATURE=''
+	SCREENSAVER_EFFECTS_INDICATORS_SHAPE_SIGNATURE=''
 	package_json=$(jq -c --arg package "$SCREENSAVER_EFFECTS_PACKAGE" '.packages[] | select(.name == $package)' "$PACKAGE_CATALOG")
 	if [[ -z $package_json ]]; then
 		printf 'Error: package catalog is missing screensaver-effects.\n' >&2
@@ -289,8 +425,22 @@ screensaver_effects_validate_source_shape() {
 		printf 'Error: canonical screensaver-effects plugin sources must not contain symlinks.\n' >&2
 		return 1
 	fi
-	SCREENSAVER_EFFECTS_IDLE_FINGERPRINT=$(screensaver_effects_fingerprint_tree "$SCREENSAVER_EFFECTS_IDLE_SOURCE") || return 1
-	SCREENSAVER_EFFECTS_INDICATORS_FINGERPRINT=$(screensaver_effects_fingerprint_tree "$SCREENSAVER_EFFECTS_INDICATORS_SOURCE") || return 1
+	if ! screensaver_effects_extract_source_identity; then
+		printf 'Error: idle source must expose exactly one lowercase hexadecimal dotfilesSourceIdentity.\n' >&2
+		return 1
+	fi
+	IFS=$'\t' read -r idle_raw idle_normalized < <(screensaver_effects_fingerprint_tree_pair "$SCREENSAVER_EFFECTS_IDLE_SOURCE") || return 1
+	IFS=$'\t' read -r indicators_raw indicators_normalized < <(screensaver_effects_fingerprint_tree_pair "$SCREENSAVER_EFFECTS_INDICATORS_SOURCE") || return 1
+	SCREENSAVER_EFFECTS_SOURCE_IDENTITY=$(printf 'dotfiles.idle\t%s\ndotfiles.indicators\t%s\n' "$idle_normalized" "$indicators_raw" |
+		LC_ALL=C sha256sum | { read -r digest _; printf '%s\n' "$digest"; }) || return 1
+	if [[ $SCREENSAVER_EFFECTS_EMBEDDED_SOURCE_IDENTITY != "$SCREENSAVER_EFFECTS_SOURCE_IDENTITY" ]]; then
+		printf 'Error: idle source dotfilesSourceIdentity does not match the normalized plugin source fingerprint.\n' >&2
+		return 1
+	fi
+	SCREENSAVER_EFFECTS_IDLE_FINGERPRINT=$idle_raw
+	SCREENSAVER_EFFECTS_INDICATORS_FINGERPRINT=$indicators_raw
+	SCREENSAVER_EFFECTS_IDLE_SHAPE_SIGNATURE=$(screensaver_effects_source_shape_signature "$SCREENSAVER_EFFECTS_IDLE_SOURCE") || return 1
+	SCREENSAVER_EFFECTS_INDICATORS_SHAPE_SIGNATURE=$(screensaver_effects_source_shape_signature "$SCREENSAVER_EFFECTS_INDICATORS_SOURCE") || return 1
 	return 0
 }
 
@@ -299,6 +449,10 @@ screensaver_effects_validate_source() {
 	local package_json validator validation_root structural_validator
 	package_json=$(jq -c --arg package "$SCREENSAVER_EFFECTS_PACKAGE" '.packages[] | select(.name == $package)' "$PACKAGE_CATALOG")
 	structural_validator=$REPOSITORY_ROOT/lib/dotfiles/screensaver-effects-validator.sh
+	if [[ ! -f $structural_validator || -L $structural_validator ]] && \
+		jq -e '.validators | type == "array" and length == 0' <<<"$package_json" >/dev/null; then
+		return 0
+	fi
 	validation_root=$(mktemp -d "${TMPDIR:-/tmp}/dotfiles-screensaver-source.XXXXXX") || return 1
 	mkdir -p "$validation_root/home" "$validation_root/config" "$validation_root/state" "$validation_root/runtime" || {
 		rm -rf -- "$validation_root"
@@ -356,6 +510,140 @@ screensaver_effects_read_shell() {
 		and ((.disabledPlugins // []) | type == "array" and all(.[]; type == "string"))
 		and ((.cloneSourceRestores // []) | type == "array" and all(.[]; type == "string"))
 	' <<<"$SCREENSAVER_EFFECTS_SHELL_JSON" >/dev/null 2>&1
+}
+
+screensaver_effects_wait_for_plugins() {
+	local attempt id ready
+	local OMARCHY_SHELL_IPC_TIMEOUT=0.1s
+	export OMARCHY_SHELL_IPC_TIMEOUT
+	(($# > 0)) || return 1
+	for ((attempt = 0; attempt < 40; attempt++)); do
+		if screensaver_effects_read_plugins; then
+			ready=true
+			for id in "$@"; do
+				if ! jq -e --arg id "$id" 'any(.[]; .id == $id)' <<<"$SCREENSAVER_EFFECTS_PLUGIN_JSON" >/dev/null; then
+					ready=false
+					break
+				fi
+			done
+			[[ $ready != true ]] || return 0
+		fi
+		sleep 0.05
+	done
+	return 1
+}
+
+screensaver_effects_wait_for_shell() {
+	local expected actual attempt
+	local OMARCHY_SHELL_IPC_TIMEOUT=0.1s
+	export OMARCHY_SHELL_IPC_TIMEOUT
+	expected=$(jq -S -c . "$SCREENSAVER_EFFECTS_SHELL_FILE" 2>/dev/null) || return 1
+	for ((attempt = 0; attempt < 40; attempt++)); do
+		if screensaver_effects_read_shell; then
+			actual=$(jq -S -c . <<<"$SCREENSAVER_EFFECTS_SHELL_JSON" 2>/dev/null) || actual=''
+			[[ $actual != "$expected" ]] || return 0
+		fi
+		sleep 0.05
+	done
+	return 1
+}
+
+screensaver_effects_read_idle_instance() {
+	local status prefix
+	SCREENSAVER_EFFECTS_IDLE_INSTANCE_ID=''
+	SCREENSAVER_EFFECTS_IDLE_STARTED_AT_MS=''
+	SCREENSAVER_EFFECTS_IDLE_SOURCE_IDENTITY=''
+	SCREENSAVER_EFFECTS_IDLE_IN_CYCLE=''
+	if ! status=$(OMARCHY_SHELL_IPC_TIMEOUT=0.1s omarchy-shell idle status 2>/dev/null); then
+		return 1
+	fi
+	jq -e '
+		type == "object"
+		and ((has("dotfilesInstanceId") | not) or (.dotfilesInstanceId | type == "string" and length > 0))
+		and ((has("dotfilesSourceIdentity") | not) or (.dotfilesSourceIdentity | type == "string" and test("^[0-9a-f]{64}$")))
+		and ((has("inIdleCycle") | not) or (.inIdleCycle | type == "boolean"))
+	' <<<"$status" >/dev/null 2>&1 || return 1
+	SCREENSAVER_EFFECTS_IDLE_INSTANCE_ID=$(jq -r '.dotfilesInstanceId // ""' <<<"$status")
+	SCREENSAVER_EFFECTS_IDLE_SOURCE_IDENTITY=$(jq -r '.dotfilesSourceIdentity // ""' <<<"$status")
+	SCREENSAVER_EFFECTS_IDLE_IN_CYCLE=$(jq -r 'if .inIdleCycle == true then "true" elif .inIdleCycle == false then "false" else "" end' <<<"$status")
+	[[ -z $SCREENSAVER_EFFECTS_IDLE_INSTANCE_ID ]] && return 0
+	prefix=${SCREENSAVER_EFFECTS_IDLE_INSTANCE_ID%%-*}
+	[[ $SCREENSAVER_EFFECTS_IDLE_INSTANCE_ID == "$prefix"-?* && $prefix =~ ^[0-9a-z]{1,10}$ ]] || return 1
+	SCREENSAVER_EFFECTS_IDLE_STARTED_AT_MS=$((36#$prefix))
+}
+
+screensaver_effects_capture_idle_instance() {
+	local attempt
+	local OMARCHY_SHELL_IPC_TIMEOUT=0.1s
+	export OMARCHY_SHELL_IPC_TIMEOUT
+	SCREENSAVER_EFFECTS_IDLE_INSTANCE_ID=''
+	for ((attempt = 0; attempt < 4; attempt++)); do
+		if screensaver_effects_read_idle_instance; then
+			return 0
+		fi
+		sleep 0.05
+	done
+	SCREENSAVER_EFFECTS_IDLE_INSTANCE_ID=''
+	SCREENSAVER_EFFECTS_IDLE_STARTED_AT_MS=''
+	SCREENSAVER_EFFECTS_IDLE_SOURCE_IDENTITY=''
+	SCREENSAVER_EFFECTS_IDLE_IN_CYCLE=''
+	return 0
+}
+
+screensaver_effects_require_idle_cycle_inactive() {
+	if ! screensaver_effects_read_idle_instance; then
+		return 0
+	fi
+	if [[ $SCREENSAVER_EFFECTS_IDLE_IN_CYCLE == true ]]; then
+		printf 'Conflict: the dotfiles idle service is in an active idle cycle; wait for activity to end it, then retry the screensaver-effects operation.\n' >&2
+		return 1
+	fi
+}
+
+screensaver_effects_wait_for_idle_instance() {
+	local prior=$1 requested_at_ms=$2 expected_identity=${3-} attempt
+	local OMARCHY_SHELL_IPC_TIMEOUT=0.1s
+	export OMARCHY_SHELL_IPC_TIMEOUT
+	[[ -n $expected_identity ]] || return 1
+	for ((attempt = 0; attempt < 40; attempt++)); do
+		if screensaver_effects_read_idle_instance && \
+			[[ -n $SCREENSAVER_EFFECTS_IDLE_INSTANCE_ID && $SCREENSAVER_EFFECTS_IDLE_STARTED_AT_MS =~ ^[0-9]+$ ]] && \
+			[[ $SCREENSAVER_EFFECTS_IDLE_SOURCE_IDENTITY == "$expected_identity" ]] && \
+			[[ -z $prior || $SCREENSAVER_EFFECTS_IDLE_INSTANCE_ID != "$prior" ]] && \
+			((10#$SCREENSAVER_EFFECTS_IDLE_STARTED_AT_MS >= 10#$requested_at_ms)); then
+			return 0
+		fi
+		sleep 0.05
+	done
+	return 1
+}
+
+screensaver_effects_reload_shell() {
+	screensaver_effects_require_idle_cycle_inactive || return 1
+	omarchy-shell shell reloadConfig >/dev/null || return 1
+	screensaver_effects_wait_for_shell
+}
+
+screensaver_effects_source_snapshot_matches() {
+	local expected_idle=$1 expected_indicators=$2 expected_identity=$3
+	screensaver_effects_extract_source_identity || return 1
+	[[ $SCREENSAVER_EFFECTS_EMBEDDED_SOURCE_IDENTITY == "$expected_identity" ]] || return 1
+	local idle_fingerprint indicators_fingerprint idle_shape indicators_shape
+	idle_fingerprint=$(screensaver_effects_fingerprint_tree "$SCREENSAVER_EFFECTS_IDLE_SOURCE") || return 1
+	[[ $idle_fingerprint == "$expected_idle" ]] || return 1
+	indicators_fingerprint=$(screensaver_effects_fingerprint_tree "$SCREENSAVER_EFFECTS_INDICATORS_SOURCE") || return 1
+	[[ $indicators_fingerprint == "$expected_indicators" ]] || return 1
+	[[ -n $SCREENSAVER_EFFECTS_IDLE_SHAPE_SIGNATURE && -n $SCREENSAVER_EFFECTS_INDICATORS_SHAPE_SIGNATURE ]] || return 1
+	idle_shape=$(screensaver_effects_source_shape_signature "$SCREENSAVER_EFFECTS_IDLE_SOURCE") || return 1
+	[[ $idle_shape == "$SCREENSAVER_EFFECTS_IDLE_SHAPE_SIGNATURE" ]] || return 1
+	indicators_shape=$(screensaver_effects_source_shape_signature "$SCREENSAVER_EFFECTS_INDICATORS_SOURCE") || return 1
+	[[ $indicators_shape == "$SCREENSAVER_EFFECTS_INDICATORS_SHAPE_SIGNATURE" ]]
+}
+
+screensaver_effects_idle_runtime_matches_identity() {
+	local expected_identity=$1
+	screensaver_effects_read_idle_instance || return 1
+	[[ -n $SCREENSAVER_EFFECTS_IDLE_INSTANCE_ID && $SCREENSAVER_EFFECTS_IDLE_SOURCE_IDENTITY == "$expected_identity" ]]
 }
 
 screensaver_effects_shell_has_dotfiles_edges() {
@@ -432,7 +720,7 @@ screensaver_effects_find_competing_clones() {
 		if [[ $cloned == omarchy.idle || $cloned == omarchy.indicators ]]; then
 			SCREENSAVER_EFFECTS_COMPETING_CLONES+=("$id")
 		fi
-	done < <(find "$SCREENSAVER_EFFECTS_PLUGIN_ROOT" -mindepth 1 -maxdepth 1 \( -type d -o -type l \) -print0 | sort -z)
+	done < <(find "$SCREENSAVER_EFFECTS_PLUGIN_ROOT" -mindepth 1 -maxdepth 1 \( -type d -o -type l \) -print0 | LC_ALL=C sort -z)
 }
 
 screensaver_effects_link_state() {
@@ -451,12 +739,21 @@ screensaver_effects_link_state() {
 }
 
 screensaver_effects_current_prior() {
-	local idle_builtin indicators_builtin dotfiles_idle dotfiles_indicators entries menu_exists menu_present menu_identical shell_fields
+	local idle_builtin indicators_builtin indicators_present dotfiles_idle dotfiles_indicators entries menu_exists menu_present menu_identical shell_fields
+	if ! jq -e 'any(.[]; .id == "omarchy.idle") and any(.[]; .id == "omarchy.indicators")' <<<"$SCREENSAVER_EFFECTS_PLUGIN_JSON" >/dev/null; then
+		printf 'Error: required built-in Omarchy plugins are unavailable before prior-state capture.\n' >&2
+		return 1
+	fi
 	idle_builtin=$(screensaver_effects_plugin_enabled omarchy.idle)
 	indicators_builtin=$(screensaver_effects_plugin_enabled omarchy.indicators)
 	dotfiles_idle=$(screensaver_effects_plugin_enabled dotfiles.idle)
 	dotfiles_indicators=$(screensaver_effects_plugin_enabled dotfiles.indicators)
 	entries=$(screensaver_effects_bar_entries omarchy.indicators)
+	indicators_present=$(jq -r 'length > 0' <<<"$entries")
+	if [[ $indicators_builtin != "$indicators_present" ]]; then
+		printf 'Error: omarchy.indicators plugin state does not match its prior bar presence.\n' >&2
+		return 1
+	fi
 	if ! jq -e 'all(.[]; .entry | type == "object")' <<<"$entries" >/dev/null; then
 		printf 'Error: every omarchy.indicators bar entry must be an object so its options can be preserved.\n' >&2
 		return 1
@@ -517,14 +814,24 @@ screensaver_effects_validate_idle_restore_metadata() {
 }
 
 screensaver_effects_active_matches_receipt() {
-	local receipt=$1 expected_bar current_bar prior expected_idle_builtin expected_indicators expected_indicators_builtin
+	local receipt=$1
+	local expected_bar current_bar prior expected_idle_builtin expected_indicators
+	screensaver_effects_stow_links_are_complete || return 1
 	[[ $(screensaver_effects_link_state "$SCREENSAVER_EFFECTS_IDLE_LIVE" "$SCREENSAVER_EFFECTS_IDLE_DEPLOYED") == exact ]] || return 1
 	[[ $(screensaver_effects_link_state "$SCREENSAVER_EFFECTS_INDICATORS_LIVE" "$SCREENSAVER_EFFECTS_INDICATORS_DEPLOYED") == exact ]] || return 1
 	screensaver_effects_validate_source >/dev/null 2>&1 || return 1
 	[[ $(jq -r '.source_fingerprints["dotfiles.idle"]' <<<"$receipt") == "$SCREENSAVER_EFFECTS_IDLE_FINGERPRINT" ]] || return 1
 	[[ $(jq -r '.source_fingerprints["dotfiles.indicators"]' <<<"$receipt") == "$SCREENSAVER_EFFECTS_INDICATORS_FINGERPRINT" ]] || return 1
+	[[ $(jq -r '.source_identity' <<<"$receipt") == "$SCREENSAVER_EFFECTS_SOURCE_IDENTITY" ]] || return 1
 	screensaver_effects_read_plugins || return 1
+	jq -e '
+		any(.[]; .id == "omarchy.idle")
+		and any(.[]; .id == "omarchy.indicators")
+		and any(.[]; .id == "dotfiles.idle")
+		and any(.[]; .id == "dotfiles.indicators")
+	' <<<"$SCREENSAVER_EFFECTS_PLUGIN_JSON" >/dev/null || return 1
 	screensaver_effects_read_shell || return 1
+	screensaver_effects_idle_runtime_matches_identity "$SCREENSAVER_EFFECTS_SOURCE_IDENTITY" || return 1
 	screensaver_effects_validate_owned_bar_positions "$receipt" remove || return 1
 	screensaver_effects_validate_idle_restore_metadata "$receipt" || return 1
 	[[ $(screensaver_effects_plugin_enabled dotfiles.idle) == true ]] || return 1
@@ -537,8 +844,7 @@ screensaver_effects_active_matches_receipt() {
 	[[ $(jq -S -c . <<<"$current_bar") == "$(jq -S -c . <<<"$expected_bar")" ]] || return 1
 	expected_indicators=$(jq -r '.indicators_entries | length > 0' <<<"$prior")
 	[[ $(screensaver_effects_plugin_enabled dotfiles.indicators) == "$expected_indicators" ]] || return 1
-	expected_indicators_builtin=$(jq -r '.plugin_states["omarchy.indicators"]' <<<"$prior")
-	[[ $(screensaver_effects_plugin_enabled omarchy.indicators) == "$expected_indicators_builtin" ]] || return 1
+	[[ $(screensaver_effects_plugin_enabled omarchy.indicators) == false ]] || return 1
 	[[ $(screensaver_effects_bar_entries omarchy.indicators | jq length) -eq 0 ]] || return 1
 	screensaver_effects_inspect_menu || return 1
 	if [[ $(jq -r .owned_edges.menu_entry <<<"$receipt") == true ]]; then
@@ -551,6 +857,7 @@ screensaver_effects_active_matches_receipt() {
 screensaver_effects_classify() {
 	screensaver_effects_set_paths
 	SCREENSAVER_EFFECTS_LIFECYCLE_STATE=inactive
+	local stow_state
 	if [[ $SCREENSAVER_EFFECTS_STATE_ROOT != /* ]]; then
 		SCREENSAVER_EFFECTS_LIFECYCLE_STATE=recovery-required
 		return 0
@@ -587,7 +894,10 @@ screensaver_effects_classify() {
 		return 0
 	fi
 	if [[ -z $SCREENSAVER_EFFECTS_APPLY_RECEIPT ]]; then
-		if [[ $(screensaver_effects_link_state "$SCREENSAVER_EFFECTS_IDLE_LIVE" "$SCREENSAVER_EFFECTS_IDLE_DEPLOYED") != absent || \
+		stow_state=$(screensaver_effects_stow_package_state)
+		if [[ $stow_state != absent ]]; then
+			SCREENSAVER_EFFECTS_LIFECYCLE_STATE=conflicting
+		elif [[ $(screensaver_effects_link_state "$SCREENSAVER_EFFECTS_IDLE_LIVE" "$SCREENSAVER_EFFECTS_IDLE_DEPLOYED") != absent || \
 			$(screensaver_effects_link_state "$SCREENSAVER_EFFECTS_INDICATORS_LIVE" "$SCREENSAVER_EFFECTS_INDICATORS_DEPLOYED") != absent ]] || \
 			jq -e '.owned_marker' <<<"$SCREENSAVER_EFFECTS_MENU_JSON" >/dev/null; then
 			SCREENSAVER_EFFECTS_LIFECYCLE_STATE=conflicting
@@ -599,7 +909,10 @@ screensaver_effects_classify() {
 		return 0
 	fi
 	if [[ $(jq -r .state <<<"$SCREENSAVER_EFFECTS_APPLY_RECEIPT") == inactive ]]; then
-		if [[ $(screensaver_effects_link_state "$SCREENSAVER_EFFECTS_IDLE_LIVE" "$SCREENSAVER_EFFECTS_IDLE_DEPLOYED") != absent || \
+		stow_state=$(screensaver_effects_stow_package_state)
+		if [[ $stow_state != absent ]]; then
+			SCREENSAVER_EFFECTS_LIFECYCLE_STATE=drifted
+		elif [[ $(screensaver_effects_link_state "$SCREENSAVER_EFFECTS_IDLE_LIVE" "$SCREENSAVER_EFFECTS_IDLE_DEPLOYED") != absent || \
 			$(screensaver_effects_link_state "$SCREENSAVER_EFFECTS_INDICATORS_LIVE" "$SCREENSAVER_EFFECTS_INDICATORS_DEPLOYED") != absent ]] || \
 			jq -e '.owned_marker' <<<"$SCREENSAVER_EFFECTS_MENU_JSON" >/dev/null; then
 			SCREENSAVER_EFFECTS_LIFECYCLE_STATE=drifted
@@ -645,8 +958,8 @@ screensaver_effects_preflight_common() {
 		shape) screensaver_effects_validate_source_shape || return 1 ;;
 		*) printf 'Error: invalid screensaver-effects source validation mode: %s\n' "$source_validation" >&2; return 1 ;;
 	esac
-	screensaver_effects_read_plugins || {
-		printf 'Error: could not inspect Omarchy plugin state.\n' >&2
+	screensaver_effects_wait_for_plugins omarchy.idle omarchy.indicators || {
+		printf 'Error: required built-in Omarchy plugins did not become available.\n' >&2
 		return 1
 	}
 	screensaver_effects_read_shell || {
@@ -667,11 +980,22 @@ screensaver_effects_preflight_common() {
 		printf 'Recovery: choose Migrate competing screensaver clones in the Dotfiles wizard.\n' >&2
 		return 1
 	fi
+	if [[ $SCREENSAVER_EFFECTS_PRE_MUTATION_IDLE_GUARD == true ]]; then
+		local exact_noop=false
+		if [[ $SCREENSAVER_EFFECTS_APPLY_NOOP == true && -n $SCREENSAVER_EFFECTS_APPLY_RECEIPT ]] && \
+			screensaver_effects_active_matches_receipt "$SCREENSAVER_EFFECTS_APPLY_RECEIPT"; then
+			exact_noop=true
+		fi
+		if [[ $exact_noop != true ]] && ! screensaver_effects_require_idle_cycle_inactive; then
+			return 1
+		fi
+	fi
 }
 
 screensaver_effects_prepare_apply() {
 	local allow_competing=${1-false} idle_link indicators_link receipt_state menu_owned source_validation=full
 	SCREENSAVER_EFFECTS_APPLY_NOOP=false
+	SCREENSAVER_EFFECTS_PRE_MUTATION_IDLE_GUARD=false
 	SCREENSAVER_EFFECTS_APPLY_RECEIPT=''
 	printf 'Screensaver effects compatibility:\n'
 	screensaver_effects_print_versions
@@ -683,6 +1007,10 @@ screensaver_effects_prepare_apply() {
 	indicators_link=$(screensaver_effects_link_state "$SCREENSAVER_EFFECTS_INDICATORS_LIVE" "$SCREENSAVER_EFFECTS_INDICATORS_DEPLOYED")
 	if [[ $idle_link == conflicting || $indicators_link == conflicting ]]; then
 		printf 'Conflict: a live Dotfiles plugin path is not the receipt-owned canonical symlink.\n' >&2
+		return 1
+	fi
+	if ! screensaver_effects_stow_links_are_safe_to_apply; then
+		printf 'Conflict: existing screensaver-effects Stow leaves are missing, changed, or foreign; Apply cannot adopt them.\n' >&2
 		return 1
 	fi
 	if [[ -f $SCREENSAVER_EFFECTS_RECEIPT ]]; then
@@ -732,13 +1060,17 @@ screensaver_effects_prepare_apply() {
 	else
 		SCREENSAVER_EFFECTS_APPLY_PRIOR=$(jq -c .prior <<<"$SCREENSAVER_EFFECTS_APPLY_RECEIPT")
 	fi
+	if [[ $SCREENSAVER_EFFECTS_APPLY_NOOP != true ]] && ! screensaver_effects_require_idle_cycle_inactive; then
+		return 1
+	fi
+	SCREENSAVER_EFFECTS_PRE_MUTATION_IDLE_GUARD=true
 	printf 'Plan: screensaver-effects lifecycle:\n'
 	if [[ $SCREENSAVER_EFFECTS_APPLY_NOOP == true ]]; then
 		printf '  exact active state; no plugin rescan or lifecycle mutation\n'
 	else
 		printf '  validate canonical plugin sources and receipt state\n'
 		printf '  publish dotfiles.idle and dotfiles.indicators as whole-directory symlinks\n'
-		printf '  rescan plugins once only when links or validated sources changed\n'
+		printf '  rescan after link publication; restart the shell when active source bytes changed or the loaded idle source identity is stale or missing\n'
 		printf '  replace each existing omarchy.indicators bar entry in place; add none when absent\n'
 		printf '  enable dotfiles.idle through Omarchy and publish system.screensaver last\n'
 		printf '  record recoverable ownership under %s\n' "$SCREENSAVER_EFFECTS_STATE_ROOT"
@@ -764,7 +1096,7 @@ screensaver_effects_switch_bar_to_clone() {
 	entries=$(jq -c .indicators_entries <<<"$prior") || return 1
 	result=$(node "$SCREENSAVER_EFFECTS_JSONC_HELPER" shell-bar-activate "$SCREENSAVER_EFFECTS_SHELL_FILE" "$entries") || return 1
 	if [[ $(jq -r .changed <<<"$result") == true ]]; then
-		omarchy-shell shell reloadConfig >/dev/null || return 1
+		screensaver_effects_reload_shell || return 1
 	fi
 }
 
@@ -772,15 +1104,19 @@ screensaver_effects_restore_bar_snapshot() {
 	local entries=$1 result
 	result=$(node "$SCREENSAVER_EFFECTS_JSONC_HELPER" shell-bar-restore "$SCREENSAVER_EFFECTS_SHELL_FILE" "$entries") || return 1
 	if [[ $(jq -r .changed <<<"$result") == true ]]; then
-		omarchy-shell shell reloadConfig >/dev/null || return 1
+		screensaver_effects_reload_shell || return 1
 	fi
 }
 
 screensaver_effects_make_receipt() {
-	local prior=$1 migration=$2 menu_owned=$3 activated_at=$4 indicators_active
+	local prior=$1 migration=$2 menu_owned=$3 activated_at=$4
+	local idle=${5-$SCREENSAVER_EFFECTS_IDLE_FINGERPRINT}
+	local indicators=${6-$SCREENSAVER_EFFECTS_INDICATORS_FINGERPRINT}
+	local source_identity=${7-$SCREENSAVER_EFFECTS_SOURCE_IDENTITY}
+	local indicators_active
 	indicators_active=$(jq -r '.indicators_entries | length > 0' <<<"$prior")
 	jq -cn \
-		--arg idle "$SCREENSAVER_EFFECTS_IDLE_FINGERPRINT" --arg indicators "$SCREENSAVER_EFFECTS_INDICATORS_FINGERPRINT" \
+		--arg idle "$idle" --arg indicators "$indicators" --arg sourceIdentity "$source_identity" \
 		--argjson prior "$prior" --argjson menuOwned "$menu_owned" --argjson indicatorsActive "$indicators_active" \
 		--argjson migration "$migration" --arg activatedAt "$activated_at" '
 		{
@@ -789,6 +1125,7 @@ screensaver_effects_make_receipt() {
 			state:"active",
 			recoverability:"verified",
 			source_fingerprints:{"dotfiles.idle":$idle,"dotfiles.indicators":$indicators},
+			source_identity:$sourceIdentity,
 			prior:$prior,
 			owned_edges:{idle_link:true,indicators_link:true,idle_activation:true,indicators_activation:$indicatorsActive,menu_entry:$menuOwned},
 			migration:$migration,
@@ -829,7 +1166,7 @@ screensaver_effects_run_idle_plugin_command() {
 			rm -f -- "$snapshot"
 			return 1
 		}
-		omarchy-shell shell reloadConfig >/dev/null || true
+		screensaver_effects_reload_shell || true
 		rm -f -- "$snapshot"
 		return 1
 	fi
@@ -839,19 +1176,20 @@ screensaver_effects_run_idle_plugin_command() {
 			rm -f -- "$snapshot"
 			return 1
 		}
-		omarchy-shell shell reloadConfig >/dev/null || true
+		screensaver_effects_reload_shell || true
 		rm -f -- "$snapshot"
 		return 1
 	fi
 	rm -f -- "$snapshot"
 	jq -e '.changed | type == "boolean"' <<<"$result" >/dev/null || return 1
-	omarchy-shell shell reloadConfig >/dev/null
+	screensaver_effects_reload_shell
 }
 
 screensaver_effects_rollback_apply() {
 	local bar_snapshot=$1 idle_was_enabled=$2 menu_inserted=$3 menu_file_existed=$4 idle_link_created=$5 indicators_link_created=$6
 	local preserve_pending=${7-false}
 	local prior=${8-'{}'}
+	local recovery_operation=${9-apply}
 	local failed=false
 	if [[ $menu_inserted == true ]]; then
 		node "$SCREENSAVER_EFFECTS_JSONC_HELPER" remove "$SCREENSAVER_EFFECTS_MENU_FILE" "$menu_file_existed" >/dev/null || failed=true
@@ -868,8 +1206,14 @@ screensaver_effects_rollback_apply() {
 	if [[ $indicators_link_created == true ]]; then
 		screensaver_effects_remove_live_link dotfiles.indicators || failed=true
 	fi
+	if [[ $failed == false && ( $idle_link_created == true || $indicators_link_created == true ) ]] && \
+		! screensaver_effects_wait_for_removal_convergence; then
+		failed=true
+	fi
 	if [[ $failed == true ]]; then
-		screensaver_effects_mark_recovery apply 'activation rollback could not restore every lifecycle edge'
+		if ! screensaver_effects_mark_recovery "$recovery_operation" 'activation rollback could not restore every lifecycle edge'; then
+			printf 'Recovery: could not publish activation rollback evidence; pending state was retained.\n' >&2
+		fi
 		return 1
 	fi
 	if [[ $preserve_pending != true ]]; then
@@ -880,14 +1224,19 @@ screensaver_effects_rollback_apply() {
 screensaver_effects_activate() {
 	local pending_operation=${1-apply} migration=${2-'{"performed":false,"backup":null,"clone_ids":[]}'}
 	screensaver_effects_set_paths
-	if [[ $pending_operation == apply ]]; then
-		screensaver_effects_preflight_common false || return 1
-	else
+	if [[ $pending_operation != apply ]]; then
 		screensaver_effects_validate_source || return 1
-		screensaver_effects_read_plugins || return 1
+		screensaver_effects_wait_for_plugins omarchy.idle omarchy.indicators || return 1
 		screensaver_effects_read_shell || return 1
 		screensaver_effects_inspect_menu || return 1
 	fi
+	if ! screensaver_effects_repair_stale_owned_stow_links || ! screensaver_effects_stow_links_are_complete; then
+		printf 'Conflict: screensaver-effects Stow deployment is not complete and exact after Stow; lifecycle mutation was skipped.\n' >&2
+		return 1
+	fi
+	local expected_idle_fingerprint=$SCREENSAVER_EFFECTS_IDLE_FINGERPRINT
+	local expected_indicators_fingerprint=$SCREENSAVER_EFFECTS_INDICATORS_FINGERPRINT
+	local expected_source_identity=$SCREENSAVER_EFFECTS_SOURCE_IDENTITY
 	if [[ ! -d $SCREENSAVER_EFFECTS_IDLE_DEPLOYED || ! -d $SCREENSAVER_EFFECTS_INDICATORS_DEPLOYED ]]; then
 		printf 'Error: verified Stow plugin sources are not deployed.\n' >&2
 		return 1
@@ -899,6 +1248,9 @@ screensaver_effects_activate() {
 	if [[ -n $receipt && $(jq -r .state <<<"$receipt") == active ]] && screensaver_effects_active_matches_receipt "$receipt"; then
 		printf 'Screensaver effects lifecycle already active; no rescan needed.\n'
 		return 0
+	fi
+	if ! screensaver_effects_require_idle_cycle_inactive; then
+		return 1
 	fi
 	if [[ -n $receipt && $(jq -r .state <<<"$receipt") == active ]]; then
 		prior=$(jq -c .prior <<<"$receipt")
@@ -921,8 +1273,10 @@ screensaver_effects_activate() {
 	if [[ $pending_operation == apply ]]; then
 		screensaver_effects_write_pending apply || return 1
 	fi
-	local idle_link_created=false indicators_link_created=false menu_inserted=false needs_rescan=false
-	local reason='activation failed' result current_idle current_indicators
+	local idle_link_created=false indicators_link_created=false menu_inserted=false needs_rescan=false needs_shell_restart=false
+	local needs_activation_runtime=false activation_prior_instance='' activation_requested_at_ms=''
+	local reason='activation failed' result current_idle current_indicators receipt_identity prior_idle_instance='' prior_idle_started_at_ms='' reload_requested_at_ms=''
+	local preserve_pending=false
 	if ! screensaver_effects_publish_link "$SCREENSAVER_EFFECTS_IDLE_LIVE" "$SCREENSAVER_EFFECTS_IDLE_DEPLOYED" idle_link_created || \
 		! screensaver_effects_publish_link "$SCREENSAVER_EFFECTS_INDICATORS_LIVE" "$SCREENSAVER_EFFECTS_INDICATORS_DEPLOYED" indicators_link_created; then
 		reason='could not publish canonical live plugin links'
@@ -932,17 +1286,35 @@ screensaver_effects_activate() {
 	if [[ -n $receipt && $(jq -r .state <<<"$receipt") == active ]]; then
 		current_idle=$(jq -r '.source_fingerprints["dotfiles.idle"]' <<<"$receipt")
 		current_indicators=$(jq -r '.source_fingerprints["dotfiles.indicators"]' <<<"$receipt")
-		if [[ $current_idle != "$SCREENSAVER_EFFECTS_IDLE_FINGERPRINT" || $current_indicators != "$SCREENSAVER_EFFECTS_INDICATORS_FINGERPRINT" ]]; then
-			needs_rescan=true
+		receipt_identity=$(jq -r '.source_identity' <<<"$receipt")
+		if [[ $current_idle != "$expected_idle_fingerprint" || $current_indicators != "$expected_indicators_fingerprint" || \
+			$receipt_identity != "$expected_source_identity" ]]; then
+			needs_shell_restart=true
+		elif ! screensaver_effects_idle_runtime_matches_identity "$expected_source_identity"; then
+			needs_shell_restart=true
 		fi
 	fi
-	if [[ $reason == 'activation failed' && $needs_rescan == true ]]; then
-		if ! omarchy-shell shell rescanPlugins >/dev/null; then
+	if [[ $reason == 'activation failed' && ( $needs_rescan == true || $needs_shell_restart == true ) ]]; then
+		if ! screensaver_effects_require_idle_cycle_inactive; then
+			reason='reload refused while the idle cycle is active; wait for activity, then retry'
+		else
+			screensaver_effects_capture_idle_instance
+			prior_idle_instance=$SCREENSAVER_EFFECTS_IDLE_INSTANCE_ID
+			prior_idle_started_at_ms=$SCREENSAVER_EFFECTS_IDLE_STARTED_AT_MS
+		fi
+	fi
+	if [[ $reason == 'activation failed' && ( $needs_rescan == true || $needs_shell_restart == true ) ]]; then
+		reload_requested_at_ms=$(date +%s%3N)
+		if [[ ! $reload_requested_at_ms =~ ^[0-9]+$ ]]; then
+			reason='could not record the plugin reload request time'
+		elif [[ $needs_shell_restart == true ]] && ! omarchy restart shell >/dev/null; then
+			reason='the Omarchy shell restart for changed plugin sources failed'
+		elif [[ $needs_shell_restart != true ]] && ! omarchy-shell shell rescanPlugins >/dev/null; then
 			reason='the explicit plugin rescan failed'
 		fi
 	fi
 	if [[ $reason == 'activation failed' ]]; then
-		if ! screensaver_effects_read_plugins || ! jq -e 'any(.[]; .id == "dotfiles.idle") and any(.[]; .id == "dotfiles.indicators")' <<<"$SCREENSAVER_EFFECTS_PLUGIN_JSON" >/dev/null; then
+		if ! screensaver_effects_wait_for_plugins omarchy.idle omarchy.indicators dotfiles.idle dotfiles.indicators; then
 			reason='the published plugins were not discovered'
 		fi
 	fi
@@ -950,9 +1322,28 @@ screensaver_effects_activate() {
 		screensaver_effects_read_plugins || reason='plugin state became unavailable before idle activation'
 	fi
 	if [[ $reason == 'activation failed' && $(screensaver_effects_plugin_enabled dotfiles.idle) != true ]]; then
-		if ! screensaver_effects_run_idle_plugin_command enable; then
+		if [[ $needs_rescan != true && $needs_shell_restart != true ]]; then
+			screensaver_effects_capture_idle_instance
+			activation_prior_instance=$SCREENSAVER_EFFECTS_IDLE_INSTANCE_ID
+			activation_requested_at_ms=$(date +%s%3N)
+			if [[ ! $activation_requested_at_ms =~ ^[0-9]+$ ]]; then
+				reason='could not record the idle activation request time'
+			else
+				needs_activation_runtime=true
+			fi
+		fi
+		if [[ $reason == 'activation failed' ]] && ! screensaver_effects_run_idle_plugin_command enable; then
 			reason='dotfiles.idle activation failed'
 		fi
+	fi
+	if [[ $reason == 'activation failed' && ( $needs_rescan == true || $needs_shell_restart == true ) ]]; then
+		if ! screensaver_effects_wait_for_idle_instance "$prior_idle_instance" "$reload_requested_at_ms" "$expected_source_identity"; then
+			reason='the reloaded idle runtime did not become ready'
+		fi
+	fi
+	if [[ $reason == 'activation failed' && $needs_activation_runtime == true ]] && \
+		! screensaver_effects_wait_for_idle_instance "$activation_prior_instance" "$activation_requested_at_ms" "$expected_source_identity"; then
+		reason='the activated idle runtime did not become ready'
 	fi
 	if [[ $reason == 'activation failed' ]]; then
 		if ! screensaver_effects_switch_bar_to_clone "$prior"; then
@@ -967,11 +1358,13 @@ screensaver_effects_activate() {
 			menu_inserted=$(jq -r .changed <<<"$result")
 		fi
 	fi
-	if [[ $reason == 'activation failed' ]]; then
-		screensaver_effects_validate_source >/dev/null 2>&1 || reason='source validation failed after activation'
+	if [[ $reason == 'activation failed' ]] && ! screensaver_effects_source_snapshot_matches \
+		"$expected_idle_fingerprint" "$expected_indicators_fingerprint" "$expected_source_identity"; then
+		reason='validated plugin sources changed during activation'
 	fi
 	if [[ $reason == 'activation failed' ]]; then
-		receipt=$(screensaver_effects_make_receipt "$prior" "$migration" "$menu_owned" "$activated_at") || reason='receipt construction failed'
+		receipt=$(screensaver_effects_make_receipt "$prior" "$migration" "$menu_owned" "$activated_at" \
+			"$expected_idle_fingerprint" "$expected_indicators_fingerprint" "$expected_source_identity") || reason='receipt construction failed'
 	fi
 	if [[ $reason == 'activation failed' ]]; then
 		if ! screensaver_effects_active_matches_receipt "$receipt"; then
@@ -986,8 +1379,11 @@ screensaver_effects_activate() {
 	if [[ $reason != 'activation failed' ]]; then
 		printf 'Error: screensaver-effects %s.\n' "$reason" >&2
 		screensaver_effects_record_diagnostic "$pending_operation" "$reason"
+		if [[ $pending_operation == migrate ]]; then
+			preserve_pending=true
+		fi
 		if ! screensaver_effects_rollback_apply "$bar_snapshot" "$idle_was_enabled" "$menu_inserted" "$menu_file_existed" "$idle_link_created" "$indicators_link_created" \
-			"$([[ $pending_operation == migrate ]] && printf true || printf false)" "$prior"; then
+			"$preserve_pending" "$prior" "$pending_operation"; then
 			printf 'Recovery: Package status reports recovery-required; preserve retained state.\n' >&2
 		else
 			printf 'Recovery: choose Apply Stow packages and select screensaver-effects.\n' >&2
@@ -1000,19 +1396,37 @@ screensaver_effects_activate() {
 
 screensaver_effects_prepare_remove() {
 	SCREENSAVER_EFFECTS_REMOVAL_DEACTIVATED=false
+	SCREENSAVER_EFFECTS_PRE_MUTATION_IDLE_GUARD=false
 	printf 'Screensaver effects compatibility:\n'
 	screensaver_effects_print_versions
 	screensaver_effects_preflight_common false || return 1
 	if [[ ! -f $SCREENSAVER_EFFECTS_RECEIPT ]]; then
 		screensaver_effects_require_inactive_edges_absent || return 1
+		if ! screensaver_effects_stow_links_are_removable; then
+			return 1
+		fi
 		printf 'Plan: screensaver-effects lifecycle is inactive; remove only verified Stow links.\n'
 		return 0
 	fi
 	SCREENSAVER_EFFECTS_APPLY_RECEIPT=$(<"$SCREENSAVER_EFFECTS_RECEIPT")
 	if [[ $(jq -r .state <<<"$SCREENSAVER_EFFECTS_APPLY_RECEIPT") == inactive ]]; then
 		screensaver_effects_require_inactive_edges_absent || return 1
+		if ! screensaver_effects_stow_links_are_removable; then
+			return 1
+		fi
 		printf 'Plan: screensaver-effects lifecycle is already inactive; remove only verified Stow links.\n'
 		return 0
+	fi
+	if ! screensaver_effects_require_idle_cycle_inactive; then
+		return 1
+	fi
+	if ! jq -e 'has("source_identity")' <<<"$SCREENSAVER_EFFECTS_APPLY_RECEIPT" >/dev/null; then
+		printf 'Conflict: legacy schema-1 receipt lacks source_identity; run Apply once to upgrade it before Remove.\n' >&2
+		return 1
+	fi
+	if ! screensaver_effects_stow_links_are_complete; then
+		printf 'Conflict: active receipt Stow deployment is missing, changed, or has foreign extra leaves; run Apply before removal.\n' >&2
+		return 1
 	fi
 	if [[ $(screensaver_effects_link_state "$SCREENSAVER_EFFECTS_IDLE_LIVE" "$SCREENSAVER_EFFECTS_IDLE_DEPLOYED") != exact || \
 		$(screensaver_effects_link_state "$SCREENSAVER_EFFECTS_INDICATORS_LIVE" "$SCREENSAVER_EFFECTS_INDICATORS_DEPLOYED") != exact ]]; then
@@ -1061,6 +1475,39 @@ screensaver_effects_verify_prior_state() {
 	done < <(jq -r '.indicators_entries[] | [.section,.index,(.entry | @json)] | @tsv' <<<"$prior")
 }
 
+screensaver_effects_wait_for_removal_convergence() {
+	local prior=${1-} attempt prior_idle_enabled
+	local OMARCHY_SHELL_IPC_TIMEOUT=0.1s
+	export OMARCHY_SHELL_IPC_TIMEOUT
+	for ((attempt = 0; attempt < 40; attempt++)); do
+		if ! screensaver_effects_read_plugins || ! jq -e 'all(.[]; .id != "dotfiles.idle" and .id != "dotfiles.indicators")' \
+			<<<"$SCREENSAVER_EFFECTS_PLUGIN_JSON" >/dev/null; then
+			sleep 0.05
+			continue
+		fi
+		if [[ -n $prior ]]; then
+			if ! screensaver_effects_verify_prior_state "$prior"; then
+				sleep 0.05
+				continue
+			fi
+			prior_idle_enabled=$(jq -r '.plugin_states["omarchy.idle"]' <<<"$prior")
+		else
+			prior_idle_enabled=$(screensaver_effects_plugin_enabled omarchy.idle)
+		fi
+		if [[ $prior_idle_enabled == true ]]; then
+			if screensaver_effects_read_idle_instance && \
+				[[ -z $SCREENSAVER_EFFECTS_IDLE_INSTANCE_ID && -z $SCREENSAVER_EFFECTS_IDLE_SOURCE_IDENTITY ]]; then
+				return 0
+			fi
+		elif ! screensaver_effects_read_idle_instance || \
+			[[ -z $SCREENSAVER_EFFECTS_IDLE_INSTANCE_ID && -z $SCREENSAVER_EFFECTS_IDLE_SOURCE_IDENTITY ]]; then
+			return 0
+		fi
+		sleep 0.05
+	done
+	return 1
+}
+
 screensaver_effects_deactivate() {
 	screensaver_effects_set_paths
 	SCREENSAVER_EFFECTS_REMOVAL_DEACTIVATED=false
@@ -1068,6 +1515,13 @@ screensaver_effects_deactivate() {
 	local receipt prior menu_owned menu_file_existed entries
 	receipt=$(<"$SCREENSAVER_EFFECTS_RECEIPT")
 	[[ $(jq -r .state <<<"$receipt") == active ]] || return 0
+	if ! screensaver_effects_require_idle_cycle_inactive; then
+		return 1
+	fi
+	if ! screensaver_effects_stow_links_are_complete; then
+		printf 'Conflict: active receipt Stow deployment is missing, changed, or has foreign extra leaves; removal was skipped.\n' >&2
+		return 1
+	fi
 	prior=$(jq -c .prior <<<"$receipt")
 	menu_owned=$(jq -r .owned_edges.menu_entry <<<"$receipt")
 	menu_file_existed=$(jq -r .prior.menu.file_existed <<<"$receipt")
@@ -1079,7 +1533,8 @@ screensaver_effects_deactivate() {
 	if [[ $reason == 'deactivation failed' ]]; then
 		screensaver_effects_read_plugins || reason='plugin state became unavailable during removal'
 	fi
-	if [[ $reason == 'deactivation failed' && $(screensaver_effects_plugin_enabled dotfiles.idle) == true ]]; then
+	if [[ $reason == 'deactivation failed' ]] && \
+		( [[ $(screensaver_effects_plugin_enabled dotfiles.idle) == true ]] || screensaver_effects_shell_has_dotfiles_edges ); then
 		screensaver_effects_run_idle_plugin_command disable "$(jq -c .shell_fields <<<"$prior")" || reason='dotfiles.idle disable failed'
 	fi
 	entries=$(jq -c .indicators_entries <<<"$prior")
@@ -1092,8 +1547,8 @@ screensaver_effects_deactivate() {
 	if [[ $reason == 'deactivation failed' ]]; then
 		screensaver_effects_remove_live_link dotfiles.indicators || reason='dotfiles.indicators link removal failed'
 	fi
-	if [[ $reason == 'deactivation failed' ]] && ! screensaver_effects_verify_prior_state "$prior"; then
-		reason='prior Omarchy plugin or bar state was not restored'
+	if [[ $reason == 'deactivation failed' ]] && ! screensaver_effects_wait_for_removal_convergence "$prior"; then
+		reason='removed plugins and restored idle state did not converge'
 	fi
 	if [[ $reason != 'deactivation failed' ]]; then
 		printf 'Error: screensaver-effects %s.\n' "$reason" >&2
@@ -1104,44 +1559,126 @@ screensaver_effects_deactivate() {
 	printf 'Screensaver effects lifecycle deactivated; Stow sources remain pending removal.\n'
 }
 
-screensaver_effects_stow_links_are_complete() {
-	local package_root=$REPOSITORY_ROOT/config/screensaver-effects source relative target found=false
+screensaver_effects_stow_plugin_roots() {
+	printf '%s\t%s\n' "$SCREENSAVER_EFFECTS_IDLE_SOURCE" "$SCREENSAVER_EFFECTS_IDLE_DEPLOYED"
+	printf '%s\t%s\n' "$SCREENSAVER_EFFECTS_INDICATORS_SOURCE" "$SCREENSAVER_EFFECTS_INDICATORS_DEPLOYED"
+}
+
+screensaver_effects_stow_target_is_owned_stale() {
+	local source_root=$1 relative=$2 target=$3 canonical_source expected_target actual_target
+	[[ -L $target ]] || return 1
+	canonical_source=$(readlink -f -- "$source_root") || return 1
+	expected_target=$(readlink -m -- "$canonical_source/$relative") || return 1
+	actual_target=$(readlink -m -- "$target") || return 1
+	[[ $actual_target == "$canonical_source/"* && $actual_target == "$expected_target" ]] || return 1
+	[[ ! -e $actual_target && ! -L $actual_target ]]
+}
+
+screensaver_effects_stow_links_audit() {
+	local mode=${1-complete} package_root=$REPOSITORY_ROOT/config/screensaver-effects
+	local source relative target found=false source_root target_root expected
+	case $mode in
+		safe-apply|complete|absent) ;;
+		*) printf 'Error: invalid screensaver-effects Stow audit mode: %s\n' "$mode" >&2; return 1 ;;
+	esac
 	while IFS= read -r -d '' source; do
 		found=true
 		relative=${source#"$package_root/"}
 		target=$HOME/$relative
-		if [[ ! -L $target ]] || [[ $(readlink -f -- "$target") != "$(readlink -f -- "$source")" ]]; then
-			printf 'Expected deployed Stow leaf is missing or incorrect: %s\n' "$target" >&2
-			return 1
+		case $mode in
+			safe-apply)
+				if [[ -e $target || -L $target ]] && \
+					{ [[ ! -L $target ]] || [[ $(readlink -f -- "$target") != "$(readlink -f -- "$source")" ]]; }; then
+					printf 'Expected deployed Stow leaf is already present but incorrect: %s\n' "$target" >&2
+					return 1
+				fi
+				;;
+			complete)
+				if [[ ! -L $target ]] || [[ $(readlink -f -- "$target") != "$(readlink -f -- "$source")" ]]; then
+					printf 'Expected deployed Stow leaf is missing or incorrect: %s\n' "$target" >&2
+					return 1
+				fi
+				;;
+			absent)
+				if [[ -e $target || -L $target ]]; then
+					printf 'Managed Stow leaf remains after removal: %s\n' "$target" >&2
+					return 1
+				fi
+				;;
+		esac
+	done < <(find "$package_root" \( -type f -o -type l \) -print0 | LC_ALL=C sort -z)
+	[[ $found == true ]] || return 1
+
+	while IFS=$'\t' read -r source_root target_root; do
+		if [[ -e $target_root || -L $target_root ]]; then
+			if [[ ! -d $target_root || -L $target_root ]]; then
+				printf 'Foreign extra path exists in the deployed screensaver-effects plugin tree: %s\n' "$target_root" >&2
+				return 1
+			fi
+		else
+			continue
 		fi
-	done < <(find "$package_root" \( -type f -o -type l \) -print0)
-	[[ $found == true ]]
+		while IFS= read -r -d '' target; do
+			relative=${target#"$target_root/"}
+			expected=$source_root/$relative
+			[[ -f $expected && ! -L $expected ]] && continue
+			if [[ $mode == safe-apply ]] && screensaver_effects_stow_target_is_owned_stale "$source_root" "$relative" "$target"; then
+				continue
+			fi
+			if screensaver_effects_stow_target_is_owned_stale "$source_root" "$relative" "$target"; then
+				printf 'Stale owned Stow leaf remains after its source was removed: %s\n' "$target" >&2
+			else
+				printf 'Foreign extra path exists in the deployed screensaver-effects plugin tree: %s\n' "$target" >&2
+			fi
+			return 1
+		done < <(find "$target_root" -mindepth 1 \( -type f -o -type l \) -print0 2>/dev/null | LC_ALL=C sort -z)
+	done < <(screensaver_effects_stow_plugin_roots)
+}
+
+screensaver_effects_stow_links_are_safe_to_apply() {
+	screensaver_effects_stow_links_audit safe-apply
+}
+
+screensaver_effects_stow_links_are_complete() {
+	screensaver_effects_stow_links_audit complete
 }
 
 screensaver_effects_stow_links_are_absent() {
-	local package_root=$REPOSITORY_ROOT/config/screensaver-effects source relative target
-	while IFS= read -r -d '' source; do
-		relative=${source#"$package_root/"}
-		target=$HOME/$relative
-		[[ ! -e $target && ! -L $target ]] || return 1
-	done < <(find "$package_root" \( -type f -o -type l \) -print0)
+	screensaver_effects_stow_links_audit absent
+}
+
+screensaver_effects_stow_links_are_removable() {
+	if screensaver_effects_stow_links_are_complete >/dev/null 2>&1 || screensaver_effects_stow_links_are_absent >/dev/null 2>&1; then
+		return 0
+	fi
+	printf 'Conflict: screensaver-effects Stow deployment is partial or contains foreign extra leaves; removal cannot claim an exact package boundary.\n' >&2
+	return 1
+}
+
+screensaver_effects_repair_stale_owned_stow_links() {
+	local source_root target_root target relative expected
+	screensaver_effects_stow_links_are_safe_to_apply || return 1
+	while IFS=$'\t' read -r source_root target_root; do
+		[[ -d $target_root && ! -L $target_root ]] || continue
+		while IFS= read -r -d '' target; do
+			relative=${target#"$target_root/"}
+			expected=$source_root/$relative
+			[[ -f $expected && ! -L $expected ]] && continue
+			if screensaver_effects_stow_target_is_owned_stale "$source_root" "$relative" "$target"; then
+				rm -f -- "$target" || {
+					printf 'Conflict: could not remove stale owned Stow leaf during Apply repair: %s\n' "$target" >&2
+					return 1
+				}
+				printf 'Repaired stale owned Stow leaf: %s\n' "$target"
+			fi
+		done < <(find "$target_root" -mindepth 1 \( -type f -o -type l \) -print0 2>/dev/null | LC_ALL=C sort -z)
+	done < <(screensaver_effects_stow_plugin_roots)
 }
 
 screensaver_effects_stow_package_state() {
-	local package_root=$REPOSITORY_ROOT/config/screensaver-effects source relative target total=0 linked=0 absent=0
-	while IFS= read -r -d '' source; do
-		total=$((total + 1))
-		relative=${source#"$package_root/"}
-		target=$HOME/$relative
-		if [[ -L $target && $(readlink -f -- "$target") == "$(readlink -f -- "$source")" ]]; then
-			linked=$((linked + 1))
-		elif [[ ! -e $target && ! -L $target ]]; then
-			absent=$((absent + 1))
-		fi
-	done < <(find "$package_root" \( -type f -o -type l \) -print0)
-	if ((total > 0 && linked == total)); then
+	if screensaver_effects_stow_links_are_complete >/dev/null 2>&1; then
 		printf 'linked\n'
-	elif ((total > 0 && absent == total)); then
+	elif screensaver_effects_stow_links_are_absent >/dev/null 2>&1; then
 		printf 'absent\n'
 	else
 		printf 'partial\n'
@@ -1150,24 +1687,63 @@ screensaver_effects_stow_package_state() {
 
 screensaver_effects_restore_active_after_remove_failure() {
 	screensaver_effects_set_paths
-	local receipt prior menu_owned created_idle=false created_indicators=false reason='restore failed'
+	local receipt prior menu_owned expected_source_identity
+	local prior_idle_instance='' rescan_requested_at_ms='' activation_prior_instance='' activation_requested_at_ms=''
+	local created_idle=false created_indicators=false needs_runtime=false needs_activation_runtime=false reason='restore failed'
 	[[ -f $SCREENSAVER_EFFECTS_RECEIPT ]] || return 1
 	receipt=$(<"$SCREENSAVER_EFFECTS_RECEIPT")
 	prior=$(jq -c .prior <<<"$receipt")
 	menu_owned=$(jq -r .owned_edges.menu_entry <<<"$receipt")
+	expected_source_identity=$(jq -r .source_identity <<<"$receipt")
 	if ! screensaver_effects_stow_links_are_complete; then
 		reason='Stow removal changed one or more deployed package leaves, so active state cannot be restored'
-	elif ! screensaver_effects_publish_link "$SCREENSAVER_EFFECTS_IDLE_LIVE" "$SCREENSAVER_EFFECTS_IDLE_DEPLOYED" created_idle || \
-		! screensaver_effects_publish_link "$SCREENSAVER_EFFECTS_INDICATORS_LIVE" "$SCREENSAVER_EFFECTS_INDICATORS_DEPLOYED" created_indicators; then
-		reason='live plugin links could not be restored'
-	elif [[ $created_idle == true || $created_indicators == true ]] && ! omarchy-shell shell rescanPlugins >/dev/null; then
-		reason='plugin rescan failed while restoring active state'
 	fi
 	if [[ $reason == 'restore failed' ]]; then
-		screensaver_effects_read_plugins || reason='plugin state became unavailable during restoration'
+		screensaver_effects_capture_idle_instance
+		prior_idle_instance=$SCREENSAVER_EFFECTS_IDLE_INSTANCE_ID
 	fi
-	if [[ $reason == 'restore failed' && $(screensaver_effects_plugin_enabled dotfiles.idle) != true ]] && ! screensaver_effects_run_idle_plugin_command enable; then
-		reason='dotfiles.idle could not be reactivated'
+	if [[ $reason == 'restore failed' ]]; then
+		if ! screensaver_effects_publish_link "$SCREENSAVER_EFFECTS_IDLE_LIVE" "$SCREENSAVER_EFFECTS_IDLE_DEPLOYED" created_idle || \
+			! screensaver_effects_publish_link "$SCREENSAVER_EFFECTS_INDICATORS_LIVE" "$SCREENSAVER_EFFECTS_INDICATORS_DEPLOYED" created_indicators; then
+			reason='live plugin links could not be restored'
+		fi
+	fi
+	if [[ $reason == 'restore failed' && ( $created_idle == true || $created_indicators == true ) ]]; then
+		needs_runtime=true
+		rescan_requested_at_ms=$(date +%s%3N)
+		if [[ ! $rescan_requested_at_ms =~ ^[0-9]+$ ]]; then
+			reason='could not record the restoration rescan request time'
+		elif ! screensaver_effects_require_idle_cycle_inactive; then
+			reason='restoration reload refused while the idle cycle is active; wait for activity, then retry'
+		elif ! omarchy-shell shell rescanPlugins >/dev/null; then
+			reason='plugin rescan failed while restoring active state'
+		fi
+	fi
+	if [[ $reason == 'restore failed' ]]; then
+		screensaver_effects_wait_for_plugins omarchy.idle omarchy.indicators dotfiles.idle dotfiles.indicators || reason='plugin state became unavailable during restoration'
+	fi
+	if [[ $reason == 'restore failed' && $(screensaver_effects_plugin_enabled dotfiles.idle) != true ]]; then
+		if [[ $needs_runtime != true ]]; then
+			screensaver_effects_capture_idle_instance
+			activation_prior_instance=$SCREENSAVER_EFFECTS_IDLE_INSTANCE_ID
+			activation_requested_at_ms=$(date +%s%3N)
+			if [[ ! $activation_requested_at_ms =~ ^[0-9]+$ ]]; then
+				reason='could not record the restoration activation request time'
+			else
+				needs_activation_runtime=true
+			fi
+		fi
+		if [[ $reason == 'restore failed' ]] && ! screensaver_effects_run_idle_plugin_command enable; then
+			reason='dotfiles.idle could not be reactivated'
+		fi
+	fi
+	if [[ $reason == 'restore failed' && $needs_runtime == true ]] && ! screensaver_effects_wait_for_idle_instance \
+		"$prior_idle_instance" "$rescan_requested_at_ms" "$expected_source_identity"; then
+		reason='restored idle runtime did not become ready'
+	fi
+	if [[ $reason == 'restore failed' && $needs_activation_runtime == true ]] && \
+		! screensaver_effects_wait_for_idle_instance "$activation_prior_instance" "$activation_requested_at_ms" "$expected_source_identity"; then
+		reason='reactivated idle runtime did not become ready'
 	fi
 	if [[ $reason == 'restore failed' ]] && ! screensaver_effects_switch_bar_to_clone "$prior"; then
 		reason='Indicators state could not be reactivated'
@@ -1179,7 +1755,9 @@ screensaver_effects_restore_active_after_remove_failure() {
 		reason='restored active lifecycle did not verify'
 	fi
 	if [[ $reason != 'restore failed' ]]; then
-		screensaver_effects_mark_recovery remove "$reason"
+		if ! screensaver_effects_mark_recovery remove "$reason"; then
+			printf 'Recovery: could not publish removal recovery evidence; pending state was retained.\n' >&2
+		fi
 		screensaver_effects_record_diagnostic remove "$reason"
 		printf 'Error: %s. Lifecycle is recovery-required.\n' "$reason" >&2
 		return 1
@@ -1189,13 +1767,27 @@ screensaver_effects_restore_active_after_remove_failure() {
 }
 
 screensaver_effects_finish_remove() {
+	if ! screensaver_effects_stow_links_are_absent; then
+		if ! screensaver_effects_mark_recovery remove 'Stow removal left one or more managed or extra deployed plugin leaves'; then
+			printf 'Recovery: could not publish removal verification evidence; inspect Package status before another mutation.\n' >&2
+		fi
+		return 1
+	fi
 	[[ $SCREENSAVER_EFFECTS_REMOVAL_DEACTIVATED == true ]] || return 0
 	local receipt timestamp inactive
 	receipt=$(<"$SCREENSAVER_EFFECTS_RECEIPT")
+	if ! screensaver_effects_wait_for_removal_convergence "$(jq -c .prior <<<"$receipt")"; then
+		if ! screensaver_effects_mark_recovery remove 'removed plugins and restored state did not converge before inactive publication'; then
+			printf 'Recovery: could not publish removal recovery evidence; pending state was retained.\n' >&2
+		fi
+		return 1
+	fi
 	timestamp=$(screensaver_effects_timestamp)
 	inactive=$(jq -c --arg timestamp "$timestamp" '.state = "inactive" | .removed_at = $timestamp' <<<"$receipt") || return 1
 	if ! screensaver_effects_write_json "$SCREENSAVER_EFFECTS_RECEIPT" "$inactive"; then
-		screensaver_effects_mark_recovery remove 'Stow links were removed but the retained inactive receipt could not be published'
+		if ! screensaver_effects_mark_recovery remove 'Stow links were removed but the retained inactive receipt could not be published'; then
+			printf 'Recovery: could not publish removal recovery evidence; pending state was retained.\n' >&2
+		fi
 		return 1
 	fi
 	rm -f -- "$SCREENSAVER_EFFECTS_PENDING"
@@ -1230,6 +1822,12 @@ screensaver_effects_create_migration_backup() {
 	else
 		printf 'false\n' >"$backup/menu.existed"
 	fi
+	if [[ -f $SCREENSAVER_EFFECTS_RECEIPT && ! -L $SCREENSAVER_EFFECTS_RECEIPT ]]; then
+		cp --archive -- "$SCREENSAVER_EFFECTS_RECEIPT" "$backup/receipt.json" || return 1
+		printf 'true\n' >"$backup/receipt.existed"
+	else
+		printf 'false\n' >"$backup/receipt.existed"
+	fi
 	SCREENSAVER_EFFECTS_PREEXISTING_REMOVE_BACKUPS=()
 	for id in "${SCREENSAVER_EFFECTS_COMPETING_CLONES[@]}"; do
 		for hidden in "$SCREENSAVER_EFFECTS_PLUGIN_ROOT/.${id}.bak."*; do
@@ -1255,7 +1853,8 @@ screensaver_effects_create_migration_backup() {
 	jq -cn --arg created "$timestamp" --argjson plugins "$inventory" \
 		'{schema_version:1,package:"screensaver-effects",kind:"migration-backup",created_at:$created,plugins:$plugins}' \
 		>"$backup/inventory.json" || return 1
-	chmod 0600 -- "$backup/inventory.json" "$backup/shell.existed" "$backup/menu.existed" || return 1
+	chmod 0600 -- "$backup/inventory.json" "$backup/shell.existed" "$backup/menu.existed" "$backup/receipt.existed" || return 1
+	[[ ! -f $backup/receipt.json ]] || chmod 0600 -- "$backup/receipt.json" || return 1
 	SCREENSAVER_EFFECTS_MIGRATION_BACKUP=$backup
 }
 
@@ -1301,6 +1900,12 @@ screensaver_effects_restore_migration_files() {
 	else
 		rm -f -- "$SCREENSAVER_EFFECTS_MENU_FILE" || return 1
 	fi
+	if [[ $(<"$backup/receipt.existed") == true ]]; then
+		mkdir -p -- "$SCREENSAVER_EFFECTS_STATE_ROOT" || return 1
+		cp --archive -- "$backup/receipt.json" "$SCREENSAVER_EFFECTS_RECEIPT" || return 1
+	else
+		rm -f -- "$SCREENSAVER_EFFECTS_RECEIPT" || return 1
+	fi
 }
 
 screensaver_effects_verify_migration_restore() {
@@ -1314,6 +1919,12 @@ screensaver_effects_verify_migration_restore() {
 		cmp -s -- "$backup/menu.jsonc" "$SCREENSAVER_EFFECTS_MENU_FILE" || return 1
 	else
 		[[ ! -e $SCREENSAVER_EFFECTS_MENU_FILE && ! -L $SCREENSAVER_EFFECTS_MENU_FILE ]] || return 1
+	fi
+	if [[ $(<"$backup/receipt.existed") == true ]]; then
+		cmp -s -- "$backup/receipt.json" "$SCREENSAVER_EFFECTS_RECEIPT" || return 1
+		screensaver_effects_validate_receipt "$SCREENSAVER_EFFECTS_RECEIPT" || return 1
+	else
+		[[ ! -e $SCREENSAVER_EFFECTS_RECEIPT && ! -L $SCREENSAVER_EFFECTS_RECEIPT ]] || return 1
 	fi
 	while IFS=$'\t' read -r id type target; do
 		destination=$SCREENSAVER_EFFECTS_PLUGIN_ROOT/$id
@@ -1354,11 +1965,36 @@ screensaver_effects_rollback_migration() {
 		fi
 	done < <(jq -r '.plugins[].id' "$backup/inventory.json")
 	screensaver_effects_restore_migration_files "$backup" || failed=true
-	omarchy-shell shell rescanPlugins >/dev/null || failed=true
-	omarchy-shell shell reloadConfig >/dev/null || failed=true
+	if [[ $failed == false ]]; then
+		if ! screensaver_effects_require_idle_cycle_inactive; then
+			failed=true
+		else
+			omarchy-shell shell rescanPlugins >/dev/null || failed=true
+		fi
+	fi
+	if [[ $failed == false ]]; then
+		if [[ -f $SCREENSAVER_EFFECTS_SHELL_FILE ]]; then
+			screensaver_effects_reload_shell || failed=true
+		else
+			omarchy-shell shell reloadConfig >/dev/null || failed=true
+		fi
+	fi
+	if [[ $failed == false ]]; then
+		screensaver_effects_wait_for_removal_convergence || failed=true
+	fi
 	screensaver_effects_verify_migration_restore "$backup" || failed=true
 	if [[ $failed == true ]]; then
-		screensaver_effects_mark_recovery migrate 'migration rollback could not restore exact plugin, bar, menu, and directory state'
+		if ! screensaver_effects_mark_recovery migrate 'migration rollback could not restore exact plugin, bar, menu, and directory state'; then
+			printf 'Recovery: could not publish migration rollback evidence; pending state was retained.\n' >&2
+		fi
+		return 1
+	fi
+	if [[ $SCREENSAVER_EFFECTS_RECOVERY_EVIDENCE_REQUIRED == true || -e $SCREENSAVER_EFFECTS_RECOVERY || -L $SCREENSAVER_EFFECTS_RECOVERY ]]; then
+		if [[ ! -e $SCREENSAVER_EFFECTS_RECOVERY && ! -L $SCREENSAVER_EFFECTS_RECOVERY ]]; then
+			if ! screensaver_effects_mark_recovery migrate 'inner migration activation recovery evidence could not be cleared safely'; then
+				printf 'Recovery: could not publish migration recovery evidence; pending state was retained.\n' >&2
+			fi
+		fi
 		return 1
 	fi
 	rm -f -- "$SCREENSAVER_EFFECTS_PENDING" "$SCREENSAVER_EFFECTS_RECOVERY"

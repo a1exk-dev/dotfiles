@@ -25,6 +25,8 @@ Item {
   readonly property bool idleEnabled: stayAwakeStateLoaded && !stayAwake
   readonly property string screensaverClass: "org.omarchy.screensaver"
   readonly property string screensaverLauncherPath: decodeURIComponent(new URL(Qt.resolvedUrl("launch-screensaver")).pathname)
+  readonly property string dotfilesSourceIdentity: "9c0afa809f43fb7a3c95f0a5612e30b99e40b58aa0159632e3421b8e0fa72c67"
+  readonly property string dotfilesInstanceId: Date.now().toString(36) + "-" + Math.random().toString(36).slice(2)
 
   property bool stayAwake: false
   property bool stayAwakeStateLoaded: false
@@ -205,6 +207,8 @@ Item {
 
   function statusJson() {
     return JSON.stringify({
+      dotfilesInstanceId: root.dotfilesInstanceId,
+      dotfilesSourceIdentity: root.dotfilesSourceIdentity,
       enabled: root.idleEnabled,
       stayAwake: root.stayAwake,
       stayAwakeStateLoaded: root.stayAwakeStateLoaded,
