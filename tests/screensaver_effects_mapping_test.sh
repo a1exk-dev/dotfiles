@@ -360,12 +360,12 @@ if [[ ${1-} == monitors && ${2-} == -j ]]; then
 	exit 0
 fi
 if [[ ${1-} == dispatch && ${2-} == hl.dsp.exec_cmd* ]]; then
-	exit 1
-fi
-if [[ ${1-} == dispatch && ${2-} == exec ]]; then
-	bash -c "${6-}" >/dev/null 2>&1 &
+	[[ ${2-} =~ ^hl\.dsp\.exec_cmd\((.*)\)$ ]] || exit 1
+	command=$(jq -er "if type == \"string\" then . else error(\"expected JSON string\") end" <<<"${BASH_REMATCH[1]}") || exit 1
+	bash -c "$command" >/dev/null 2>&1 &
 	exit 0
 fi
+if [[ ${1-} == dispatch && ${2-} == exec ]]; then exit 1; fi
 exit 0'
 	cp /usr/bin/sleep "$FIXTURE_ROOT/ttfx"
 	"$FIXTURE_ROOT/ttfx" 30 &

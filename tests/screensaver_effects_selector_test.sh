@@ -108,10 +108,14 @@ while :; do
 done'
 	make_fake hyprctl '
 printf "hyprctl|%s\n" "$*" >>"$DOTFILES_TEST_CALL_LOG"
-if [[ ${1-} == dispatch && ${2-} == hl.dsp.exec_cmd* ]]; then exit 1; fi
-if [[ ${1-} == dispatch && ${2-} == exec ]]; then
-	bash -c "${6-}" >/dev/null 2>&1 &
+if [[ ${1-} == dispatch && ${2-} == hl.dsp.exec_cmd* ]]; then
+	[[ ${2-} =~ ^hl\.dsp\.exec_cmd\((.*)\)$ ]] || exit 1
+	command=$(jq -er "if type == \"string\" then . else error(\"expected JSON string\") end" <<<"${BASH_REMATCH[1]}") || exit 1
+	bash -c "$command" >/dev/null 2>&1 &
 	exit 0
+fi
+if [[ ${1-} == dispatch && ${2-} == exec ]]; then
+	exit 1
 fi
 exit 0'
 }

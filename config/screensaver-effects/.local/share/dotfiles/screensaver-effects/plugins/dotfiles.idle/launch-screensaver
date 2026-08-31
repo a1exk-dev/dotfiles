@@ -150,10 +150,10 @@ if ((${#monitors[@]} == 0)); then
 fi
 
 hypr_exec() {
-	local command
+	local command lua_command
 	printf -v command '%q ' "$@"
-	hyprctl dispatch "hl.dsp.exec_cmd([[$command]])" >/dev/null 2>&1 ||
-		hyprctl dispatch exec -- bash -lc "$command" >/dev/null 2>&1
+	lua_command=$(jq -Rn --arg command "$command" '$command') || return 1
+	hyprctl dispatch "hl.dsp.exec_cmd($lua_command)" >/dev/null 2>&1
 }
 
 wait_for_screensaver_window() {

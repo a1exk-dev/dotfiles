@@ -34,11 +34,11 @@ Reason: Omarchy's generic clone routing does not cover consumers that read the s
 
 ## Carry screensaver overrides through Hyprland dispatch
 
-Applies when: A user-owned Omarchy screensaver launcher must pass a private command or environment into terminals started through `hyprctl dispatch exec`.
+Applies when: A user-owned Omarchy screensaver launcher must pass a private command or environment into terminals started through Hyprland's Lua dispatcher.
 
-Guidance: Put the private command or environment in the dispatched terminal payload. An environment change applied only to the launcher process does not cross the compositor dispatch. Verify that the launched terminal resolves the intended command while session-wide command resolution remains unchanged.
+Guidance: Put the private command or environment in the dispatched terminal payload. An environment change applied only to the launcher process does not cross the compositor dispatch. Pass dynamic `hl.dsp.exec_cmd` payloads as quoted Lua strings; do not interpolate shell commands into Lua `[[...]]` strings because Bash conditionals contain the same closing delimiter. Verify that the launched terminal resolves the intended command while session-wide command resolution remains unchanged.
 
-Reason: Hyprland, not the launcher process, starts the terminal after receiving the dispatch command.
+Reason: Hyprland, not the launcher process, starts the terminal after receiving and parsing the dispatch command as Lua. An unescaped Bash `]]` closes a Lua long string before Hyprland can launch the terminal.
 
 ## Select themed ttfx effects explicitly
 

@@ -133,11 +133,11 @@ else
 fi
 
 declare -A source_hashes=(
-	[.local/libexec/dotfiles/screensaver-effects-selector]=dc8909a347d8b47679c1cb24e0e6c9b44041a73f80d246ecfbbaba9fb7d79eb2
+	[.local/libexec/dotfiles/screensaver-effects-selector]=d0c894345e660063bcd4aef70a35040dfb74546a96412fbe182c1d0f3bad60a6
 	[.local/share/dotfiles/screensaver-effects/plugins/dotfiles.idle/IdleModel.js]=58226a67d5fc2f33b1a23b55cb32764a8b2091cc94c4d02af1b67f369440b9b8
-	[.local/share/dotfiles/screensaver-effects/plugins/dotfiles.idle/Service.qml]=9cd39779605c71ae2fd2edd41326cb6f97c242b42f8e5ef546a424f252b0e3c8
+	[.local/share/dotfiles/screensaver-effects/plugins/dotfiles.idle/Service.qml]=222d9dc9ac02bb56ea2f2f56c5e81ad9cf901b45c91c5628180bbdf7ea504248
 	[.local/share/dotfiles/screensaver-effects/plugins/dotfiles.idle/bin/ttfx]=823226321fd69cc4e39db88103c08713469c0ab0d3521ad393708df1d78bc61e
-	[.local/share/dotfiles/screensaver-effects/plugins/dotfiles.idle/launch-screensaver]=eefb3625b572106c9d59cb3da2da3c073c930d49e40609cdab3e9f0ad56b999e
+	[.local/share/dotfiles/screensaver-effects/plugins/dotfiles.idle/launch-screensaver]=787332166ac0657f7abea5dc108cad9c200b64469c46a09c78cdd9b12d734651
 	[.local/share/dotfiles/screensaver-effects/plugins/dotfiles.idle/manifest.json]=364274a35801ce043bdd725e5ed8e03f9e8134b05c9515985e9f6cc089980cb0
 	[.local/share/dotfiles/screensaver-effects/plugins/dotfiles.indicators/Indicators.qml]=6943c7a0678858baa0ec4e36049dc6d3646307fee727b3bbe5b158e73ec3b29b
 	[.local/share/dotfiles/screensaver-effects/plugins/dotfiles.indicators/manifest.json]=165028a5f28d42031c5f28954f4f9fca1c24238a386a0718a7967826e6ee3d99
