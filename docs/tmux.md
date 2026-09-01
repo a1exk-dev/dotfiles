@@ -2,18 +2,21 @@
 
 # Tmux
 
-The `tmux` Stow package owns two leaf targets:
+The `tmux` Stow package owns three leaf targets:
 
 - `~/.config/tmux/tmux.conf`, linked from `config/tmux/.config/tmux/tmux.conf`
 - `~/.local/libexec/dotfiles/tmux-starter`, linked from `config/tmux/.local/libexec/dotfiles/tmux-starter`
+- `~/.local/libexec/dotfiles/tmux-stop-orphaned-nvim`, linked from `config/tmux/.local/libexec/dotfiles/tmux-stop-orphaned-nvim`
 
 The tracked configuration is a complete replacement based on `/usr/share/omarchy/config/tmux/tmux.conf`. The packaged Omarchy file stays read-only. The active configuration does not source a drop-in or a second baseline copy.
 
-The package does not manage the tmux server, sessions, panes, logs, or other runtime state.
+The package owns the configuration and helper sources. Tmux owns its server, sessions, panes, logs, and other runtime state; the user systemd manager owns each transient cleanup service.
 
 ## Requirements
 
 The package requires the official Arch `tmux`, `fzf`, and `less` packages. The generated keybinding-help popup runs `less -R`. The Dotfiles wizard lists anything missing in the Stow plan and installs it through Omarchy after confirmation.
+
+Orphaned Neovim cleanup also requires `systemd-run`, a running user systemd manager, and util-linux pidfd support through `getino --pidfs` and `kill PID:inode`.
 
 The `bash` Stow package depends on `tmux`, so selecting `bash` includes both packages.
 
@@ -75,6 +78,12 @@ After a confirmed kill, the starter refreshes the session list. A declined kill 
 
 The Bash wrapper reports a missing or non-executable private helper. The starter reports a missing or non-executable `/usr/bin/tmux` or `/usr/bin/fzf`.
 
+## Orphaned Neovim cleanup
+
+When a tmux pane exits or is killed, or a window is removed, tmux submits the cleanup helper to a collected transient user service. On a final-session exit, tmux keeps its empty server running until that submission succeeds, then stops the server.
+
+After a short grace period, the helper stops only an `nvim --embed` process in a `tmux-spawn-*.scope` whose standard streams all refer to deleted terminals. It sends `TERM` through the process's pidfd identity, waits one second, and sends `KILL` only if the same process still qualifies. Active Neovim processes and other processes are left unchanged.
+
 ## Apply
 
 Start the Dotfiles wizard:
@@ -83,7 +92,7 @@ Start the Dotfiles wizard:
 make
 ```
 
-Choose `Apply Stow packages`. Selecting `bash` includes the `tmux` dependency. Selecting `tmux` by itself links the complete configuration and private starter. The bare-command wrapper belongs to Bash.
+Choose `Apply Stow packages`. Selecting `bash` includes the `tmux` dependency. Selecting `tmux` by itself links the complete configuration and both private helpers. The bare-command wrapper belongs to Bash.
 
 If a pre-existing `~/.config/tmux/tmux.conf` is a regular file, follow [Pre-existing tmux configuration](stow.md#pre-existing-tmux-configuration) before applying the package. Do not use `Migrate existing target` or `stow --adopt` for this file because the package contains the complete tracked configuration.
 
@@ -91,11 +100,13 @@ Applying the package does not reload an existing server. Reload it deliberately 
 
 ## Validation
 
-`Apply Stow packages` checks the starter syntax and executable mode:
+`Apply Stow packages` checks both helpers' syntax and executable mode:
 
 ```bash
 sh -n ~/.local/libexec/dotfiles/tmux-starter
 test -x ~/.local/libexec/dotfiles/tmux-starter
+bash -n ~/.local/libexec/dotfiles/tmux-stop-orphaned-nvim
+test -x ~/.local/libexec/dotfiles/tmux-stop-orphaned-nvim
 ```
 
 The configuration validator creates a temporary tmux socket, loads the complete configuration there, and removes the isolated server and socket directory afterward. It does not load the candidate configuration into the default tmux server.
@@ -121,7 +132,7 @@ An equivalent manual check is:
 )
 ```
 
-Every tmux command in this check names the temporary socket with `-S`. Use `Package status` in the Dotfiles wizard to confirm that both package targets are linked.
+Every tmux command in this check names the temporary socket with `-S`. Use `Package status` in the Dotfiles wizard to confirm that all three package targets are linked.
 
 ## Omarchy writes and updates
 
@@ -143,7 +154,7 @@ Do not use `omarchy refresh tmux` as a local reset while the package is linked. 
 
 The wizard blocks `tmux` package removal while the linked `bash` package depends on it. Remove `bash` first if you want to unlink tmux.
 
-Removing `bash` leaves the `tmux` package linked. Removing `tmux` unlinks both the configuration and starter. It leaves `~/.config/tmux/tmux.conf` absent and keeps the tracked sources in the repository.
+Removing `bash` leaves the `tmux` package linked. Removing `tmux` unlinks the configuration and both helpers. It leaves `~/.config/tmux/tmux.conf` absent and keeps the tracked sources in the repository.
 
 Removal leaves the Arch `tmux`, `fzf`, and `less` packages, migration backups, servers, sessions, panes, logs, and other runtime state untouched. The cleanup report names this restoration command without running it:
 

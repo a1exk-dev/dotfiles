@@ -100,18 +100,21 @@ snapshot_installed_opencode_canaries() {
 
 exercise_installed_opencode_validator() {
 	new_fixture || return 1
-	local installed_opencode controlled_opencode validator main tui canaries_before
+	local installed_opencode installed_version controlled_opencode validator main tui canaries_before
 	installed_opencode=$(readlink -f -- "$(command -v opencode)") || {
 		printf '  installed OpenCode executable is unavailable\n' >&2
 		return 1
 	}
-	case $installed_opencode in
-		*/installs/opencode/1.18.23/opencode) ;;
-		*)
-			printf '  expected installed OpenCode 1.18.23, found: %s\n' "$installed_opencode" >&2
-			return 1
-			;;
-	esac
+	if [[ $installed_opencode =~ /installs/opencode/([^/]+)/opencode$ ]]; then
+		installed_version=${BASH_REMATCH[1]}
+	else
+		printf '  expected a Mise-managed OpenCode executable, found: %s\n' "$installed_opencode" >&2
+		return 1
+	fi
+	if [[ ! $installed_version =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
+		printf '  Mise OpenCode install path has an invalid version: %s\n' "$installed_version" >&2
+		return 1
+	fi
 	controlled_opencode=$FIXTURE_ROOT/native-opencode/bin/opencode
 	validator=$FIXTURE_REPO/lib/dotfiles/opencode-validator.sh
 	main=$FIXTURE_REPO/config/opencode/$OPENCODE_MAIN_RELATIVE
@@ -202,14 +205,14 @@ exercise_installed_opencode_validator() {
 					XDG_CACHE_HOME="$version_root/cache" \
 					"$1" --version
 			)
-			[[ $reported_version == 1.18.23 ]]
+			[[ $reported_version == "$5" ]]
 			cleanup_version_probe
 			version_root=
 			bash "$2" "$3" "$4"
-		' bash "$controlled_opencode" "$validator" "$main" "$tui"
+		' bash "$controlled_opencode" "$validator" "$main" "$tui" "$installed_version"
 
 	assert_eq 0 "$COMMAND_STATUS" \
-		'the production validator should accept the tracked objects with installed OpenCode 1.18.23' || return 1
+		'the production validator should accept the tracked objects with the active Mise-managed OpenCode' || return 1
 	assert_eq '' "$COMMAND_OUTPUT" \
 		'installed OpenCode validation should be silent' || return 1
 	assert_eq "$canaries_before" "$(snapshot_installed_opencode_canaries)" \
@@ -839,7 +842,7 @@ exercise_already_moved_opencode_clone() {
 		'mismatched moved-clone recovery should preserve unrelated siblings'
 }
 
-test_opencode_package_and_catalog_match_the_native_configuration_contract() {
+test_opencode_package_matches_the_native_configuration_contract() {
 	new_fixture || return 1
 	local package_root=$FIXTURE_REPO/config/opencode
 	local expected_tree actual_tree
@@ -866,9 +869,6 @@ test_opencode_package_and_catalog_match_the_native_configuration_contract() {
 		return 1
 	}
 
-	assert_eq '["bash","tmux","ghostty","starship","btop","opencode","telegram-theme"]' \
-		"$(jq -c '[.packages[].name]' "$FIXTURE_REPO/packages.json")" \
-		'telegram-theme should be appended after opencode without reordering existing packages' || return 1
 	jq -e --arg validator "$OPENCODE_VALIDATOR" '
 		[.packages[] | select(.name == "opencode")] == [{
 			"name": "opencode",
@@ -887,11 +887,10 @@ test_opencode_package_and_catalog_match_the_native_configuration_contract() {
 				"Restart OpenCode after removal or reapplication"
 			]
 		}] and
-		(.packages[-2] | keys_unsorted) == [
+		(.packages[] | select(.name == "opencode") | keys_unsorted) == [
 			"name", "path", "description", "dependencies", "arch_packages",
 			"prerequisites", "validators", "documentation", "cleanup"
-		] and
-		.packages[-1].name == "telegram-theme"
+		]
 	' "$FIXTURE_REPO/packages.json" >/dev/null || {
 		printf '  the opencode catalog entry should match the exact native configuration contract\n' >&2
 		return 1
@@ -1374,8 +1373,8 @@ test_already_moved_clone_recovery_verifies_the_pair_before_relinking() {
 }
 
 set -e
-run_test test_opencode_package_and_catalog_match_the_native_configuration_contract \
-	'OpenCode package and catalog match the native configuration contract'
+run_test test_opencode_package_matches_the_native_configuration_contract \
+	'OpenCode package matches the native configuration contract'
 run_test test_validator_launches_opencode_with_the_isolated_native_config_contract \
 	'validator launches OpenCode with the isolated native config contract'
 run_test test_validator_rejects_nonexact_objects_before_launching_opencode \

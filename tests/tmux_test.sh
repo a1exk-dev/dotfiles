@@ -3,6 +3,7 @@
 source "$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)/support/test_helper.sh"
 
 readonly TMUX_STARTER_RELATIVE=.local/libexec/dotfiles/tmux-starter
+readonly TMUX_NVIM_CLEANUP_RELATIVE=.local/libexec/dotfiles/tmux-stop-orphaned-nvim
 readonly TMUX_CONFIG_RELATIVE=.config/tmux/tmux.conf
 
 assert_excludes() {
@@ -17,7 +18,7 @@ assert_excludes() {
 	fi
 }
 
-start_isolated_tmux_config() {
+prepare_isolated_tmux_config() {
 	local start_directory=${1:-}
 
 	new_fixture
@@ -29,18 +30,56 @@ start_isolated_tmux_config() {
 	if [[ -z $start_directory ]]; then
 		start_directory=$ISOLATED_TMUX_HOME
 	fi
+	ISOLATED_TMUX_START_DIRECTORY=$start_directory
+}
+
+launch_isolated_tmux_config() {
+	local pane_command=${1:-/usr/bin/sleep 300}
+	local -a tmux_environment=(
+		HOME="$ISOLATED_TMUX_HOME"
+		XDG_CONFIG_HOME="$FIXTURE_CONFIG"
+	)
+	if [[ -n ${ISOLATED_TMUX_SYSTEMD_RUN_LOG-} ]]; then
+		tmux_environment+=(TMUX_SYSTEMD_RUN_LOG="$ISOLATED_TMUX_SYSTEMD_RUN_LOG")
+	fi
+	if [[ -n ${ISOLATED_TMUX_SYSTEMD_RUN_FAILURE-} ]]; then
+		tmux_environment+=(TMUX_SYSTEMD_RUN_FAILURE="$ISOLATED_TMUX_SYSTEMD_RUN_FAILURE")
+	fi
+
+	if [[ -n ${ISOLATED_TMUX_SYSTEMD_RUN-} ]]; then
+		BWRAP_EXTRA_ARGS+=(--ro-bind "$ISOLATED_TMUX_SYSTEMD_RUN" /usr/bin/systemd-run)
+		run_in_sandbox "$ISOLATED_TMUX_START_DIRECTORY" "$FIXTURE_BIN:/usr/bin:/bin" \
+			env -u TMUX -u TMUX_PANE "${tmux_environment[@]}" \
+			/usr/bin/tmux -S "$ISOLATED_TMUX_SOCKET" -f "$ISOLATED_TMUX_CONFIG" \
+				new-session -d -s config-test -c "$ISOLATED_TMUX_START_DIRECTORY" "$pane_command"
+		local status=$COMMAND_STATUS
+		printf '%s\n' "$COMMAND_OUTPUT" >"$ISOLATED_TMUX_LOG"
+		if ((status != 0)); then
+			printf '  isolated tmux failed to load %s:\n%s\n' \
+				"$ISOLATED_TMUX_CONFIG" "$COMMAND_OUTPUT" >&2
+			cleanup_isolated_tmux_config
+			return "$status"
+		fi
+		return 0
+	fi
 
 	if ! env -u TMUX -u TMUX_PANE \
-		HOME="$ISOLATED_TMUX_HOME" \
-		XDG_CONFIG_HOME="$FIXTURE_CONFIG" \
+			"${tmux_environment[@]}" \
 		tmux -S "$ISOLATED_TMUX_SOCKET" -f "$ISOLATED_TMUX_CONFIG" \
-			new-session -d -s config-test -c "$start_directory" 'sleep 300' \
+			new-session -d -s config-test -c "$ISOLATED_TMUX_START_DIRECTORY" "$pane_command" \
 			>"$ISOLATED_TMUX_LOG" 2>&1; then
 		printf '  isolated tmux failed to load %s:\n%s\n' \
 			"$ISOLATED_TMUX_CONFIG" "$(<"$ISOLATED_TMUX_LOG")" >&2
 		cleanup_isolated_tmux_config
 		return 1
 	fi
+}
+
+start_isolated_tmux_config() {
+	local start_directory=${1:-}
+
+	prepare_isolated_tmux_config "$start_directory"
+	launch_isolated_tmux_config
 }
 
 isolated_tmux() {
@@ -54,12 +93,20 @@ cleanup_isolated_tmux_config() {
 	local status=0
 
 	if [[ -n ${ISOLATED_TMUX_SOCKET-} && -S $ISOLATED_TMUX_SOCKET ]]; then
-		if ! isolated_tmux kill-server >/dev/null 2>&1; then
+		if ! isolated_tmux \
+			set-hook -gu pane-exited \; \
+			set-hook -gu pane-died \; \
+			set-hook -gu after-kill-pane \; \
+			set-hook -gu window-unlinked \; \
+			set-hook -gu session-closed \; \
+			kill-server >/dev/null 2>&1; then
 			printf '  failed to stop isolated tmux socket %s\n' "$ISOLATED_TMUX_SOCKET" >&2
 			status=1
 		fi
 	fi
-	unset ISOLATED_TMUX_SOCKET ISOLATED_TMUX_HOME ISOLATED_TMUX_LOG ISOLATED_TMUX_CONFIG
+	unset ISOLATED_TMUX_SOCKET ISOLATED_TMUX_HOME ISOLATED_TMUX_LOG ISOLATED_TMUX_CONFIG \
+		ISOLATED_TMUX_START_DIRECTORY ISOLATED_TMUX_SYSTEMD_RUN ISOLATED_TMUX_SYSTEMD_RUN_LOG \
+		ISOLATED_TMUX_SYSTEMD_RUN_FAILURE
 	return "$status"
 }
 
@@ -490,6 +537,327 @@ assert_approved_archived_behavior_is_absent() {
 test_config_omits_rejected_archived_behavior() {
 	with_isolated_tmux_config assert_approved_archived_behavior_is_absent
 }
+
+test_isolated_tmux_teardown_disables_cleanup_hooks() (
+	prepare_isolated_tmux_config
+	trap 'cleanup_isolated_tmux_config >/dev/null 2>&1 || true' EXIT
+	local helper=$ISOLATED_TMUX_HOME/$TMUX_NVIM_CLEANUP_RELATIVE
+	local call_log=$FIXTURE_TMP/tmux-teardown-helper-calls
+	local systemd_run_log
+	configure_tmux_systemd_run_fixture
+	systemd_run_log=$ISOLATED_TMUX_SYSTEMD_RUN_LOG
+	write_tmux_cleanup_fixture "$helper" "$call_log"
+
+	launch_isolated_tmux_config || return 1
+	cleanup_isolated_tmux_config || return 1
+	if [[ -e $systemd_run_log || -e $call_log ]]; then
+		printf '  isolated tmux teardown invoked the production cleanup path\n' >&2
+		return 1
+	fi
+)
+
+wait_for_tmux_nvim_test_path() {
+	local path=$1 attempt
+
+	for ((attempt = 0; attempt < 100; attempt++)); do
+		[[ -e $path ]] && return 0
+		/usr/bin/sleep 0.01
+	done
+	printf '  timed out waiting for tmux Neovim fixture: %s\n' "$path" >&2
+	return 1
+}
+
+wait_for_tmux_cleanup_calls() {
+	local call_log=$1 expected=$2 attempt
+	local -a calls=()
+
+	for ((attempt = 0; attempt < 200; attempt++)); do
+		calls=()
+		if [[ -e $call_log ]]; then
+			mapfile -t calls <"$call_log"
+			if (( ${#calls[@]} >= expected )); then
+				return 0
+			fi
+		fi
+		/usr/bin/sleep 0.01
+	done
+	printf '  timed out waiting for %s cleanup calls: %s\n' "$expected" "$call_log" >&2
+	return 1
+}
+
+write_tmux_cleanup_fixture() {
+	local helper=$1 call_log=$2
+
+	mkdir -p "${helper%/*}"
+
+	printf '#!/usr/bin/bash\n/usr/bin/sleep 0.01\nprintf "called\\n" >>%q\n' \
+		"$call_log" >"$helper"
+	chmod 0755 "$helper"
+}
+
+configure_tmux_systemd_run_fixture() {
+	ISOLATED_TMUX_SYSTEMD_RUN=$FIXTURE_BIN/systemd-run
+	ISOLATED_TMUX_SYSTEMD_RUN_LOG=$FIXTURE_TMP/tmux-systemd-run-calls
+	ISOLATED_TMUX_SYSTEMD_RUN_FAILURE=$FIXTURE_TMP/tmux-systemd-run-failure
+
+	make_fake systemd-run '
+	{
+		printf "systemd-run"
+		printf " [%q]" "$@"
+		printf "\n"
+	} >>"$TMUX_SYSTEMD_RUN_LOG"
+	[[ ! -e ${TMUX_SYSTEMD_RUN_FAILURE-} ]] || exit 42
+	command=${!#}
+	/usr/bin/nohup /usr/bin/bash -c "/usr/bin/sleep 0.5; \"\$1\"" \
+		 systemd-cleanup "$command" >/dev/null 2>&1 &
+	exit 0'
+}
+
+test_config_dispatches_cleanup_for_natural_and_command_pane_removal() (
+	prepare_isolated_tmux_config
+	trap 'cleanup_isolated_tmux_config >/dev/null 2>&1 || true' EXIT
+	local helper=$ISOLATED_TMUX_HOME/$TMUX_NVIM_CLEANUP_RELATIVE
+	local call_log=$FIXTURE_TMP/tmux-nvim-pane-removal-calls
+	configure_tmux_systemd_run_fixture
+	write_tmux_cleanup_fixture "$helper" "$call_log"
+
+	launch_isolated_tmux_config || return 1
+	local -a panes=()
+	local pane_id
+	isolated_tmux split-window -d -t config-test:1 /usr/bin/true || return 1
+	wait_for_tmux_cleanup_calls "$call_log" 1 || return 1
+	/usr/bin/sleep 0.1
+	mapfile -t panes <"$call_log"
+	assert_eq 1 "${#panes[@]}" \
+		'a natural non-last pane exit should dispatch exactly one cleanup' || return 1
+
+	isolated_tmux split-window -d -t config-test:1 /usr/bin/sleep 300 || return 1
+	mapfile -t panes < <(isolated_tmux list-panes -t config-test:1 -F $'#{pane_id}\t#{pane_pid}')
+	pane_id=${panes[1]%%$'\t'*}
+	isolated_tmux kill-pane -t "$pane_id" || return 1
+	wait_for_tmux_cleanup_calls "$call_log" 2 || return 1
+	/usr/bin/sleep 0.1
+	mapfile -t panes <"$call_log"
+	assert_eq 2 "${#panes[@]}" \
+		'a command-driven kill-pane with another pane remaining should dispatch exactly one cleanup'
+
+	isolated_tmux new-session -d -s secondary /usr/bin/sleep 300 || return 1
+	pane_id=$(isolated_tmux display-message -p -t secondary:1 '#{pane_id}') || return 1
+	isolated_tmux kill-pane -t "$pane_id" || return 1
+	wait_for_tmux_cleanup_calls "$call_log" 4 || return 1
+	/usr/bin/sleep 0.1
+	mapfile -t panes <"$call_log"
+	assert_eq 4 "${#panes[@]}" \
+		'a last pane kill in a non-final session should dispatch through after-kill-pane and window-unlinked'
+)
+
+test_config_dispatches_cleanup_for_kill_window_and_nonfinal_session() (
+	prepare_isolated_tmux_config
+	trap 'cleanup_isolated_tmux_config >/dev/null 2>&1 || true' EXIT
+	local helper=$ISOLATED_TMUX_HOME/$TMUX_NVIM_CLEANUP_RELATIVE
+	local call_log=$FIXTURE_TMP/tmux-command-removal-calls
+	local window_id
+	configure_tmux_systemd_run_fixture
+	write_tmux_cleanup_fixture "$helper" "$call_log"
+
+	launch_isolated_tmux_config || return 1
+	local hooks
+	hooks=$(isolated_tmux show-hooks -g) || return 1
+	assert_contains "$hooks" 'window-unlinked[0]' \
+		'window-unlinked should submit cleanup for command-driven window removal' || return 1
+	isolated_tmux \
+		set-hook -gu pane-exited \; \
+		set-hook -gu pane-died \; \
+		set-hook -gu after-kill-pane || return 1
+	window_id=$(isolated_tmux new-window -d -P -F '#{window_id}' -t config-test /usr/bin/sleep 300) || return 1
+	isolated_tmux kill-window -t "$window_id" || return 1
+	wait_for_tmux_cleanup_calls "$call_log" 1 || return 1
+	/usr/bin/sleep 0.1
+	local -a calls=()
+	mapfile -t calls <"$call_log"
+	assert_eq 1 "${#calls[@]}" \
+		'kill-window with its session remaining should dispatch exactly one cleanup' || return 1
+
+	isolated_tmux new-session -d -s secondary /usr/bin/sleep 300 || return 1
+	isolated_tmux kill-session -t secondary || return 1
+	wait_for_tmux_cleanup_calls "$call_log" 2 || return 1
+	/usr/bin/sleep 0.1
+	mapfile -t calls <"$call_log"
+	assert_eq 2 "${#calls[@]}" \
+		'kill-session with another session remaining should dispatch exactly one cleanup'
+)
+
+test_config_hands_last_pane_exit_to_transient_user_systemd_once() (
+	prepare_isolated_tmux_config
+	trap 'cleanup_isolated_tmux_config >/dev/null 2>&1 || true' EXIT
+	local helper=$ISOLATED_TMUX_HOME/$TMUX_NVIM_CLEANUP_RELATIVE
+	local call_log=$FIXTURE_TMP/tmux-nvim-last-pane-calls
+	configure_tmux_systemd_run_fixture
+	write_tmux_cleanup_fixture "$helper" "$call_log"
+	ISOLATED_TMUX_SOCKET="$FIXTURE_TMP/tmux\"; touch socket-was-evaluated; #"
+
+	launch_isolated_tmux_config || return 1
+	local pane_pid server_pid
+	server_pid=$(isolated_tmux display-message -p '#{pid}') || return 1
+	pane_pid=$(isolated_tmux display-message -p -t config-test:1 '#{pane_pid}') || return 1
+	kill -TERM "$pane_pid" || return 1
+	for ((attempt = 0; attempt < 200; attempt++)); do
+		if ! kill -0 "$server_pid" 2>/dev/null; then
+			break
+		fi
+		/usr/bin/sleep 0.01
+	done
+	if kill -0 "$server_pid" 2>/dev/null; then
+		printf '  isolated tmux server survived its last pane exit\n' >&2
+		return 1
+	fi
+	if [[ -e $call_log ]]; then
+		printf '  delayed cleanup fixture ran before the tmux server exited\n' >&2
+		return 1
+	fi
+	wait_for_tmux_cleanup_calls "$call_log" 1 || return 1
+	local -a calls=()
+	mapfile -t calls <"$call_log"
+	assert_eq 1 "${#calls[@]}" \
+		'last-pane exit should dispatch exactly one cleanup after the tmux server exits' || return 1
+	local systemd_calls
+	systemd_calls=$(<"$ISOLATED_TMUX_SYSTEMD_RUN_LOG")
+	assert_eq 1 "$(awk 'END { print NR + 0 }' "$ISOLATED_TMUX_SYSTEMD_RUN_LOG")" \
+		'last-pane exit should submit exactly one transient cleanup service' || return 1
+	assert_contains "$systemd_calls" \
+		'systemd-run [--user] [--quiet] [--collect] [--no-block]' \
+		'last-pane cleanup should use one quiet collected transient user unit' || return 1
+	assert_excludes "$systemd_calls" '--unit' \
+		'last-pane cleanup should not request a persistent named unit' || return 1
+	if [[ -e $ISOLATED_TMUX_HOME/socket-was-evaluated ]]; then
+		printf '  hostile socket path was evaluated as shell code\n' >&2
+		return 1
+	fi
+)
+
+test_config_does_not_kill_server_when_transient_submission_fails() (
+	prepare_isolated_tmux_config
+	trap 'cleanup_isolated_tmux_config >/dev/null 2>&1 || true' EXIT
+	local helper=$ISOLATED_TMUX_HOME/$TMUX_NVIM_CLEANUP_RELATIVE
+	local call_log=$FIXTURE_TMP/tmux-nvim-failed-handoff-calls
+	configure_tmux_systemd_run_fixture
+	write_tmux_cleanup_fixture "$helper" "$call_log"
+	touch "$ISOLATED_TMUX_SYSTEMD_RUN_FAILURE"
+
+	launch_isolated_tmux_config || return 1
+	local pane_pid server_pid
+	server_pid=$(isolated_tmux display-message -p '#{pid}') || return 1
+	pane_pid=$(isolated_tmux display-message -p -t config-test:1 '#{pane_pid}') || return 1
+	kill -TERM "$pane_pid" || return 1
+	wait_for_tmux_cleanup_calls "$ISOLATED_TMUX_SYSTEMD_RUN_LOG" 1 || return 1
+	/usr/bin/sleep 0.1
+	if ! kill -0 "$server_pid" 2>/dev/null; then
+		printf '  failed transient submission should leave the empty tmux server running\n' >&2
+		return 1
+	fi
+	if [[ -e $call_log ]]; then
+		printf '  failed transient submission should not run the cleanup helper\n' >&2
+		return 1
+	fi
+)
+
+write_tmux_nvim_test_stat() {
+	local destination=$1 pid=$2 start_time=$3 field
+
+	{
+		printf '%s (nvim) S' "$pid"
+		for ((field = 4; field <= 21; field++)); do
+			printf ' 0'
+		done
+		printf ' %s\n' "$start_time"
+	} >"$destination"
+}
+
+make_tmux_nvim_proc_fixture() {
+	local pid=$1 fd2=$2
+	local process=$TMUX_NVIM_PROC_ROOT/$pid
+
+	mkdir -p "$process/fd"
+	write_tmux_nvim_test_stat "$process/stat" "$pid" "$((pid * 10))"
+	ln -s /usr/bin/nvim "$process/exe"
+	printf 'nvim\0--embed\0' >"$process/cmdline"
+	printf '0::/user.slice/user-1000.slice/tmux-spawn-fixture.scope\n' >"$process/cgroup"
+	ln -s '/dev/pts/7 (deleted)' "$process/fd/0"
+	ln -s '/dev/pts/7 (deleted)' "$process/fd/1"
+	ln -s "$fd2" "$process/fd/2"
+}
+
+stop_tmux_nvim_test_process_by_identity() {
+	local pid=$1 pidfd_inode=$2
+
+	[[ $pid =~ ^[0-9]+$ ]] || return 0
+	[[ $pidfd_inode =~ ^[0-9]+$ ]] || return 0
+	/usr/bin/kill --signal KILL -- "$pid:$pidfd_inode" 2>/dev/null || true
+}
+
+test_orphaned_nvim_cleanup_kills_orphan_and_leaves_active_process() (
+	new_fixture
+	local helper=$FIXTURE_REPO/config/tmux/$TMUX_NVIM_CLEANUP_RELATIVE
+	TMUX_NVIM_PROC_ROOT=$FIXTURE_ROOT/proc
+	mkdir -p "$TMUX_NVIM_PROC_ROOT"
+	local orphan_pid= active_pid= orphan_pidfd_inode= active_pidfd_inode=
+	local helper_pid= helper_pidfd_inode=
+	cleanup_tmux_nvim_test_processes() {
+		if [[ -n $helper_pid ]]; then
+			stop_tmux_nvim_test_process_by_identity "$helper_pid" "$helper_pidfd_inode"
+			wait "$helper_pid" 2>/dev/null || true
+		fi
+		stop_tmux_nvim_test_process_by_identity "$orphan_pid" "$orphan_pidfd_inode"
+		stop_tmux_nvim_test_process_by_identity "$active_pid" "$active_pidfd_inode"
+		for pid in "$orphan_pid" "$active_pid"; do
+			wait "$pid" 2>/dev/null || true
+		done
+	}
+	trap cleanup_tmux_nvim_test_processes EXIT
+
+	local orphan_ready=$FIXTURE_ROOT/orphan.ready active_ready=$FIXTURE_ROOT/active.ready
+	/usr/bin/bash -c 'trap "" TERM; : >"$1"; exec /usr/bin/sleep 300' bash "$orphan_ready" &
+	orphan_pid=$!
+	/usr/bin/bash -c ': >"$1"; exec /usr/bin/sleep 300' bash "$active_ready" &
+	active_pid=$!
+	wait_for_tmux_nvim_test_path "$orphan_ready" || return 1
+	wait_for_tmux_nvim_test_path "$active_ready" || return 1
+	orphan_pidfd_inode=$(/usr/bin/getino --pidfs "$orphan_pid") || return 1
+	active_pidfd_inode=$(/usr/bin/getino --pidfs "$active_pid") || return 1
+	make_tmux_nvim_proc_fixture "$orphan_pid" '/dev/pts/7 (deleted)'
+	make_tmux_nvim_proc_fixture "$active_pid" /dev/pts/7
+
+	DOTFILES_TMUX_PROC_ROOT=$TMUX_NVIM_PROC_ROOT "$helper" >"$FIXTURE_ROOT/helper.output" 2>&1 &
+	helper_pid=$!
+	helper_pidfd_inode=$(/usr/bin/getino --pidfs "$helper_pid") || return 1
+	local helper_status orphan_status
+	set +e
+	wait "$helper_pid"
+	helper_status=$?
+	helper_pid=
+	helper_pidfd_inode=
+	set -e
+	assert_eq 0 "$helper_status" 'cleanup should complete successfully' || return 1
+	local orphan_stat='' orphan_state=''
+	if [[ -r /proc/$orphan_pid/stat ]]; then
+		IFS= read -r orphan_stat <"/proc/$orphan_pid/stat" || true
+		orphan_state=${orphan_stat##*) }
+		orphan_state=${orphan_state%% *}
+	fi
+	if [[ -n $orphan_state && $orphan_state != Z ]]; then
+		printf '  cleanup left the orphaned Neovim fixture running: %s\n' "$orphan_pid" >&2
+		return 1
+	fi
+	set +e
+	wait "$orphan_pid" 2>/dev/null
+	orphan_status=$?
+	set -e
+	assert_eq 137 "$orphan_status" 'an exact orphan that ignores TERM should receive KILL after grace' || return 1
+	if [[ ! -r /proc/$active_pid/stat ]]; then
+		printf '  cleanup stopped an active Neovim fixture: %s\n' "$active_pid" >&2
+		return 1
+	fi
+)
 
 configure_tmux_starter_fakes() {
 	TMUX_SESSION_STATE=$FIXTURE_ROOT/tmux-sessions
@@ -1159,6 +1527,18 @@ run_test test_status_abbreviates_only_an_exact_home_prefix \
 	'status abbreviates only an exact home prefix'
 run_test test_config_omits_rejected_archived_behavior \
 	'config omits rejected archived behavior'
+run_test test_isolated_tmux_teardown_disables_cleanup_hooks \
+	'isolated tmux teardown disables production cleanup hooks'
+run_test test_config_dispatches_cleanup_for_natural_and_command_pane_removal \
+	'config dispatches cleanup for natural and command-driven pane removal'
+run_test test_config_dispatches_cleanup_for_kill_window_and_nonfinal_session \
+	'config dispatches cleanup for kill-window and non-final kill-session through window-unlinked'
+run_test test_config_hands_last_pane_exit_to_transient_user_systemd_once \
+	'config hands a last-pane exit to transient user systemd exactly once'
+run_test test_config_does_not_kill_server_when_transient_submission_fails \
+	'config does not kill the server when transient submission fails'
+run_test test_orphaned_nvim_cleanup_kills_orphan_and_leaves_active_process \
+	'orphaned Neovim cleanup kills one orphan and leaves one active process'
 run_test test_missing_exact_runtime_tools_fail_with_status_127 \
 	'missing exact runtime tools fail with status 127'
 run_test test_real_pane_and_unreadable_tty_refuse_nesting \

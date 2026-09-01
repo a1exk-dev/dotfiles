@@ -1,6 +1,8 @@
 #!/usr/bin/env bash
 
 DOTFILES_TEST_FAST_WALLPAPER_MAGICK=true
+DOTFILES_TEST_FAST_WALLPAPER_FILES=true
+DOTFILES_TEST_PARALLEL_LIMIT=${DOTFILES_TEST_PARALLEL_LIMIT:-21}
 source "$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)/support/test_helper.sh"
 
 test_inspect_reports_empty_invalid_intake_and_installed_theme_origins_read_only() {
@@ -19,6 +21,69 @@ test_inspect_reports_empty_invalid_intake_and_installed_theme_origins_read_only(
 	assert_contains "$COMMAND_OUTPUT" 'Tokyo Night [tokyo-night] (stock + user overlay)' 'Inspect should deduplicate overlay slugs' || return 1
 	assert_contains "$COMMAND_OUTPUT" 'Managed wallpapers: 0' 'Inspect should report an empty valid library' || return 1
 	assert_eq "$before" "$(find "$FIXTURE_REPO/wallpapers" -printf '%P|%y|%m|%s|%T@\n' | sort)" 'Inspect must be read-only'
+}
+
+test_fast_wallpaper_file_protocol_matches_cli_for_binary_read_and_missing_file() {
+	new_fixture
+	setup_wallpaper_fixture
+	local binary="$FIXTURE_REPO/wallpapers/inbox/binary.bin" control="${FIXTURE_REPO}/wallpapers/inbox/control"$'\b'.bin missing="$FIXTURE_REPO/wallpapers/inbox/missing.bin"
+	local prefix="$FIXTURE_TMP/wallpaper-protocol" fast_status normal_status
+	printf '\x00\xff\x01binary\n\x00' >"$binary"
+	printf 'control request\n' >"$control"
+	cat >>"$FIXTURE_REPO/lib/dotfiles/wizard.sh" <<'EOF'
+test_fast_wallpaper_file_protocol() {
+	local binary=$1 control=$2 missing=$3 prefix=$4 fast_status normal_status
+	if wallpaper_test_fast_files read "$binary" >"$prefix.fast-read" 2>"$prefix.fast-read.err"; then fast_status=0; else fast_status=$?; fi
+	if "$DOTFILES_TEST_REAL_NODE" "$WALLPAPER_FILES_HELPER" read "$binary" >"$prefix.normal-read" 2>"$prefix.normal-read.err"; then normal_status=0; else normal_status=$?; fi
+	printf '%s\n' "$fast_status" >"$prefix.fast-read.status"
+	printf '%s\n' "$normal_status" >"$prefix.normal-read.status"
+	if wallpaper_test_fast_files read "$control" >"$prefix.fast-control" 2>"$prefix.fast-control.err"; then fast_status=0; else fast_status=$?; fi
+	if "$DOTFILES_TEST_REAL_NODE" "$WALLPAPER_FILES_HELPER" read "$control" >"$prefix.normal-control" 2>"$prefix.normal-control.err"; then normal_status=0; else normal_status=$?; fi
+	printf '%s\n' "$fast_status" >"$prefix.fast-control.status"
+	printf '%s\n' "$normal_status" >"$prefix.normal-control.status"
+	if wallpaper_test_fast_files read "$missing" >"$prefix.fast-missing" 2>"$prefix.fast-missing.err"; then fast_status=0; else fast_status=$?; fi
+	if "$DOTFILES_TEST_REAL_NODE" "$WALLPAPER_FILES_HELPER" read "$missing" >"$prefix.normal-missing" 2>"$prefix.normal-missing.err"; then normal_status=0; else normal_status=$?; fi
+	printf '%s\n' "$fast_status" >"$prefix.fast-missing.status"
+	printf '%s\n' "$normal_status" >"$prefix.normal-missing.status"
+}
+EOF
+	run_wallpaper_operation "$FIXTURE_ROOT" test_fast_wallpaper_file_protocol "$binary" "$control" "$missing" "$prefix"
+	assert_eq 0 "$COMMAND_STATUS" 'fast wallpaper protocol parity operation should complete' || return 1
+	cmp -- "$prefix.fast-read" "$prefix.normal-read" || return 1
+	assert_eq 0 "$(<"$prefix.fast-read.status")" 'binary read should retain the CLI success status' || return 1
+	assert_eq 0 "$(<"$prefix.normal-read.status")" 'normal binary read should succeed' || return 1
+	assert_eq '' "$(<"$prefix.fast-read.err")" 'binary read should not create fast stderr' || return 1
+	assert_eq '' "$(<"$prefix.normal-read.err")" 'binary read should not create CLI stderr' || return 1
+	assert_eq "$(<"$prefix.normal-control.status")|$(<"$prefix.normal-control")|$(<"$prefix.normal-control.err")" \
+		"$(<"$prefix.fast-control.status")|$(<"$prefix.fast-control")|$(<"$prefix.fast-control.err")" \
+		'backspace-containing request path should preserve CLI status and streams' || return 1
+	cmp -- "$prefix.fast-missing" "$prefix.normal-missing" || return 1
+	cmp -- "$prefix.fast-missing.err" "$prefix.normal-missing.err" || return 1
+	assert_eq 1 "$(<"$prefix.fast-missing.status")" 'missing-file fast read should preserve its nonzero status' || return 1
+	assert_eq 1 "$(<"$prefix.normal-missing.status")" 'missing-file CLI read should fail' || return 1
+	assert_eq '' "$(<"$prefix.fast-missing")" 'missing-file fast read should not move stderr into stdout' || return 1
+	assert_contains "$(<"$prefix.fast-missing.err")" 'ENOENT' 'missing-file fast read should surface stderr diagnostics'
+}
+
+test_fast_wallpaper_server_start_failure_is_reported_without_a_fifo_wait() {
+	new_fixture
+	setup_wallpaper_fixture
+	local diagnostics="$FIXTURE_TMP/fast-server-start.err" status
+
+	if DOTFILES_TEST_FAST_SERVER_NODE="$FIXTURE_ROOT/missing-node" \
+		wallpaper_test_fast_shared_sandbox_start 2>"$diagnostics"; then
+		status=0
+	else
+		status=$?
+	fi
+	assert_eq 1 "$status" 'a failed bwrap Node server startup should return nonzero' || return 1
+	assert_contains "$(<"$diagnostics")" 'fast wallpaper sandbox server failed' \
+		'failed startup should close the request path and report the server failure' || return 1
+	assert_contains "$(<"$diagnostics")" 'missing-node' \
+		'failed startup should surface the captured Node stderr' || return 1
+	assert_eq '' "$WALLPAPER_TEST_FAST_SHARED_SANDBOX_PID" 'failed startup should release the shared sandbox PID' || return 1
+	assert_eq '||' "${WALLPAPER_TEST_FAST_SHARED_SANDBOX_DIRECTORY}|${WALLPAPER_TEST_FAST_SHARED_SANDBOX_REQUEST_FD}|${WALLPAPER_TEST_FAST_SHARED_SANDBOX_RESPONSE_FD}" \
+		'failed startup should close both transport descriptors and remove its sandbox resources'
 }
 
 test_gitkeep_is_not_an_intake_image_during_inspect_or_add_scan() {
@@ -498,23 +563,31 @@ test_git_commit_failure_rolls_back_add_and_preserves_unrelated_staging() {
 	assert_path_absent "$FIXTURE_STATE/dotfiles/wallpapers/pending.json" 'ordinary rollback should clear pending evidence'
 }
 
-run_test test_inspect_reports_empty_invalid_intake_and_installed_theme_origins_read_only 'Inspect reports coherent curation state without mutation'
-run_test test_gitkeep_is_not_an_intake_image_during_inspect_or_add_scan '.gitkeep is not treated as an Intake image'
-run_test test_add_assigns_exact_bytes_to_one_or_many_themes_then_deletes_intake 'Add materializes exact-byte assignments before intake deletion'
-run_test test_duplicate_add_reuses_identity_adds_only_missing_assignments_and_explicitly_cleans_intake 'Add reuses duplicate managed identity'
-run_test test_add_cancellation_invalid_theme_and_failure_preserve_intake_and_library 'Add preserves intake and prior library on cancellation or failure'
-run_test test_move_publishes_and_verifies_destination_before_source_removal 'Move verifies its destination before source removal'
-run_test test_remove_changes_one_assignment_and_strongly_confirms_final_identity_deletion 'Remove handles one and final assignments explicitly'
-run_test test_failed_rollback_blocks_then_next_command_recovers_and_stops 'curation interruption recovers prior assignments and intake before new work'
-run_test test_manager_adds_one_intake_inspects_details_and_defers_deployment_on_exit 'manager curates one image and offers separate deployment on exit'
-run_test test_manager_routes_move_and_final_assignment_remove_then_defers_deployment 'manager routes Move and final assignment Remove safely'
-run_test test_curation_rejects_repository_parent_symlinks_and_unsafe_source_themes 'curation rejects path traversal and indirect repository links'
-run_test test_user_theme_symlink_discovery_accepts_external_directory_targets_as_metadata 'user theme symlinks are discovered without path escape'
-run_test test_curation_sigterm_before_and_after_assignment_visibility_recovers_and_stops 'curation process interruption recovers staged and visible assignments'
-run_test test_pending_publication_failure_precedes_all_transaction_resources 'pending publication failure leaves no transaction preparation side effects'
-run_test test_preparing_intent_without_identity_retains_evidence_and_substituted_resources 'preparing intent without identity retains evidence and substituted resources'
-run_test test_curation_deletion_uses_quarantine_and_rejects_replacement 'curation deletion quarantines expected identity and preserves replacements'
-run_test test_add_creates_one_exact_hook_free_commit_and_preserves_unrelated_git_state 'Add creates one exact hook-free commit and preserves unrelated Git work'
-run_test test_exact_committed_duplicate_deletes_intake_without_empty_commit 'exact committed duplicate deletes Intake without an empty commit'
-run_test test_git_commit_failure_rolls_back_add_and_preserves_unrelated_staging 'ordinary Git commit failure rolls back Add and preserves unrelated staging'
+if [[ -n ${DOTFILES_TEST_ONLY:-} ]]; then
+	run_test "$DOTFILES_TEST_ONLY" "$DOTFILES_TEST_ONLY"
+	finish_tests
+	exit $?
+fi
+
+run_test_parallel test_inspect_reports_empty_invalid_intake_and_installed_theme_origins_read_only 'Inspect reports coherent curation state without mutation'
+run_test_parallel test_fast_wallpaper_file_protocol_matches_cli_for_binary_read_and_missing_file 'fast wallpaper protocol preserves CLI bytes, stderr, and status'
+run_test_parallel test_fast_wallpaper_server_start_failure_is_reported_without_a_fifo_wait 'fast wallpaper server startup failure is deterministic and diagnostic'
+run_test_parallel test_gitkeep_is_not_an_intake_image_during_inspect_or_add_scan '.gitkeep is not treated as an Intake image'
+run_test_parallel test_add_assigns_exact_bytes_to_one_or_many_themes_then_deletes_intake 'Add materializes exact-byte assignments before intake deletion'
+run_test_parallel test_duplicate_add_reuses_identity_adds_only_missing_assignments_and_explicitly_cleans_intake 'Add reuses duplicate managed identity'
+run_test_parallel test_add_cancellation_invalid_theme_and_failure_preserve_intake_and_library 'Add preserves intake and prior library on cancellation or failure'
+run_test_parallel test_move_publishes_and_verifies_destination_before_source_removal 'Move verifies its destination before source removal'
+run_test_parallel test_remove_changes_one_assignment_and_strongly_confirms_final_identity_deletion 'Remove handles one and final assignments explicitly'
+run_test_parallel test_failed_rollback_blocks_then_next_command_recovers_and_stops 'curation interruption recovers prior assignments and intake before new work'
+run_test_parallel test_manager_adds_one_intake_inspects_details_and_defers_deployment_on_exit 'manager curates one image and offers separate deployment on exit'
+run_test_parallel test_manager_routes_move_and_final_assignment_remove_then_defers_deployment 'manager routes Move and final assignment Remove safely'
+run_test_parallel test_curation_rejects_repository_parent_symlinks_and_unsafe_source_themes 'curation rejects path traversal and indirect repository links'
+run_test_parallel test_user_theme_symlink_discovery_accepts_external_directory_targets_as_metadata 'user theme symlinks are discovered without path escape'
+run_test_parallel test_curation_sigterm_before_and_after_assignment_visibility_recovers_and_stops 'curation process interruption recovers staged and visible assignments'
+run_test_parallel test_pending_publication_failure_precedes_all_transaction_resources 'pending publication failure leaves no transaction preparation side effects'
+run_test_parallel test_preparing_intent_without_identity_retains_evidence_and_substituted_resources 'preparing intent without identity retains evidence and substituted resources'
+run_test_parallel test_curation_deletion_uses_quarantine_and_rejects_replacement 'curation deletion quarantines expected identity and preserves replacements'
+run_test_parallel test_add_creates_one_exact_hook_free_commit_and_preserves_unrelated_git_state 'Add creates one exact hook-free commit and preserves unrelated Git work'
+run_test_parallel test_exact_committed_duplicate_deletes_intake_without_empty_commit 'exact committed duplicate deletes Intake without an empty commit'
+run_test_parallel test_git_commit_failure_rolls_back_add_and_preserves_unrelated_staging 'ordinary Git commit failure rolls back Add and preserves unrelated staging'
 finish_tests

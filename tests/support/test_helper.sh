@@ -11,6 +11,806 @@ HOST_FILE_REAL=$(readlink -f -- "$(command -v file)")
 BWRAP_EXTRA_ARGS=()
 TESTS_RUN=0
 TESTS_FAILED=0
+PARALLEL_TEST_ROOT=''
+declare -a PARALLEL_TEST_PIDS=()
+declare -a PARALLEL_TEST_PGIDS=()
+declare -a PARALLEL_TEST_START_TIMES=()
+declare -a PARALLEL_TEST_PIDFD_INODES=()
+declare -a PARALLEL_TEST_WORKER_MARKERS=()
+declare -a PARALLEL_TEST_WATCHER_PIDS=()
+PARALLEL_TEST_RUNNING=0
+PARALLEL_TEST_CLEANUP_ACTIVE=false
+PARALLEL_TEST_LAUNCHING=false
+PARALLEL_TEST_LAUNCH_PID=''
+PARALLEL_TEST_MONITOR_CHANGED=false
+PARALLEL_TEST_WORKER_ROOT=''
+PARALLEL_TEST_FREEZING=false
+PARALLEL_TEST_STARTUP_FAILED=false
+PARALLEL_TEST_STARTUP_ERROR=''
+declare -a PARALLEL_TEST_CLEANUP_PIDS=()
+declare -A PARALLEL_TEST_CLEANUP_PIDFD_INODES=()
+declare -A PARALLEL_TEST_CLEANUP_START_TIMES=()
+declare -A PARALLEL_TEST_CLEANUP_GROUP_LEADERS=()
+declare -A PARALLEL_TEST_CLEANUP_GROUP_INODES=()
+declare -A PARALLEL_TEST_CLEANUP_GROUP_START_TIMES=()
+declare -A PARALLEL_TEST_CLEANUP_SEEN=()
+declare -a PARALLEL_TEST_CLEANUP_GROUPS=()
+PARALLEL_TEST_CAPTURED_PIDFD_INODE=''
+PARALLEL_TEST_CAPTURED_START_TIME=''
+PARALLEL_TEST_WORKER_RESOURCES_STOPPED=false
+PARALLEL_TEST_WORKER_ABNORMAL_CLEANUP_DONE=false
+PARALLEL_TEST_WORKER_CLEANUP_MARKER=''
+PARALLEL_TEST_WORKER_NORMAL_COMPLETION=false
+PARALLEL_TEST_WORKER_ABNORMAL_REPORTED=false
+PARALLEL_TEST_EVENT_RELAY_PID=''
+PARALLEL_TEST_EVENT_READ_FD=''
+PARALLEL_TEST_EVENT_SOCKET=''
+declare -a PARALLEL_TEST_GROUP_NAMES=()
+declare -a PARALLEL_TEST_GROUP_DESCRIPTIONS=()
+declare -a PARALLEL_TEST_GROUP_IDS=()
+declare -a PARALLEL_TEST_GROUP_ARGUMENTS=()
+WALLPAPER_TEST_FAST_SHARED_WORKER=''
+WALLPAPER_TEST_FAST_SHARED_SANDBOX_PID=''
+WALLPAPER_TEST_FAST_SHARED_SANDBOX_START=''
+WALLPAPER_TEST_FAST_SHARED_SANDBOX_ROOT=''
+WALLPAPER_TEST_FAST_SHARED_SANDBOX_DIRECTORY=''
+WALLPAPER_TEST_FAST_SHARED_SANDBOX_REQUEST=''
+WALLPAPER_TEST_FAST_SHARED_SANDBOX_RESPONSE=''
+WALLPAPER_TEST_FAST_SHARED_SANDBOX_REQUEST_FD=''
+WALLPAPER_TEST_FAST_SHARED_SANDBOX_RESPONSE_FD=''
+WALLPAPER_TEST_FAST_SHARED_SANDBOX_NODE_ROOT=''
+WALLPAPER_TEST_FAST_SHARED_SANDBOX_NODE_REQUEST=''
+WALLPAPER_TEST_FAST_SHARED_SANDBOX_NODE_RESPONSE=''
+WALLPAPER_TEST_FAST_SHARED_SANDBOX_OWNER=''
+WALLPAPER_TEST_FAST_SHARED_SANDBOX_STDERR=''
+
+parallel_test_stat_field() {
+	local pid=$1 field=$2 stat remainder index
+	local -a fields=()
+
+	[[ $pid =~ ^[1-9][0-9]*$ && $field =~ ^[0-9]+$ ]] || return 1
+	stat=$(<"/proc/$pid/stat") || return 1
+	remainder=${stat##*) }
+	[[ $remainder != "$stat" ]] || return 1
+	read -r -a fields <<<"$remainder" || return 1
+	index=$((field - 3))
+	(( index >= 0 && index < ${#fields[@]} )) || return 1
+	printf '%s\n' "${fields[$index]}"
+}
+
+parallel_test_process_start_time() {
+	parallel_test_stat_field "$1" 22
+}
+
+parallel_test_process_group() {
+	parallel_test_stat_field "$1" 5
+}
+
+parallel_test_process_parent() {
+	parallel_test_stat_field "$1" 4
+}
+
+parallel_test_process_identity_matches() {
+	local pid=$1 expected_start=$2 current_start
+
+	[[ $pid =~ ^[1-9][0-9]*$ && -n $expected_start ]] || return 1
+	current_start=$(parallel_test_process_start_time "$pid" 2>/dev/null) || return 1
+	[[ $current_start == "$expected_start" ]]
+}
+
+parallel_test_pidfd_inode() {
+	local pid=$1 inode
+
+	[[ $pid =~ ^[1-9][0-9]*$ ]] || return 1
+	inode=$(/usr/bin/getino --pidfs "$pid" 2>/dev/null) || return 1
+	[[ $inode =~ ^[1-9][0-9]*$ ]] || return 1
+	/usr/bin/kill --signal 0 -- "$pid:$inode" 2>/dev/null || return 1
+	printf '%s\n' "$inode"
+}
+
+parallel_test_pidfd_identity_matches() {
+	local pid=$1 inode=$2
+
+	[[ $pid =~ ^[1-9][0-9]*$ && $inode =~ ^[1-9][0-9]*$ ]] || return 1
+	/usr/bin/kill --signal 0 -- "$pid:$inode" 2>/dev/null
+}
+
+parallel_test_capture_process_identity() {
+	local pid=$1 expected_start=${2-} inode start
+
+	PARALLEL_TEST_CAPTURED_PIDFD_INODE=''
+	PARALLEL_TEST_CAPTURED_START_TIME=''
+	inode=$(parallel_test_pidfd_inode "$pid") || return 1
+	start=$(parallel_test_process_start_time "$pid" 2>/dev/null) || return 1
+	[[ -z $expected_start || $start == "$expected_start" ]] || return 1
+	parallel_test_pidfd_identity_matches "$pid" "$inode" || return 1
+	PARALLEL_TEST_CAPTURED_PIDFD_INODE=$inode
+	PARALLEL_TEST_CAPTURED_START_TIME=$start
+}
+
+parallel_test_pidfd_signal() {
+	local pid=$1 expected_inode=$2 requested_signal=$3 inode
+
+	[[ $requested_signal =~ ^(STOP|TERM|KILL)$ ]] || return 1
+	inode=$(parallel_test_pidfd_inode "$pid") || return 1
+	[[ $inode == "$expected_inode" ]] || return 1
+	/usr/bin/kill --signal "$requested_signal" -- "$pid:$inode" 2>/dev/null
+}
+
+parallel_test_record_process_group() {
+	local pid=$1 inode=$2 start=$3 group suite_group
+
+	parallel_test_pidfd_identity_matches "$pid" "$inode" || return 0
+	group=$(parallel_test_process_group "$pid" 2>/dev/null) || return 0
+	[[ $group =~ ^[1-9][0-9]*$ && $group == "$pid" && $group != 1 ]] || return 0
+	suite_group=$(parallel_test_process_group "$$" 2>/dev/null) || return 0
+	[[ $suite_group =~ ^[1-9][0-9]*$ && $group != "$suite_group" ]] || return 0
+
+	if [[ ${PARALLEL_TEST_CLEANUP_GROUP_LEADERS[$group]+present} ]]; then
+		[[ ${PARALLEL_TEST_CLEANUP_GROUP_LEADERS[$group]} == "$pid" && \
+			${PARALLEL_TEST_CLEANUP_GROUP_INODES[$group]} == "$inode" ]] || return 0
+	else
+		PARALLEL_TEST_CLEANUP_GROUP_LEADERS["$group"]=$pid
+		PARALLEL_TEST_CLEANUP_GROUP_INODES["$group"]=$inode
+		PARALLEL_TEST_CLEANUP_GROUP_START_TIMES["$group"]=$start
+		PARALLEL_TEST_CLEANUP_GROUPS+=("$group")
+	fi
+}
+
+parallel_test_record_process_tree() {
+	local pid=$1 inode=$2 start=$3 keep_root=${4-} child children
+
+	[[ $pid =~ ^[1-9][0-9]*$ && $inode =~ ^[1-9][0-9]*$ && -n $start ]] || return 0
+	[[ ${PARALLEL_TEST_CLEANUP_SEEN[$pid]+present} ]] && return 0
+	parallel_test_pidfd_identity_matches "$pid" "$inode" || return 0
+	if [[ $PARALLEL_TEST_FREEZING == true && $pid != "$keep_root" ]]; then
+		parallel_test_pidfd_signal "$pid" "$inode" STOP || return 0
+	fi
+	PARALLEL_TEST_CLEANUP_SEEN["$pid"]=$inode
+	PARALLEL_TEST_CLEANUP_PIDS+=("$pid")
+	PARALLEL_TEST_CLEANUP_PIDFD_INODES["$pid"]=$inode
+	PARALLEL_TEST_CLEANUP_START_TIMES["$pid"]=$start
+	parallel_test_record_process_group "$pid" "$inode" "$start" || true
+
+	children=''
+	{ IFS= read -r -d '' children <"/proc/$pid/task/$pid/children" || true; } 2>/dev/null
+	for child in $children; do
+		[[ $child =~ ^[1-9][0-9]*$ ]] || continue
+		parallel_test_capture_process_identity "$child" || continue
+		parallel_test_record_process_tree "$child" "$PARALLEL_TEST_CAPTURED_PIDFD_INODE" \
+			"$PARALLEL_TEST_CAPTURED_START_TIME" "$keep_root" || true
+	done
+}
+
+parallel_test_record_exact_process_group() {
+	local group=$1 leader=$2 leader_inode=$3 leader_start=$4 keep_root=${5-}
+	local path pid member_group member_inode member_start leader_group leader_state
+
+	[[ $group =~ ^[1-9][0-9]*$ && $leader == "$group" && $leader_inode =~ ^[1-9][0-9]*$ && -n $leader_start ]] || return 0
+	if parallel_test_pidfd_identity_matches "$leader" "$leader_inode"; then
+		leader_group=$(parallel_test_process_group "$leader" 2>/dev/null || true)
+		[[ $leader_group == "$group" ]] || return 0
+	else
+		# A dead but unreaped worker still reserves both its PID and PGID. Its
+		# captured start time proves that this exact group has not been reused,
+		# allowing the remaining members to be captured by pidfd before wait.
+		parallel_test_process_identity_matches "$leader" "$leader_start" || return 0
+		leader_state=$(parallel_test_stat_field "$leader" 3 2>/dev/null || true)
+		[[ $leader_state == Z ]] || return 0
+	fi
+	for path in /proc/[1-9]*; do
+		[[ -d $path ]] || continue
+		pid=${path##*/}
+		member_group=$(parallel_test_process_group "$pid" 2>/dev/null || true)
+		[[ $member_group == "$group" ]] || continue
+		parallel_test_capture_process_identity "$pid" || continue
+		member_inode=$PARALLEL_TEST_CAPTURED_PIDFD_INODE
+		member_start=$PARALLEL_TEST_CAPTURED_START_TIME
+		member_group=$(parallel_test_process_group "$pid" 2>/dev/null || true)
+		[[ $member_group == "$group" ]] || continue
+		parallel_test_record_process_tree "$pid" "$member_inode" "$member_start" "$keep_root" || true
+	done
+}
+
+parallel_test_record_process_children() {
+	local pid=$1 inode=$2 keep_root=${3-} child children
+
+	parallel_test_pidfd_identity_matches "$pid" "$inode" || return 0
+	children=''
+	{ IFS= read -r -d '' children <"/proc/$pid/task/$pid/children" || true; } 2>/dev/null
+	for child in $children; do
+		[[ $child =~ ^[1-9][0-9]*$ ]] || continue
+		parallel_test_capture_process_identity "$child" || continue
+		parallel_test_record_process_tree "$child" "$PARALLEL_TEST_CAPTURED_PIDFD_INODE" \
+			"$PARALLEL_TEST_CAPTURED_START_TIME" "$keep_root" || true
+	done
+}
+
+parallel_test_record_worker_processes() {
+	local pid=$1 inode=$2 start=$3 group=$4 keep_root=${5-}
+
+	parallel_test_record_process_tree "$pid" "$inode" "$start" "$keep_root" || true
+	parallel_test_record_exact_process_group "$group" "$pid" "$inode" "$start" "$keep_root" || true
+}
+
+parallel_test_expand_recorded_processes() {
+	local keep_root=${1-} scan_index=0 group_index=0 pid inode group leader leader_inode leader_start
+
+	while ((scan_index < ${#PARALLEL_TEST_CLEANUP_PIDS[@]} || group_index < ${#PARALLEL_TEST_CLEANUP_GROUPS[@]})); do
+		if ((scan_index < ${#PARALLEL_TEST_CLEANUP_PIDS[@]})); then
+			pid=${PARALLEL_TEST_CLEANUP_PIDS[$scan_index]}
+			inode=${PARALLEL_TEST_CLEANUP_PIDFD_INODES[$pid]-}
+			parallel_test_record_process_children "$pid" "$inode" "$keep_root" || true
+			scan_index=$((scan_index + 1))
+		fi
+		if ((group_index < ${#PARALLEL_TEST_CLEANUP_GROUPS[@]})); then
+			group=${PARALLEL_TEST_CLEANUP_GROUPS[$group_index]}
+			leader=${PARALLEL_TEST_CLEANUP_GROUP_LEADERS[$group]}
+			leader_inode=${PARALLEL_TEST_CLEANUP_GROUP_INODES[$group]}
+			leader_start=${PARALLEL_TEST_CLEANUP_GROUP_START_TIMES[$group]}
+			parallel_test_record_exact_process_group "$group" "$leader" "$leader_inode" "$leader_start" "$keep_root" || true
+			group_index=$((group_index + 1))
+		fi
+	done
+}
+
+parallel_test_record_all_processes() {
+	local keep_root=${1-} index pid inode start group
+
+	for ((index = 0; index < ${#PARALLEL_TEST_PIDS[@]}; index++)); do
+		pid=${PARALLEL_TEST_PIDS[$index]-}
+		[[ $pid =~ ^[1-9][0-9]*$ ]] || continue
+		if [[ -n ${PARALLEL_TEST_WORKER_MARKERS[$index]-} && \
+			-f ${PARALLEL_TEST_WORKER_MARKERS[$index]} ]]; then
+			continue
+		fi
+		inode=${PARALLEL_TEST_PIDFD_INODES[$index]-}
+		start=${PARALLEL_TEST_START_TIMES[$index]-}
+		group=${PARALLEL_TEST_PGIDS[$index]-}
+		if [[ ! $inode =~ ^[1-9][0-9]*$ || -z $start ]]; then
+			parallel_test_register_worker_root "$pid" || continue
+			inode=${PARALLEL_TEST_PIDFD_INODES[$index]-}
+			start=${PARALLEL_TEST_START_TIMES[$index]-}
+			group=${PARALLEL_TEST_PGIDS[$index]-}
+		fi
+		parallel_test_record_worker_processes "$pid" "$inode" "$start" "$group" "$keep_root"
+	done
+	parallel_test_expand_recorded_processes "$keep_root"
+}
+
+parallel_test_capture_worker_processes() {
+	local pid=$1 inode=$2 start=$3 group=$4 saved_freezing=$PARALLEL_TEST_FREEZING
+
+	parallel_test_clear_cleanup_records
+	PARALLEL_TEST_FREEZING=true
+	parallel_test_record_worker_processes "$pid" "$inode" "$start" "$group" "$pid"
+	parallel_test_expand_recorded_processes "$pid"
+	PARALLEL_TEST_FREEZING=$saved_freezing
+}
+
+parallel_test_signal_recorded_processes() {
+	local signal=$1 keep_root=${2-} index pid inode
+
+	# Descendants are recorded after their ancestors. Signal them first so a
+	# root cannot be reaped before every exact descendant has been consumed.
+	for ((index = ${#PARALLEL_TEST_CLEANUP_PIDS[@]} - 1; index >= 0; index--)); do
+		pid=${PARALLEL_TEST_CLEANUP_PIDS[$index]}
+		[[ $pid == "$keep_root" ]] && continue
+		inode=${PARALLEL_TEST_CLEANUP_PIDFD_INODES[$pid]-}
+		parallel_test_pidfd_signal "$pid" "$inode" "$signal" || true
+	done
+}
+
+parallel_test_freeze_worker_roots() {
+	local keep_root=${1-} index pid inode marker
+
+	for ((index = 0; index < ${#PARALLEL_TEST_PIDS[@]}; index++)); do
+		pid=${PARALLEL_TEST_PIDS[$index]-}
+		[[ $pid == "$keep_root" ]] && continue
+		marker=${PARALLEL_TEST_WORKER_MARKERS[$index]-}
+		[[ -n $marker && -f $marker ]] && continue
+		inode=${PARALLEL_TEST_PIDFD_INODES[$index]-}
+		if [[ ! $inode =~ ^[1-9][0-9]*$ ]]; then
+			parallel_test_register_worker_root "$pid" || continue
+			inode=${PARALLEL_TEST_PIDFD_INODES[$index]-}
+		fi
+		parallel_test_pidfd_signal "$pid" "$inode" STOP || true
+	done
+}
+
+parallel_test_wait_recorded_processes() {
+	local keep_root=${1-} pid
+
+	for pid in "${PARALLEL_TEST_PIDS[@]}"; do
+		[[ $pid =~ ^[1-9][0-9]*$ && $pid != "$keep_root" ]] || continue
+		wait "$pid" 2>/dev/null || true
+	done
+	for pid in "${PARALLEL_TEST_CLEANUP_PIDS[@]}"; do
+		[[ $pid =~ ^[1-9][0-9]*$ && $pid != "$keep_root" ]] || continue
+		wait "$pid" 2>/dev/null || true
+	done
+}
+
+parallel_test_stop_exact_process_tree() {
+	local pid=$1 expected_start=$2 keep_root=${3-} key saved_freezing=$PARALLEL_TEST_FREEZING
+	local saved_running=$PARALLEL_TEST_RUNNING saved_cleanup_active=$PARALLEL_TEST_CLEANUP_ACTIVE
+	local -a saved_test_pids=("${PARALLEL_TEST_PIDS[@]}")
+	local -a saved_test_pgids=("${PARALLEL_TEST_PGIDS[@]}")
+	local -a saved_test_starts=("${PARALLEL_TEST_START_TIMES[@]}")
+	local -a saved_test_inodes=("${PARALLEL_TEST_PIDFD_INODES[@]}")
+	local -a saved_test_markers=("${PARALLEL_TEST_WORKER_MARKERS[@]}")
+	local -a saved_cleanup_pids=("${PARALLEL_TEST_CLEANUP_PIDS[@]}")
+	local -a saved_cleanup_groups=("${PARALLEL_TEST_CLEANUP_GROUPS[@]}")
+	local -A saved_cleanup_inodes=() saved_cleanup_starts=() saved_cleanup_leaders=()
+	local -A saved_cleanup_group_inodes=() saved_cleanup_group_starts=() saved_cleanup_seen=()
+
+	for key in "${!PARALLEL_TEST_CLEANUP_PIDFD_INODES[@]}"; do saved_cleanup_inodes["$key"]=${PARALLEL_TEST_CLEANUP_PIDFD_INODES[$key]}; done
+	for key in "${!PARALLEL_TEST_CLEANUP_START_TIMES[@]}"; do saved_cleanup_starts["$key"]=${PARALLEL_TEST_CLEANUP_START_TIMES[$key]}; done
+	for key in "${!PARALLEL_TEST_CLEANUP_GROUP_LEADERS[@]}"; do saved_cleanup_leaders["$key"]=${PARALLEL_TEST_CLEANUP_GROUP_LEADERS[$key]}; done
+	for key in "${!PARALLEL_TEST_CLEANUP_GROUP_INODES[@]}"; do saved_cleanup_group_inodes["$key"]=${PARALLEL_TEST_CLEANUP_GROUP_INODES[$key]}; done
+	for key in "${!PARALLEL_TEST_CLEANUP_GROUP_START_TIMES[@]}"; do saved_cleanup_group_starts["$key"]=${PARALLEL_TEST_CLEANUP_GROUP_START_TIMES[$key]}; done
+	for key in "${!PARALLEL_TEST_CLEANUP_SEEN[@]}"; do saved_cleanup_seen["$key"]=${PARALLEL_TEST_CLEANUP_SEEN[$key]}; done
+
+	PARALLEL_TEST_PIDS=()
+	PARALLEL_TEST_PGIDS=()
+	PARALLEL_TEST_START_TIMES=()
+	PARALLEL_TEST_PIDFD_INODES=()
+	PARALLEL_TEST_WORKER_MARKERS=()
+	PARALLEL_TEST_RUNNING=0
+	parallel_test_clear_cleanup_records
+	if parallel_test_register_worker_root "$pid" "$expected_start"; then
+		PARALLEL_TEST_FREEZING=true
+		parallel_test_freeze_worker_roots "$keep_root"
+		parallel_test_record_all_processes "$keep_root"
+		parallel_test_signal_recorded_processes KILL "$keep_root"
+		parallel_test_wait_recorded_processes "$keep_root"
+	fi
+
+	PARALLEL_TEST_FREEZING=$saved_freezing
+	PARALLEL_TEST_PIDS=("${saved_test_pids[@]}")
+	PARALLEL_TEST_PGIDS=("${saved_test_pgids[@]}")
+	PARALLEL_TEST_START_TIMES=("${saved_test_starts[@]}")
+	PARALLEL_TEST_PIDFD_INODES=("${saved_test_inodes[@]}")
+	PARALLEL_TEST_WORKER_MARKERS=("${saved_test_markers[@]}")
+	PARALLEL_TEST_RUNNING=$saved_running
+	PARALLEL_TEST_CLEANUP_ACTIVE=$saved_cleanup_active
+	PARALLEL_TEST_CLEANUP_PIDS=("${saved_cleanup_pids[@]}")
+	PARALLEL_TEST_CLEANUP_GROUPS=("${saved_cleanup_groups[@]}")
+	PARALLEL_TEST_CLEANUP_PIDFD_INODES=()
+	PARALLEL_TEST_CLEANUP_START_TIMES=()
+	PARALLEL_TEST_CLEANUP_GROUP_LEADERS=()
+	PARALLEL_TEST_CLEANUP_GROUP_INODES=()
+	PARALLEL_TEST_CLEANUP_GROUP_START_TIMES=()
+	PARALLEL_TEST_CLEANUP_SEEN=()
+	for key in "${!saved_cleanup_inodes[@]}"; do PARALLEL_TEST_CLEANUP_PIDFD_INODES["$key"]=${saved_cleanup_inodes[$key]}; done
+	for key in "${!saved_cleanup_starts[@]}"; do PARALLEL_TEST_CLEANUP_START_TIMES["$key"]=${saved_cleanup_starts[$key]}; done
+	for key in "${!saved_cleanup_leaders[@]}"; do PARALLEL_TEST_CLEANUP_GROUP_LEADERS["$key"]=${saved_cleanup_leaders[$key]}; done
+	for key in "${!saved_cleanup_group_inodes[@]}"; do PARALLEL_TEST_CLEANUP_GROUP_INODES["$key"]=${saved_cleanup_group_inodes[$key]}; done
+	for key in "${!saved_cleanup_group_starts[@]}"; do PARALLEL_TEST_CLEANUP_GROUP_START_TIMES["$key"]=${saved_cleanup_group_starts[$key]}; done
+	for key in "${!saved_cleanup_seen[@]}"; do PARALLEL_TEST_CLEANUP_SEEN["$key"]=${saved_cleanup_seen[$key]}; done
+}
+
+parallel_test_register_worker_root() {
+	local pid=$1 expected_start=${2-} index existing=-1 group suite_group
+
+	[[ $pid =~ ^[1-9][0-9]*$ ]] || return 1
+	for ((index = 0; index < ${#PARALLEL_TEST_PIDS[@]}; index++)); do
+		if [[ ${PARALLEL_TEST_PIDS[$index]} == "$pid" ]]; then
+			existing=$index
+			break
+		fi
+	done
+	parallel_test_capture_process_identity "$pid" "$expected_start" || return 1
+	group=$(parallel_test_process_group "$pid" 2>/dev/null || true)
+	suite_group=$(parallel_test_process_group "$$" 2>/dev/null || true)
+	if [[ ! $group =~ ^[1-9][0-9]*$ || $group != "$pid" || $group == "$suite_group" ]]; then
+		group=''
+	fi
+	if ((existing >= 0)); then
+		PARALLEL_TEST_START_TIMES[$existing]=$PARALLEL_TEST_CAPTURED_START_TIME
+		PARALLEL_TEST_PIDFD_INODES[$existing]=$PARALLEL_TEST_CAPTURED_PIDFD_INODE
+		PARALLEL_TEST_PGIDS[$existing]=$group
+		return 0
+	fi
+	PARALLEL_TEST_PIDS+=("$pid")
+	PARALLEL_TEST_PGIDS+=("$group")
+	PARALLEL_TEST_START_TIMES+=("$PARALLEL_TEST_CAPTURED_START_TIME")
+	PARALLEL_TEST_PIDFD_INODES+=("$PARALLEL_TEST_CAPTURED_PIDFD_INODE")
+}
+
+parallel_test_register_pending_worker() {
+	local pid=$1 parent
+
+	[[ $pid =~ ^[1-9][0-9]*$ ]] || return 0
+	parent=$(parallel_test_process_parent "$pid" 2>/dev/null || true)
+	if [[ -n $parent ]]; then
+		[[ $parent == "$$" ]] || return 0
+	fi
+	parallel_test_register_worker_root "$pid" || true
+}
+
+parallel_test_clear_cleanup_records() {
+	PARALLEL_TEST_CLEANUP_PIDS=()
+	PARALLEL_TEST_CLEANUP_PIDFD_INODES=()
+	PARALLEL_TEST_CLEANUP_START_TIMES=()
+	PARALLEL_TEST_CLEANUP_GROUP_LEADERS=()
+	PARALLEL_TEST_CLEANUP_GROUP_INODES=()
+	PARALLEL_TEST_CLEANUP_GROUP_START_TIMES=()
+	PARALLEL_TEST_CLEANUP_SEEN=()
+	PARALLEL_TEST_CLEANUP_GROUPS=()
+}
+
+parallel_test_start_event_relay() {
+	local relay_request_fd relay_response_fd read_fd ready
+
+	[[ -n $PARALLEL_TEST_EVENT_READ_FD && -n $PARALLEL_TEST_EVENT_SOCKET ]] && return 0
+	[[ -n $PARALLEL_TEST_ROOT ]] || return 1
+	PARALLEL_TEST_EVENT_SOCKET="$PARALLEL_TEST_ROOT/events.sock"
+	coproc PARALLEL_TEST_EVENT_RELAY {
+		/usr/bin/python3 -u -c '
+import os
+import socket
+import sys
+
+path = sys.argv[1]
+server = socket.socket(socket.AF_UNIX, socket.SOCK_DGRAM)
+try:
+    server.bind(path)
+except OSError:
+    sys.exit(1)
+print("ready", flush=True)
+try:
+    while True:
+        message = server.recv(256)
+        if message == b"stop":
+            break
+        print(message.decode("ascii"), flush=True)
+finally:
+    server.close()
+    try:
+        os.unlink(path)
+    except FileNotFoundError:
+        pass
+' "$PARALLEL_TEST_EVENT_SOCKET"
+	}
+	relay_request_fd=${PARALLEL_TEST_EVENT_RELAY[1]-}
+	relay_response_fd=${PARALLEL_TEST_EVENT_RELAY[0]-}
+	PARALLEL_TEST_EVENT_RELAY_PID=${PARALLEL_TEST_EVENT_RELAY_PID-}
+	read_fd=''
+	if [[ -n $relay_request_fd ]]; then eval "exec ${relay_request_fd}>&-" || true; fi
+	if [[ -n $relay_response_fd ]] && exec {read_fd}<&"$relay_response_fd"; then
+		eval "exec ${relay_response_fd}<&-" || true
+	fi
+	if [[ -n $read_fd ]] && IFS= read -r ready <&"$read_fd" && [[ $ready == ready ]]; then
+		PARALLEL_TEST_EVENT_READ_FD=$read_fd
+		return 0
+	fi
+	if [[ -n $read_fd ]]; then eval "exec ${read_fd}<&-" || true; fi
+	wait "${PARALLEL_TEST_EVENT_RELAY_PID-}" 2>/dev/null || true
+	PARALLEL_TEST_EVENT_RELAY_PID=''
+	PARALLEL_TEST_EVENT_SOCKET=''
+	return 1
+}
+
+parallel_test_stop_event_relay() {
+	local read_fd=${PARALLEL_TEST_EVENT_READ_FD-} relay_pid=${PARALLEL_TEST_EVENT_RELAY_PID-}
+	local socket_path=${PARALLEL_TEST_EVENT_SOCKET-}
+
+	if [[ -S $socket_path ]]; then
+		/usr/bin/python3 -c '
+import socket
+import sys
+
+client = socket.socket(socket.AF_UNIX, socket.SOCK_DGRAM)
+try:
+    client.sendto(b"stop", sys.argv[1])
+finally:
+    client.close()
+' "$socket_path" 2>/dev/null || true
+	fi
+	if [[ -n $read_fd ]]; then eval "exec ${read_fd}<&-" || true; fi
+	if [[ $relay_pid =~ ^[1-9][0-9]*$ ]]; then wait "$relay_pid" 2>/dev/null || true; fi
+	PARALLEL_TEST_EVENT_READ_FD=''
+	PARALLEL_TEST_EVENT_RELAY_PID=''
+	PARALLEL_TEST_EVENT_SOCKET=''
+}
+
+parallel_test_send_worker_event() {
+	local kind=$1 pid=$2 socket_path=${PARALLEL_TEST_EVENT_SOCKET-}
+
+	[[ $kind =~ ^abnormal$ && $pid =~ ^[1-9][0-9]*$ && -S $socket_path ]] || return 1
+	/usr/bin/python3 -c '
+import socket
+import sys
+
+client = socket.socket(socket.AF_UNIX, socket.SOCK_DGRAM)
+try:
+    client.sendto(f"{sys.argv[1]} {sys.argv[2]}".encode(), sys.argv[3])
+finally:
+    client.close()
+' "$kind" "$pid" "$socket_path"
+}
+
+parallel_test_start_worker_exit_watcher() {
+	local index=$1 pid=$2 socket_path=$PARALLEL_TEST_EVENT_SOCKET watcher_pid
+
+	[[ $index =~ ^[0-9]+$ && $pid =~ ^[1-9][0-9]*$ && -S $socket_path ]] || return 1
+	/usr/bin/python3 -c '
+import os
+import select
+import socket
+import sys
+
+pid = int(sys.argv[1])
+socket_path = sys.argv[2]
+try:
+    pidfd = os.pidfd_open(pid)
+    poller = select.poll()
+    poller.register(pidfd, select.POLLIN)
+    poller.poll()
+    event = f"exit {pid}".encode()
+except OSError:
+    event = f"watch-failed {pid}".encode()
+try:
+    client = socket.socket(socket.AF_UNIX, socket.SOCK_DGRAM)
+    client.sendto(event, socket_path)
+    client.close()
+except OSError:
+    pass
+' "$pid" "$socket_path" &
+	watcher_pid=$!
+	PARALLEL_TEST_WATCHER_PIDS[$index]=$watcher_pid
+}
+
+parallel_test_wait_worker_watcher() {
+	local index watcher_pid
+	index=$1
+	watcher_pid=${PARALLEL_TEST_WATCHER_PIDS[$index]-}
+
+	if [[ $watcher_pid =~ ^[1-9][0-9]*$ ]]; then wait "$watcher_pid" 2>/dev/null || true; fi
+	PARALLEL_TEST_WATCHER_PIDS[$index]=''
+}
+
+parallel_test_wait_all_worker_watchers() {
+	local index
+
+	for ((index = 0; index < ${#PARALLEL_TEST_WATCHER_PIDS[@]}; index++)); do
+		parallel_test_wait_worker_watcher "$index"
+	done
+}
+
+parallel_test_unregister_worker_root() {
+	local index=$1
+
+	parallel_test_wait_worker_watcher "$index"
+	PARALLEL_TEST_PIDS[$index]=''
+	PARALLEL_TEST_PGIDS[$index]=''
+	PARALLEL_TEST_START_TIMES[$index]=''
+	PARALLEL_TEST_PIDFD_INODES[$index]=''
+	PARALLEL_TEST_WORKER_MARKERS[$index]=''
+}
+
+parallel_test_reap_completed_workers() {
+	local index pid marker
+
+	for ((index = 0; index < ${#PARALLEL_TEST_PIDS[@]}; index++)); do
+		pid=${PARALLEL_TEST_PIDS[$index]-}
+		marker=${PARALLEL_TEST_WORKER_MARKERS[$index]-}
+		[[ $pid =~ ^[1-9][0-9]*$ && -n $marker && -f $marker ]] || continue
+		wait "$pid" 2>/dev/null || true
+		parallel_test_unregister_worker_root "$index"
+	done
+}
+
+parallel_test_wait_captured_worker_processes() {
+	local worker_pid=$1 index pid
+
+	wait "$worker_pid" 2>/dev/null || true
+	for pid in "${PARALLEL_TEST_CLEANUP_PIDS[@]}"; do
+		[[ $pid =~ ^[1-9][0-9]*$ && $pid != "$worker_pid" ]] || continue
+		wait "$pid" 2>/dev/null || true
+	done
+}
+
+parallel_test_abort_worker() {
+	local index reason pid inode start group marker
+	index=$1
+	reason=$2
+	pid=${PARALLEL_TEST_PIDS[$index]-}
+	marker=${PARALLEL_TEST_WORKER_MARKERS[$index]-}
+	if [[ -n $marker && -f $marker ]]; then
+		wait "$pid" 2>/dev/null || true
+		parallel_test_unregister_worker_root "$index"
+		return 0
+	fi
+	if ! parallel_test_register_worker_root "$pid"; then
+		wait "$pid" 2>/dev/null || true
+		parallel_test_unregister_worker_root "$index"
+		printf 'Error: worker %s exited without a completion marker and could not be captured (%s).\n' \
+			"$pid" "$reason" >&2
+		return 1
+	fi
+	inode=${PARALLEL_TEST_PIDFD_INODES[$index]-}
+	start=${PARALLEL_TEST_START_TIMES[$index]-}
+	group=${PARALLEL_TEST_PGIDS[$index]-}
+
+	parallel_test_clear_cleanup_records
+	parallel_test_capture_worker_processes "$pid" "$inode" "$start" "$group"
+	parallel_test_signal_recorded_processes KILL
+	parallel_test_wait_captured_worker_processes "$pid"
+	parallel_test_clear_cleanup_records
+	parallel_test_unregister_worker_root "$index"
+	printf 'Error: worker %s exited without a completion marker (%s).\n' "$pid" "$reason" >&2
+	return 1
+}
+
+parallel_test_register_or_reap_completed_worker() {
+	local index pid marker
+	index=$1
+	pid=${PARALLEL_TEST_PIDS[$index]-}
+	marker=${PARALLEL_TEST_WORKER_MARKERS[$index]-}
+
+	if [[ -n $marker && -f $marker ]]; then
+		wait "$pid" 2>/dev/null || true
+		parallel_test_unregister_worker_root "$index"
+		return 2
+	fi
+	parallel_test_start_worker_exit_watcher "$index" "$pid"
+}
+
+parallel_test_cleanup() {
+	local original_status=$?
+	local root pending_pid saved_hup saved_int saved_term
+
+	[[ $PARALLEL_TEST_CLEANUP_ACTIVE == false ]] || return "$original_status"
+	PARALLEL_TEST_CLEANUP_ACTIVE=true
+	saved_hup=$(trap -p HUP 2>/dev/null || true)
+	saved_int=$(trap -p INT 2>/dev/null || true)
+	saved_term=$(trap -p TERM 2>/dev/null || true)
+	trap '' HUP INT TERM
+
+	if [[ $PARALLEL_TEST_LAUNCHING == true ]]; then
+		pending_pid=${PARALLEL_TEST_LAUNCH_PID:-}
+		if [[ -z $pending_pid ]]; then pending_pid=${!:-}; fi
+		parallel_test_register_pending_worker "$pending_pid" || true
+	fi
+	parallel_test_reap_completed_workers
+	parallel_test_clear_cleanup_records
+
+	PARALLEL_TEST_FREEZING=true
+	parallel_test_freeze_worker_roots
+	parallel_test_record_all_processes
+	parallel_test_signal_recorded_processes KILL
+	parallel_test_wait_recorded_processes
+	PARALLEL_TEST_FREEZING=false
+	parallel_test_wait_all_worker_watchers
+	parallel_test_stop_event_relay
+
+	root=$PARALLEL_TEST_ROOT
+	if [[ -n $root ]]; then
+		rm -rf -- "$root" 2>/dev/null || true
+	fi
+	PARALLEL_TEST_ROOT=''
+	PARALLEL_TEST_PIDS=()
+	PARALLEL_TEST_PGIDS=()
+	PARALLEL_TEST_START_TIMES=()
+	PARALLEL_TEST_PIDFD_INODES=()
+	PARALLEL_TEST_WORKER_MARKERS=()
+	PARALLEL_TEST_WATCHER_PIDS=()
+	PARALLEL_TEST_RUNNING=0
+	parallel_test_clear_cleanup_records
+	PARALLEL_TEST_LAUNCHING=false
+	PARALLEL_TEST_LAUNCH_PID=''
+	if [[ $PARALLEL_TEST_MONITOR_CHANGED == true ]]; then
+		set +m
+		PARALLEL_TEST_MONITOR_CHANGED=false
+	fi
+
+	if [[ -n $saved_hup ]]; then eval "$saved_hup"; else trap - HUP; fi
+	if [[ -n $saved_int ]]; then eval "$saved_int"; else trap - INT; fi
+	if [[ -n $saved_term ]]; then eval "$saved_term"; else trap - TERM; fi
+	return "$original_status"
+}
+
+parallel_test_exit_trap() {
+	local status=$?
+	parallel_test_cleanup || true
+	return "$status"
+}
+
+parallel_test_signal_trap() {
+	local status=$1
+	[[ $PARALLEL_TEST_CLEANUP_ACTIVE == false ]] || return 0
+	parallel_test_cleanup || true
+	exit "$status"
+}
+
+parallel_test_worker_reset_harness_state() {
+	PARALLEL_TEST_ROOT=''
+	PARALLEL_TEST_PIDS=()
+	PARALLEL_TEST_PGIDS=()
+	PARALLEL_TEST_START_TIMES=()
+	PARALLEL_TEST_PIDFD_INODES=()
+	PARALLEL_TEST_WORKER_MARKERS=()
+	PARALLEL_TEST_WATCHER_PIDS=()
+	PARALLEL_TEST_RUNNING=0
+	PARALLEL_TEST_CLEANUP_ACTIVE=false
+	PARALLEL_TEST_LAUNCHING=false
+	PARALLEL_TEST_LAUNCH_PID=''
+	PARALLEL_TEST_FREEZING=false
+	PARALLEL_TEST_MONITOR_CHANGED=false
+	PARALLEL_TEST_WORKER_RESOURCES_STOPPED=false
+	PARALLEL_TEST_WORKER_ABNORMAL_CLEANUP_DONE=false
+	PARALLEL_TEST_WORKER_NORMAL_COMPLETION=false
+	PARALLEL_TEST_WORKER_ABNORMAL_REPORTED=false
+	parallel_test_clear_cleanup_records
+}
+
+parallel_test_worker_report_abnormal_exit() {
+	[[ $PARALLEL_TEST_WORKER_NORMAL_COMPLETION == false ]] || return 0
+	[[ $PARALLEL_TEST_WORKER_ABNORMAL_REPORTED == false ]] || return 0
+	PARALLEL_TEST_WORKER_ABNORMAL_REPORTED=true
+	parallel_test_send_worker_event abnormal "$BASHPID" >/dev/null 2>&1 || true
+}
+
+parallel_test_worker_cleanup_before_exit() {
+	local worker_pid=$BASHPID worker_start
+
+	[[ $PARALLEL_TEST_WORKER_NORMAL_COMPLETION == false ]] || return 0
+	[[ $PARALLEL_TEST_WORKER_ABNORMAL_CLEANUP_DONE == false ]] || return 0
+	PARALLEL_TEST_WORKER_ABNORMAL_CLEANUP_DONE=true
+	parallel_test_worker_report_abnormal_exit
+	parallel_test_worker_stop_owned_resources || true
+	worker_start=$(parallel_test_process_start_time "$worker_pid" 2>/dev/null || true)
+	[[ -n $worker_start ]] || return 0
+	# A worker that cannot complete normally owns exact cleanup of its remaining
+	# descendants, independently of the parent's cancellation cleanup.
+	parallel_test_stop_exact_process_tree "$worker_pid" "$worker_start" "$worker_pid"
+}
+
+parallel_test_worker_stop_owned_resources() {
+	[[ $PARALLEL_TEST_WORKER_RESOURCES_STOPPED == false ]] || return 0
+	wallpaper_test_fast_shared_sandbox_stop || return 1
+	PARALLEL_TEST_WORKER_RESOURCES_STOPPED=true
+}
+
+parallel_test_worker_mark_normal_completion() {
+	[[ -n $PARALLEL_TEST_WORKER_CLEANUP_MARKER ]] || return 1
+	[[ $PARALLEL_TEST_WORKER_RESOURCES_STOPPED == true ]] || return 1
+	[[ $PARALLEL_TEST_WORKER_NORMAL_COMPLETION == false ]] || return 0
+	: >"$PARALLEL_TEST_WORKER_CLEANUP_MARKER" || return 1
+	PARALLEL_TEST_WORKER_NORMAL_COMPLETION=true
+}
+
+parallel_test_worker_exit_trap() {
+	local status=$?
+
+	parallel_test_worker_cleanup_before_exit || true
+	return "$status"
+}
+
+parallel_test_worker_signal_trap() {
+	local status=$1
+
+	parallel_test_worker_cleanup_before_exit || true
+	exit "$status"
+}
+
+parallel_test_prepare_worker() {
+	local marker=$1
+
+	parallel_test_worker_reset_harness_state || return 1
+	PARALLEL_TEST_WORKER_CLEANUP_MARKER=$marker
+	trap 'parallel_test_worker_exit_trap' EXIT
+	trap 'parallel_test_worker_signal_trap 129' HUP
+	trap 'parallel_test_worker_signal_trap 130' INT
+	trap 'parallel_test_worker_signal_trap 143' TERM
+}
+
+trap 'parallel_test_exit_trap' EXIT
+trap 'parallel_test_signal_trap 129' HUP
+trap 'parallel_test_signal_trap 130' INT
+trap 'parallel_test_signal_trap 143' TERM
 
 fail() {
 	printf 'not ok %d - %s\n' "$TESTS_RUN" "$1"
@@ -51,7 +851,440 @@ assert_path_absent() {
 	fi
 }
 
+wallpaper_test_fast_shared_sandbox_stop() {
+	local pid=$WALLPAPER_TEST_FAST_SHARED_SANDBOX_PID
+	local start=$WALLPAPER_TEST_FAST_SHARED_SANDBOX_START
+	local directory=$WALLPAPER_TEST_FAST_SHARED_SANDBOX_DIRECTORY
+	local request_fd=$WALLPAPER_TEST_FAST_SHARED_SANDBOX_REQUEST_FD
+	local response_fd=$WALLPAPER_TEST_FAST_SHARED_SANDBOX_RESPONSE_FD
+
+	if [[ -n $pid && -n $start ]]; then
+		parallel_test_stop_exact_process_tree "$pid" "$start" || true
+	fi
+	if [[ -n $request_fd ]]; then
+		eval "exec ${request_fd}>&-" || true
+	fi
+	if [[ -n $response_fd ]]; then
+		eval "exec ${response_fd}<&-" || true
+	fi
+	if [[ -n $directory ]]; then
+		rm -rf -- "$directory" 2>/dev/null || true
+	fi
+
+	WALLPAPER_TEST_FAST_SHARED_SANDBOX_PID=''
+	WALLPAPER_TEST_FAST_SHARED_SANDBOX_START=''
+	WALLPAPER_TEST_FAST_SHARED_SANDBOX_ROOT=''
+	WALLPAPER_TEST_FAST_SHARED_SANDBOX_DIRECTORY=''
+	WALLPAPER_TEST_FAST_SHARED_SANDBOX_REQUEST=''
+	WALLPAPER_TEST_FAST_SHARED_SANDBOX_RESPONSE=''
+	WALLPAPER_TEST_FAST_SHARED_SANDBOX_REQUEST_FD=''
+	WALLPAPER_TEST_FAST_SHARED_SANDBOX_RESPONSE_FD=''
+	WALLPAPER_TEST_FAST_SHARED_SANDBOX_NODE_ROOT=''
+	WALLPAPER_TEST_FAST_SHARED_SANDBOX_NODE_REQUEST=''
+	WALLPAPER_TEST_FAST_SHARED_SANDBOX_NODE_RESPONSE=''
+	WALLPAPER_TEST_FAST_SHARED_SANDBOX_OWNER=''
+	WALLPAPER_TEST_FAST_SHARED_SANDBOX_STDERR=''
+}
+
+wallpaper_test_fast_shared_sandbox_detach() {
+	local request_fd=$WALLPAPER_TEST_FAST_SHARED_SANDBOX_REQUEST_FD
+	local response_fd=$WALLPAPER_TEST_FAST_SHARED_SANDBOX_RESPONSE_FD
+
+	if [[ -n $request_fd ]]; then
+		eval "exec ${request_fd}>&-" || true
+	fi
+	if [[ -n $response_fd ]]; then
+		eval "exec ${response_fd}<&-" || true
+	fi
+	WALLPAPER_TEST_FAST_SHARED_SANDBOX_PID=''
+	WALLPAPER_TEST_FAST_SHARED_SANDBOX_START=''
+	WALLPAPER_TEST_FAST_SHARED_SANDBOX_ROOT=''
+	WALLPAPER_TEST_FAST_SHARED_SANDBOX_DIRECTORY=''
+	WALLPAPER_TEST_FAST_SHARED_SANDBOX_REQUEST=''
+	WALLPAPER_TEST_FAST_SHARED_SANDBOX_RESPONSE=''
+	WALLPAPER_TEST_FAST_SHARED_SANDBOX_REQUEST_FD=''
+	WALLPAPER_TEST_FAST_SHARED_SANDBOX_RESPONSE_FD=''
+	WALLPAPER_TEST_FAST_SHARED_SANDBOX_NODE_ROOT=''
+	WALLPAPER_TEST_FAST_SHARED_SANDBOX_NODE_REQUEST=''
+	WALLPAPER_TEST_FAST_SHARED_SANDBOX_NODE_RESPONSE=''
+	WALLPAPER_TEST_FAST_SHARED_SANDBOX_OWNER=''
+	WALLPAPER_TEST_FAST_SHARED_SANDBOX_STDERR=''
+}
+
+wallpaper_test_fast_shared_sandbox_failure_text() {
+	local stderr_file=$WALLPAPER_TEST_FAST_SHARED_SANDBOX_STDERR line
+
+	printf 'Error: fast wallpaper sandbox server failed; its request pipe was closed.\n'
+	if [[ -n $stderr_file && -s $stderr_file ]]; then
+		while IFS= read -r line || [[ -n $line ]]; do
+			printf '%s\n' "$line"
+		done <"$stderr_file"
+	fi
+}
+
+wallpaper_test_fast_shared_sandbox_report_failure() {
+	wallpaper_test_fast_shared_sandbox_failure_text >&2
+}
+
+wallpaper_test_fast_shared_sandbox_start() {
+	local root=${PARALLEL_TEST_WORKER_ROOT:-$FIXTURE_ROOT}
+	local directory node_request node_response node_root server_stderr server_failure startup_status
+	local server_script startup sandbox_pid sandbox_start request_fd response_fd startup_fd
+	local coproc_request_fd coproc_response_fd startup_response_fd startup_relay_pid startup_relay_inode
+
+	if [[ -n $WALLPAPER_TEST_FAST_SHARED_SANDBOX_PID ]]; then
+		sandbox_start=$(parallel_test_process_start_time "$WALLPAPER_TEST_FAST_SHARED_SANDBOX_PID" 2>/dev/null || true)
+		if [[ $WALLPAPER_TEST_FAST_SHARED_SANDBOX_OWNER == "$BASHPID" && \
+			$sandbox_start == "$WALLPAPER_TEST_FAST_SHARED_SANDBOX_START" && \
+			$WALLPAPER_TEST_FAST_SHARED_SANDBOX_ROOT == "$root" ]]; then
+			return 0
+		fi
+		if [[ $WALLPAPER_TEST_FAST_SHARED_SANDBOX_OWNER == "$BASHPID" ]]; then
+			wallpaper_test_fast_shared_sandbox_stop
+		else
+			wallpaper_test_fast_shared_sandbox_detach
+		fi
+	fi
+	[[ -d $root ]] || return 1
+	directory=$(mktemp -d "$root/.dotfiles-sandbox.XXXXXX") || return 1
+	node_request="$directory/node-request"
+	node_response="$directory/node-response"
+	node_root="$directory/node"
+	server_stderr="$directory/server.stderr"
+	server_failure="$directory/server.failed"
+	startup_status="$directory/startup-status"
+	if ! mkdir -p -- "$node_root" || ! mkfifo -- "$node_request" "$node_response" "$startup_status"; then
+		rm -rf -- "$directory"
+		return 1
+	fi
+	if ! exec {startup_fd}<>"$startup_status"; then
+		rm -rf -- "$directory"
+		return 1
+	fi
+	server_script='
+node_pid=
+node_input=
+node_output=
+proxy_input=
+proxy_output=
+proxy_pid=
+startup_complete=false
+cleanup() {
+	if [[ $startup_complete != true ]]; then printf "failed\n" >"$DOTFILES_TEST_FAST_STARTUP_STATUS" || true; fi
+	if [[ -n $proxy_pid ]]; then kill -KILL "$proxy_pid" 2>/dev/null || true; wait "$proxy_pid" 2>/dev/null || true; fi
+	if [[ -n $node_pid ]]; then kill -KILL "$node_pid" 2>/dev/null || true; wait "$node_pid" 2>/dev/null || true; fi
+	if [[ -n $node_input ]]; then eval "exec ${node_input}>&-" || true; fi
+	if [[ -n $node_output ]]; then eval "exec ${node_output}<&-" || true; fi
+	if [[ -n $proxy_input ]]; then eval "exec ${proxy_input}>&-" || true; fi
+	if [[ -n $proxy_output ]]; then eval "exec ${proxy_output}<&-" || true; fi
+}
+trap cleanup EXIT
+trap "exit 143" TERM
+trap "exit 130" INT
+
+server_failure() {
+	printf "failed\n" >"$DOTFILES_TEST_FAST_NODE_FAILURE"
+}
+server_read_response() {
+	local header stdout_length stderr_length total
+	IFS= read -r header <&"$1" || return 1
+	local response_pattern="^status=(0|[1-9][0-9]*) stdout=(0|[1-9][0-9]*) stderr=(0|[1-9][0-9]*)$"
+	[[ $header =~ $response_pattern ]] || return 1
+	stdout_length=${BASH_REMATCH[2]}
+	stderr_length=${BASH_REMATCH[3]}
+	total=$((stdout_length + stderr_length + 2))
+	dd iflag=fullblock bs=64K count="${total}B" status=none <&"$1" || return 1
+}
+proxy_request() {
+	local request header stdout_length stderr_length total client_request client_response
+	while :; do
+		client_request=
+		client_response=
+		exec {client_request}<"$DOTFILES_TEST_FAST_NODE_REQUEST"
+		exec {client_response}>"$DOTFILES_TEST_FAST_NODE_RESPONSE"
+		while IFS= read -r request <&"$client_request"; do
+			if ! printf "%s\n" "$request" >&"$proxy_input"; then
+				server_failure
+				kill -TERM "$$"
+				return
+			fi
+			if ! IFS= read -r header <&"$proxy_output"; then
+				server_failure
+				kill -TERM "$$"
+				return
+			fi
+			local response_pattern="^status=(0|[1-9][0-9]*) stdout=(0|[1-9][0-9]*) stderr=(0|[1-9][0-9]*)$"
+			if [[ ! $header =~ $response_pattern ]]; then
+				server_failure
+				kill -TERM "$$"
+				return
+			fi
+			stdout_length=${BASH_REMATCH[2]}
+			stderr_length=${BASH_REMATCH[3]}
+			total=$((stdout_length + stderr_length + 2))
+			if ! { printf "%s\n" "$header"; dd iflag=fullblock bs=64K count="${total}B" status=none <&"$proxy_output"; } >&"$client_response"; then
+				server_failure
+				kill -TERM "$$"
+				return
+			fi
+		done
+		eval "exec ${client_request}<&-"
+		eval "exec ${client_response}>&-"
+	done
+}
+
+coproc WALLPAPER_TEST_FAST_NODE_SERVER { "$DOTFILES_TEST_FAST_NODE" "$DOTFILES_TEST_FAST_NODE_HELPER" --server; }
+node_pid=$WALLPAPER_TEST_FAST_NODE_SERVER_PID
+node_input=${WALLPAPER_TEST_FAST_NODE_SERVER[1]}
+node_output=${WALLPAPER_TEST_FAST_NODE_SERVER[0]}
+if ! printf "[\"__dotfiles_test_ready__\"]\n" >&"$node_input" || ! server_read_response "$node_output" >/dev/null; then
+	server_failure
+	exit 1
+fi
+exec {proxy_input}>&"$node_input"
+exec {proxy_output}<&"$node_output"
+eval "exec ${node_input}>&-"
+eval "exec ${node_output}<&-"
+node_input=
+node_output=
+if ! printf "ready\n" >"$DOTFILES_TEST_FAST_STARTUP_STATUS"; then
+	server_failure
+	exit 1
+fi
+startup_complete=true
+proxy_request &
+proxy_pid=$!
+while IFS= read -r request; do eval "$request"; status=$?; printf "%s\n" "$status"; done'
+	coproc WALLPAPER_TEST_FAST_SHARED_SERVER {
+		setsid env -i \
+		HOME="$FIXTURE_HOME" \
+		PATH="/usr/bin:/bin" \
+		DOTFILES_TEST_FAST_NODE="${DOTFILES_TEST_FAST_SERVER_NODE:-$node_root/$(basename -- "$HOST_NODE_REAL")}" \
+		DOTFILES_TEST_FAST_NODE_HELPER="$FIXTURE_REPO/lib/dotfiles/wallpaper-files.mjs" \
+		DOTFILES_TEST_FAST_NODE_REQUEST="$node_request" \
+		DOTFILES_TEST_FAST_NODE_RESPONSE="$node_response" \
+		DOTFILES_TEST_FAST_NODE_FAILURE="$server_failure" \
+		DOTFILES_TEST_FAST_STARTUP_STATUS="$startup_status" \
+		"$BWRAP" \
+			--ro-bind / / \
+			--dev-bind /dev /dev \
+			--bind "$root" "$root" \
+			--ro-bind "$(dirname -- "$HOST_NODE_REAL")" "$node_root" \
+			--tmpfs /home \
+			--tmpfs /usr/share/omarchy \
+			-- bash -c "$server_script" \
+			2>"$server_stderr"
+	}
+	sandbox_pid=${WALLPAPER_TEST_FAST_SHARED_SERVER_PID-}
+	coproc_request_fd=${WALLPAPER_TEST_FAST_SHARED_SERVER[1]-}
+	coproc_response_fd=${WALLPAPER_TEST_FAST_SHARED_SERVER[0]-}
+	sandbox_start=$(parallel_test_process_start_time "$sandbox_pid" 2>/dev/null || true)
+	request_fd=''
+	response_fd=''
+	if [[ -n $coproc_request_fd ]] && exec {request_fd}>&"$coproc_request_fd"; then
+		eval "exec ${coproc_request_fd}>&-" || true
+	fi
+	if [[ -n $coproc_response_fd ]] && exec {response_fd}<&"$coproc_response_fd"; then
+		eval "exec ${coproc_response_fd}<&-" || true
+	fi
+
+	WALLPAPER_TEST_FAST_SHARED_SANDBOX_PID=$sandbox_pid
+	WALLPAPER_TEST_FAST_SHARED_SANDBOX_START=$sandbox_start
+	WALLPAPER_TEST_FAST_SHARED_SANDBOX_ROOT=$root
+	WALLPAPER_TEST_FAST_SHARED_SANDBOX_DIRECTORY=$directory
+	WALLPAPER_TEST_FAST_SHARED_SANDBOX_REQUEST=''
+	WALLPAPER_TEST_FAST_SHARED_SANDBOX_RESPONSE=''
+	WALLPAPER_TEST_FAST_SHARED_SANDBOX_REQUEST_FD=$request_fd
+	WALLPAPER_TEST_FAST_SHARED_SANDBOX_RESPONSE_FD=$response_fd
+	WALLPAPER_TEST_FAST_SHARED_SANDBOX_NODE_ROOT=$node_root
+	WALLPAPER_TEST_FAST_SHARED_SANDBOX_NODE_REQUEST=$node_request
+	WALLPAPER_TEST_FAST_SHARED_SANDBOX_NODE_RESPONSE=$node_response
+	WALLPAPER_TEST_FAST_SHARED_SANDBOX_OWNER=$BASHPID
+	WALLPAPER_TEST_FAST_SHARED_SANDBOX_STDERR=$server_stderr
+	if [[ -z $sandbox_start || -z $request_fd || -z $response_fd ]]; then
+		eval "exec ${startup_fd}>&-" || true
+		wallpaper_test_fast_shared_sandbox_report_failure
+		wallpaper_test_fast_shared_sandbox_stop
+		return 1
+	fi
+	if ! exec {startup_response_fd}<&"$response_fd"; then
+		eval "exec ${startup_fd}>&-" || true
+		wallpaper_test_fast_shared_sandbox_report_failure
+		wallpaper_test_fast_shared_sandbox_stop
+		return 1
+	fi
+	(
+		if ! IFS= read -r _ <&"$startup_response_fd"; then
+			printf 'failed\n' >"$startup_status" || true
+		fi
+	) &
+	startup_relay_pid=$!
+	startup_relay_inode=$(parallel_test_pidfd_inode "$startup_relay_pid" 2>/dev/null || true)
+	eval "exec ${startup_response_fd}<&-" || true
+
+	if ! IFS= read -r startup <&"$startup_fd" || [[ $startup != ready ]]; then
+		parallel_test_pidfd_signal "$startup_relay_pid" "$startup_relay_inode" KILL || true
+		wait "$startup_relay_pid" 2>/dev/null || true
+		eval "exec ${startup_fd}>&-" || true
+		wallpaper_test_fast_shared_sandbox_report_failure
+		wallpaper_test_fast_shared_sandbox_stop
+		return 1
+	fi
+	parallel_test_pidfd_signal "$startup_relay_pid" "$startup_relay_inode" KILL || true
+	wait "$startup_relay_pid" 2>/dev/null || true
+	eval "exec ${startup_fd}>&-" || true
+}
+
+wallpaper_test_fast_shared_sandbox_run() {
+	local working_directory=$1 command_path=$2 input_file output_file request_line quoted assignment argument failure_text
+	local real_node="$FIXTURE_REAL_NODE_DIR/$(basename -- "$HOST_NODE_REAL")"
+	local -a environment=()
+	shift 2
+
+	if [[ -n $WALLPAPER_TEST_FAST_SHARED_SANDBOX_NODE_ROOT ]]; then
+		real_node="$WALLPAPER_TEST_FAST_SHARED_SANDBOX_NODE_ROOT/$(basename -- "$HOST_NODE_REAL")"
+	fi
+	environment=(
+		"HOME=$FIXTURE_HOME"
+		"XDG_DATA_HOME=${DOTFILES_TEST_XDG_DATA_HOME-}"
+		"XDG_CONFIG_HOME=$FIXTURE_CONFIG"
+		"XDG_STATE_HOME=$FIXTURE_STATE"
+		"XDG_CACHE_HOME=$FIXTURE_CACHE"
+		"XDG_RUNTIME_DIR=$FIXTURE_RUNTIME"
+		"TMPDIR=$FIXTURE_TMP"
+		"OMARCHY_PATH=$FIXTURE_OMARCHY"
+		"DOTFILES_WALLPAPER_PACKAGED_THEMES_ROOT=$FIXTURE_WALLPAPER_THEMES"
+		"PATH=$command_path"
+		"DOTFILES_TEST_CALL_LOG=$CALL_LOG"
+		"DOTFILES_TEST_REPO=$FIXTURE_REPO"
+		"DOTFILES_TEST_FAKE_BIN=$FIXTURE_BIN"
+		"DOTFILES_TEST_HOME=$FIXTURE_HOME"
+		"DOTFILES_TEST_OMARCHY_VERSION=${DOTFILES_TEST_OMARCHY_VERSION:-4.0.0-1}"
+		"DOTFILES_TEST_SKILL_COUNT_DRIFT=${DOTFILES_TEST_SKILL_COUNT_DRIFT:-false}"
+		"DOTFILES_TEST_SKILL_INSTALL_FAILURE=${DOTFILES_TEST_SKILL_INSTALL_FAILURE:-false}"
+		"DOTFILES_TEST_SKILL_VERIFY_FAILURE=${DOTFILES_TEST_SKILL_VERIFY_FAILURE:-false}"
+		"DOTFILES_TEST_SKILL_UPDATE_NO_CHANGE=${DOTFILES_TEST_SKILL_UPDATE_NO_CHANGE:-false}"
+		"DOTFILES_TEST_SKILL_UPDATE_COLLISION=${DOTFILES_TEST_SKILL_UPDATE_COLLISION:-false}"
+		"DOTFILES_TEST_SKILL_UNRELATED_FAILURE=${DOTFILES_TEST_SKILL_UNRELATED_FAILURE:-none}"
+		"DOTFILES_TEST_GUM_RESPONSES=${DOTFILES_TEST_GUM_RESPONSES-}"
+		"DOTFILES_TEST_XDG_DATA_HOME=${DOTFILES_TEST_XDG_DATA_HOME-}"
+		"DOTFILES_TEST_INSTALLED_PACKAGES=$FIXTURE_ROOT/installed-packages"
+		"DOTFILES_TEST_EXPLICIT_PACKAGES=$FIXTURE_ROOT/explicit-packages"
+		"DOTFILES_TEST_PACKAGE_METADATA=$FIXTURE_ROOT/package-metadata"
+		"DOTFILES_TEST_ARCH_PACKAGE_STATE=$ARCH_PACKAGE_STATE"
+		"DOTFILES_TEST_ARCH_PACKAGE_ADD_MARKER=$ARCH_PACKAGE_ADD_MARKER"
+		"DOTFILES_TEST_ARCH_INSTALL_FAILURE=${DOTFILES_TEST_ARCH_INSTALL_FAILURE:-false}"
+		"DOTFILES_TEST_ARCH_VERIFY_FAILURE=${DOTFILES_TEST_ARCH_VERIFY_FAILURE:-false}"
+		"DOTFILES_TEST_FIND_COUNT=${DOTFILES_TEST_FIND_COUNT-}"
+		"DOTFILES_TEST_PACMAN_VERIFY_FAILURE=${DOTFILES_TEST_PACMAN_VERIFY_FAILURE:-false}"
+		"DOTFILES_TEST_YAY_METADATA_FAILURE=${DOTFILES_TEST_YAY_METADATA_FAILURE:-false}"
+		"DOTFILES_TEST_REAL_NODE=$real_node"
+		"DOTFILES_TEST_FAST_SHARED_REQUEST=${WALLPAPER_TEST_FAST_SHARED_SANDBOX_NODE_REQUEST-}"
+		"DOTFILES_TEST_FAST_SHARED_RESPONSE=${WALLPAPER_TEST_FAST_SHARED_SANDBOX_NODE_RESPONSE-}"
+		"DOTFILES_TEST_BRAVE_SYSTEM=$FIXTURE_BRAVE_SYSTEM"
+		"DOTFILES_TEST_BRAVE_METADATA=$BRAVE_METADATA_ROOT"
+		"DOTFILES_TEST_BRAVE_PACKAGES=$BRAVE_PACKAGE_DB"
+		"DOTFILES_TEST_BRAVE_PROVIDERS=$BRAVE_PROVIDER_DB"
+		"DOTFILES_TEST_BRAVE_OWNERS=$BRAVE_OWNER_DB"
+		"DOTFILES_TEST_BRAVE_FAILURE_MARKERS=$BRAVE_FAILURE_MARKERS"
+		"DOTFILES_TEST_BRAVE_UID=${DOTFILES_TEST_BRAVE_UID:-$(id -u)}"
+		"DOTFILES_TEST_BRAVE_FAIL_BEFORE=${DOTFILES_TEST_BRAVE_FAIL_BEFORE-}"
+		"DOTFILES_TEST_BRAVE_FAIL_AFTER=${DOTFILES_TEST_BRAVE_FAIL_AFTER-}"
+		"DOTFILES_TEST_BRAVE_FAIL_RECEIPT=${DOTFILES_TEST_BRAVE_FAIL_RECEIPT-}"
+		"DOTFILES_TEST_BRAVE_FAIL_STATE_REMOVE=${DOTFILES_TEST_BRAVE_FAIL_STATE_REMOVE-}"
+		"DOTFILES_TEST_BRAVE_FAIL_BACKUP=${DOTFILES_TEST_BRAVE_FAIL_BACKUP:-false}"
+		"DOTFILES_TEST_BRAVE_BACKUP_RACE=${DOTFILES_TEST_BRAVE_BACKUP_RACE:-false}"
+		"DOTFILES_TEST_BRAVE_SENSITIVE=${DOTFILES_TEST_BRAVE_SENSITIVE:-$FIXTURE_ROOT/brave-sensitive}"
+		"DOTFILES_TEST_BRAVE_FAIL_PREVIEW=${DOTFILES_TEST_BRAVE_FAIL_PREVIEW:-false}"
+		"DOTFILES_TEST_BRAVE_CORRUPT_STAGE=${DOTFILES_TEST_BRAVE_CORRUPT_STAGE:-false}"
+		"DOTFILES_TEST_BRAVE_CORRUPT_STAGE_METADATA=${DOTFILES_TEST_BRAVE_CORRUPT_STAGE_METADATA-}"
+		"DOTFILES_TEST_BRAVE_STAGE_LINK_OPERATION=${DOTFILES_TEST_BRAVE_STAGE_LINK_OPERATION-}"
+		"DOTFILES_TEST_BRAVE_STAGE_LINK_KIND=${DOTFILES_TEST_BRAVE_STAGE_LINK_KIND-}"
+		"DOTFILES_TEST_BRAVE_STAGE_REFERENT=${DOTFILES_TEST_BRAVE_STAGE_REFERENT:-$FIXTURE_ROOT/brave-stage-referent}"
+		"DOTFILES_TEST_BRAVE_RECEIPT_RACE=${DOTFILES_TEST_BRAVE_RECEIPT_RACE-}"
+		"DOTFILES_TEST_BRAVE_RECEIPT_REFERENT=${DOTFILES_TEST_BRAVE_RECEIPT_REFERENT:-$FIXTURE_ROOT/brave-receipt-referent}"
+		"DOTFILES_TEST_BRAVE_STATE_ROOT_RACE_REFERENT=${DOTFILES_TEST_BRAVE_STATE_ROOT_RACE_REFERENT-}"
+		"DOTFILES_TEST_BRAVE_REPLACE_MANAGED_AFTER=${DOTFILES_TEST_BRAVE_REPLACE_MANAGED_AFTER-}"
+		"DOTFILES_TEST_BRAVE_RENAME_FAILURE=${DOTFILES_TEST_BRAVE_RENAME_FAILURE-}"
+		"DOTFILES_TEST_BRAVE_REPLACE_TARGET_ON_STATE_REMOVE=${DOTFILES_TEST_BRAVE_REPLACE_TARGET_ON_STATE_REMOVE-}"
+		"DOTFILES_TEST_BRAVE_REPLACE_TARGET_AFTER=${DOTFILES_TEST_BRAVE_REPLACE_TARGET_AFTER-}"
+		"DOTFILES_TEST_BRAVE_LOG_RECOVERY_ORDER=${DOTFILES_TEST_BRAVE_LOG_RECOVERY_ORDER:-false}"
+		"DOTFILES_TEST_BRAVE_FALSE_SUCCESS=${DOTFILES_TEST_BRAVE_FALSE_SUCCESS-}"
+		"DOTFILES_TEST_BRAVE_RACE=${DOTFILES_TEST_BRAVE_RACE-}"
+		"DOTFILES_TEST_WALLPAPER_FAIL=${DOTFILES_TEST_WALLPAPER_FAIL-}"
+		"DOTFILES_TEST_WALLPAPER_FAIL_ROLLBACK=${DOTFILES_TEST_WALLPAPER_FAIL_ROLLBACK:-false}"
+		"DOTFILES_TEST_WALLPAPER_VERSION_CHANGES=${DOTFILES_TEST_WALLPAPER_VERSION_CHANGES:-false}"
+		"DOTFILES_TEST_WALLPAPER_RACE=${DOTFILES_TEST_WALLPAPER_RACE-}"
+		"DOTFILES_TEST_WALLPAPER_RACE_PATH=${DOTFILES_TEST_WALLPAPER_RACE_PATH-}"
+		"DOTFILES_TEST_WALLPAPER_FALSE_SUCCESS=${DOTFILES_TEST_WALLPAPER_FALSE_SUCCESS-}"
+		"DOTFILES_TEST_WALLPAPER_IMAGE_RACE_PATH=${DOTFILES_TEST_WALLPAPER_IMAGE_RACE_PATH-}"
+		"DOTFILES_TEST_WALLPAPER_IMAGE_RACE_REPLACEMENT=${DOTFILES_TEST_WALLPAPER_IMAGE_RACE_REPLACEMENT-}"
+		"DOTFILES_TEST_REAL_MAGICK=$HOST_MAGICK_REAL"
+		"DOTFILES_TEST_WALLPAPER_SIGNAL=${DOTFILES_TEST_WALLPAPER_SIGNAL-}"
+		"DOTFILES_TEST_WALLPAPER_POST_PENDING_RACE=${DOTFILES_TEST_WALLPAPER_POST_PENDING_RACE-}"
+		"DOTFILES_TEST_WALLPAPER_POST_PENDING_PATH=${DOTFILES_TEST_WALLPAPER_POST_PENDING_PATH-}"
+		"DOTFILES_TEST_WALLPAPER_POST_PENDING_REPLACEMENT=${DOTFILES_TEST_WALLPAPER_POST_PENDING_REPLACEMENT-}"
+		"DOTFILES_TEST_WALLPAPER_PREPARATION_FAIL=${DOTFILES_TEST_WALLPAPER_PREPARATION_FAIL-}"
+		"DOTFILES_TEST_WALLPAPER_DELETE_RACE_PATH=${DOTFILES_TEST_WALLPAPER_DELETE_RACE_PATH-}"
+		"DOTFILES_TEST_WALLPAPER_DELETE_RACE_REPLACEMENT=${DOTFILES_TEST_WALLPAPER_DELETE_RACE_REPLACEMENT-}"
+		"DOTFILES_TEST_WALLPAPER_SOURCE_AFTER_ACTIVE=${DOTFILES_TEST_WALLPAPER_SOURCE_AFTER_ACTIVE-}"
+		"DOTFILES_TEST_WALLPAPER_SOURCE_AFTER_ACTIVE_REPLACEMENT=${DOTFILES_TEST_WALLPAPER_SOURCE_AFTER_ACTIVE_REPLACEMENT-}"
+		"DOTFILES_TEST_WALLPAPER_STATE_ROOT_RACE=${DOTFILES_TEST_WALLPAPER_STATE_ROOT_RACE-}"
+		"DOTFILES_TEST_FAST_WALLPAPER_FILES=${DOTFILES_TEST_FAST_WALLPAPER_FILES:-false}"
+		"DOTFILES_UI=${DOTFILES_UI:-bash}"
+	)
+	input_file="$WALLPAPER_TEST_FAST_SHARED_SANDBOX_DIRECTORY/input.$BASHPID.$RANDOM"
+	output_file="$WALLPAPER_TEST_FAST_SHARED_SANDBOX_DIRECTORY/output.$BASHPID.$RANDOM"
+	if ! printf '%b' "${DOTFILES_TEST_INPUT-}" >"$input_file"; then
+		COMMAND_STATUS=1
+		COMMAND_OUTPUT=''
+		return 1
+	fi
+	request_line="cd -- $(printf '%q' "$working_directory") && env -i"
+	for assignment in "${environment[@]}"; do
+		printf -v quoted ' %q' "$assignment"
+		request_line+=$quoted
+	done
+	request_line+=' '
+	for argument in "$@"; do
+		printf -v quoted '%q ' "$argument"
+		request_line+=$quoted
+	done
+	printf -v quoted '< %q > %q 2>&1' "$input_file" "$output_file"
+	request_line+=" $quoted"
+	if ! printf '%s\n' "$request_line" >&"$WALLPAPER_TEST_FAST_SHARED_SANDBOX_REQUEST_FD"; then
+		COMMAND_STATUS=1
+		COMMAND_OUTPUT=$(wallpaper_test_fast_shared_sandbox_failure_text)
+		rm -f -- "$input_file" "$output_file"
+		return 1
+	fi
+	if ! IFS= read -r COMMAND_STATUS <&"$WALLPAPER_TEST_FAST_SHARED_SANDBOX_RESPONSE_FD"; then
+		COMMAND_STATUS=1
+		COMMAND_OUTPUT=$(wallpaper_test_fast_shared_sandbox_failure_text)
+		rm -f -- "$input_file" "$output_file"
+		return 1
+	fi
+	if [[ ! $COMMAND_STATUS =~ ^[0-9]+$ || $COMMAND_STATUS -gt 255 ]]; then
+		COMMAND_STATUS=1
+		COMMAND_OUTPUT=''
+		rm -f -- "$input_file" "$output_file"
+		return 1
+	fi
+	if [[ -f $output_file ]]; then COMMAND_OUTPUT=$(<"$output_file"); else COMMAND_OUTPUT=''; fi
+	rm -f -- "$input_file" "$output_file"
+	if [[ -f $WALLPAPER_TEST_FAST_SHARED_SANDBOX_DIRECTORY/server.failed ]]; then
+		failure_text=$(wallpaper_test_fast_shared_sandbox_failure_text)
+		if [[ -n $COMMAND_OUTPUT ]]; then COMMAND_OUTPUT+=$'\n'; fi
+		COMMAND_OUTPUT+=$failure_text
+		COMMAND_STATUS=1
+	fi
+	return 0
+}
+
 new_fixture() {
+	if [[ -z $PARALLEL_TEST_WORKER_ROOT ]]; then
+		wallpaper_test_fast_shared_sandbox_stop || true
+	fi
 	BWRAP_EXTRA_ARGS=()
 	if [[ -n ${FIXTURE_ROOT-} && -d $FIXTURE_ROOT ]]; then
 		rm -rf "$FIXTURE_ROOT"
@@ -59,8 +1292,16 @@ new_fixture() {
 	if [[ -n ${OUTSIDE_ROOT-} && -d $OUTSIDE_ROOT ]]; then
 		rm -rf "$OUTSIDE_ROOT"
 	fi
-	FIXTURE_ROOT=$(mktemp -d)
-	OUTSIDE_ROOT=$(mktemp -d)
+	if [[ -n $PARALLEL_TEST_WORKER_ROOT && -d $PARALLEL_TEST_WORKER_ROOT ]]; then
+		FIXTURE_ROOT=$(mktemp -d "$PARALLEL_TEST_WORKER_ROOT/fixture.XXXXXX")
+		OUTSIDE_ROOT=$(mktemp -d "$PARALLEL_TEST_WORKER_ROOT/outside.XXXXXX")
+	elif [[ -n $PARALLEL_TEST_ROOT && -d $PARALLEL_TEST_ROOT ]]; then
+		FIXTURE_ROOT=$(mktemp -d "$PARALLEL_TEST_ROOT/fixture.XXXXXX")
+		OUTSIDE_ROOT=$(mktemp -d "$PARALLEL_TEST_ROOT/outside.XXXXXX")
+	else
+		FIXTURE_ROOT=$(mktemp -d)
+		OUTSIDE_ROOT=$(mktemp -d)
+	fi
 	FIXTURE_REPO="$FIXTURE_ROOT/relocated/dotfiles"
 	FIXTURE_HOME="$FIXTURE_ROOT/user/home"
 	FIXTURE_CONFIG="$FIXTURE_ROOT/user/config"
@@ -102,6 +1343,7 @@ elif [[ \$# == 3 && \$2 == -coalesce && \$3 == null: ]]; then
 else
 	exit 64
 fi
+
 [[ -f \$image && ! -L \$image ]] || exit 1
 mime=\$("\$file_command" --brief --mime-type -- "\$image") || exit 1
 case \$mime in
@@ -123,29 +1365,41 @@ if [[ \$identify == true ]]; then printf '%s|4|3\n' "\$format"; fi
 	: >"$CALL_LOG"
 	printf '%s\n' thefuck tmux fzf less starship btop telegram-desktop zip ttfx jq socat >"$ARCH_PACKAGE_STATE"
 	cp "$SOURCE_REPO/bin/dotfiles" "$FIXTURE_REPO/bin/dotfiles"
-	cp "$SOURCE_REPO/lib/dotfiles/"*.sh "$FIXTURE_REPO/lib/dotfiles/"
+	if [[ ${DOTFILES_TEST_MINIMAL_WALLPAPER_FIXTURE:-false} == true ]]; then
+		cp "$SOURCE_REPO/lib/dotfiles/core.sh" "$SOURCE_REPO/lib/dotfiles/wallpapers.sh" \
+			"$SOURCE_REPO/lib/dotfiles/wizard.sh" "$FIXTURE_REPO/lib/dotfiles/"
+	else
+		cp "$SOURCE_REPO/lib/dotfiles/"*.sh "$FIXTURE_REPO/lib/dotfiles/"
+	fi
 	cp "$SOURCE_REPO/lib/dotfiles/"*.mjs "$FIXTURE_REPO/lib/dotfiles/"
+	if [[ ${DOTFILES_TEST_FAST_WALLPAPER_FILES:-false} == true ]]; then
+		cp "$SOURCE_REPO/tests/support/fast_wallpaper_files.sh" "$FIXTURE_REPO/lib/dotfiles/"
+	fi
 	cp "$SOURCE_REPO/packages.json" "$FIXTURE_REPO/packages.json"
 	cp "$SOURCE_REPO/cleanup.json" "$FIXTURE_REPO/cleanup.json"
-	if [[ -f $SOURCE_REPO/README.md ]]; then
-		cp "$SOURCE_REPO/README.md" "$FIXTURE_REPO/README.md"
-	fi
-	if [[ -d $SOURCE_REPO/brave ]]; then
-		cp -a "$SOURCE_REPO/brave" "$FIXTURE_REPO/brave"
-	fi
-	if [[ -d $SOURCE_REPO/config ]]; then
-		cp -a "$SOURCE_REPO/config" "$FIXTURE_REPO/config"
-	fi
-	if [[ -d $SOURCE_REPO/docs ]]; then
-		cp -a "$SOURCE_REPO/docs" "$FIXTURE_REPO/docs"
+	if [[ ${DOTFILES_TEST_MINIMAL_WALLPAPER_FIXTURE:-false} != true ]]; then
+		if [[ -f $SOURCE_REPO/README.md ]]; then
+			cp "$SOURCE_REPO/README.md" "$FIXTURE_REPO/README.md"
+		fi
+		if [[ -d $SOURCE_REPO/brave ]]; then
+			cp -a "$SOURCE_REPO/brave" "$FIXTURE_REPO/brave"
+		fi
+		if [[ -d $SOURCE_REPO/config ]]; then
+			cp -a "$SOURCE_REPO/config" "$FIXTURE_REPO/config"
+		fi
+		if [[ -d $SOURCE_REPO/docs ]]; then
+			cp -a "$SOURCE_REPO/docs" "$FIXTURE_REPO/docs"
+		fi
 	fi
 	mkdir -p "$FIXTURE_REPO/wallpapers/inbox" "$FIXTURE_REPO/wallpapers/library"
 	cp "$SOURCE_REPO/wallpapers/inbox/.gitkeep" "$FIXTURE_REPO/wallpapers/inbox/.gitkeep"
-	if [[ -f $SOURCE_REPO/skills.json ]]; then
-		cp "$SOURCE_REPO/skills.json" "$FIXTURE_REPO/skills.json"
-	fi
-	if [[ -f $SOURCE_REPO/Makefile ]]; then
-		cp "$SOURCE_REPO/Makefile" "$FIXTURE_REPO/Makefile"
+	if [[ ${DOTFILES_TEST_MINIMAL_WALLPAPER_FIXTURE:-false} != true ]]; then
+		if [[ -f $SOURCE_REPO/skills.json ]]; then
+			cp "$SOURCE_REPO/skills.json" "$FIXTURE_REPO/skills.json"
+		fi
+		if [[ -f $SOURCE_REPO/Makefile ]]; then
+			cp "$SOURCE_REPO/Makefile" "$FIXTURE_REPO/Makefile"
+		fi
 	fi
 
 	make_fake omarchy 'printf "%s|HOME=%s|XDG_CONFIG_HOME=%s|XDG_STATE_HOME=%s|XDG_CACHE_HOME=%s\n" "$*" "$HOME" "$XDG_CONFIG_HOME" "$XDG_STATE_HOME" "$XDG_CACHE_HOME" >>"$DOTFILES_TEST_CALL_LOG"
@@ -199,6 +1453,13 @@ fixture_git() {
 setup_wallpaper_fixture() {
 	mkdir -p "$FIXTURE_REPO/wallpapers/inbox" "$FIXTURE_REPO/wallpapers/library" \
 		"$FIXTURE_CONFIG/omarchy/themes" "$FIXTURE_CONFIG/omarchy/backgrounds" "$FIXTURE_WALLPAPER_THEMES"
+	if [[ ${DOTFILES_TEST_SKIP_WALLPAPER_GIT:-false} == true ]]; then
+		return 0
+	fi
+	setup_wallpaper_git_fixture
+}
+
+setup_wallpaper_git_fixture() {
 	if [[ ! -d $FIXTURE_REPO/.git ]]; then
 		fixture_git init -q --initial-branch=main || return 1
 	fi
@@ -587,10 +1848,13 @@ run_in_sandbox() {
 	outside_before=$(snapshot_outside_canaries)
 
 	set +e
-	COMMAND_OUTPUT=$(
-		cd -- "$working_directory" &&
-			printf '%b' "${DOTFILES_TEST_INPUT-}" |
-			env -i \
+	if [[ -n $WALLPAPER_TEST_FAST_SHARED_SANDBOX_PID ]]; then
+		wallpaper_test_fast_shared_sandbox_run "$working_directory" "$command_path" "$@"
+	else
+		COMMAND_OUTPUT=$(
+			cd -- "$working_directory" &&
+				printf '%b' "${DOTFILES_TEST_INPUT-}" |
+				env -i \
 				HOME="$FIXTURE_HOME" \
 				XDG_DATA_HOME="${DOTFILES_TEST_XDG_DATA_HOME-}" \
 				XDG_CONFIG_HOME="$FIXTURE_CONFIG" \
@@ -674,17 +1938,19 @@ run_in_sandbox() {
 				DOTFILES_TEST_WALLPAPER_SOURCE_AFTER_ACTIVE="${DOTFILES_TEST_WALLPAPER_SOURCE_AFTER_ACTIVE-}" \
 				DOTFILES_TEST_WALLPAPER_SOURCE_AFTER_ACTIVE_REPLACEMENT="${DOTFILES_TEST_WALLPAPER_SOURCE_AFTER_ACTIVE_REPLACEMENT-}" \
 				DOTFILES_TEST_WALLPAPER_STATE_ROOT_RACE="${DOTFILES_TEST_WALLPAPER_STATE_ROOT_RACE-}" \
+				DOTFILES_TEST_FAST_WALLPAPER_FILES="${DOTFILES_TEST_FAST_WALLPAPER_FILES:-false}" \
 				DOTFILES_UI="${DOTFILES_UI:-bash}" \
 				"$BWRAP" \
 					--ro-bind / / \
 					--dev-bind /dev /dev \
 					--bind "$FIXTURE_ROOT" "$FIXTURE_ROOT" \
-					--tmpfs /home \
-					--tmpfs /usr/share/omarchy \
-					"${BWRAP_EXTRA_ARGS[@]}" \
+				--tmpfs /home \
+				--tmpfs /usr/share/omarchy \
+				"${BWRAP_EXTRA_ARGS[@]}" \
 					-- "$@" 2>&1
-	)
-	COMMAND_STATUS=$?
+		)
+		COMMAND_STATUS=$?
+	fi
 	set -e
 	if [[ $(snapshot_outside_canaries) != "$outside_before" ]]; then
 		OUTSIDE_CANARY_CHANGED=true
@@ -1069,7 +2335,18 @@ run_brave_operation() {
 
 run_wallpaper_operation() {
 	local working_directory=$1 operation=$2
+	local nested_shared_scope=false status
 	shift 2
+	if [[ ${DOTFILES_TEST_FAST_WALLPAPER_FILES:-false} == true ]]; then
+		if [[ -n $WALLPAPER_TEST_FAST_SHARED_WORKER && \
+			$BASHPID != "$WALLPAPER_TEST_FAST_SHARED_WORKER" ]]; then
+			nested_shared_scope=true
+			if [[ -n $WALLPAPER_TEST_FAST_SHARED_SANDBOX_PID ]]; then
+				wallpaper_test_fast_shared_sandbox_detach
+			fi
+		fi
+		wallpaper_test_fast_shared_sandbox_start || return 1
+	fi
 	run_in_sandbox "$working_directory" "$FIXTURE_WALLPAPER_BIN:${DOTFILES_TEST_PATH:-$FIXTURE_BIN:/usr/bin:/bin}" \
 		bash -c '
 			set -euo pipefail
@@ -1078,6 +2355,28 @@ run_wallpaper_operation() {
 			shift 2
 			source "$repository/lib/dotfiles/core.sh"
 			source "$repository/lib/dotfiles/wallpapers.sh"
+			if [[ $DOTFILES_TEST_FAST_WALLPAPER_FILES == true ]]; then
+				source "$repository/lib/dotfiles/fast_wallpaper_files.sh"
+				if [[ -n ${DOTFILES_TEST_FAST_SHARED_REQUEST-} && -n ${DOTFILES_TEST_FAST_SHARED_RESPONSE-} ]]; then
+					wallpaper_test_fast_shared_client_stop() {
+						local input=${WALLPAPER_TEST_FAST_SERVER_INPUT-} output=${WALLPAPER_TEST_FAST_SERVER_OUTPUT-}
+						if [[ -n $input ]]; then eval "exec ${input}>&-" || true; fi
+						if [[ -n $output ]]; then eval "exec ${output}<&-" || true; fi
+						WALLPAPER_TEST_FAST_SERVER_INPUT=''
+						WALLPAPER_TEST_FAST_SERVER_OUTPUT=''
+					}
+					exec {WALLPAPER_TEST_FAST_SERVER_INPUT}>"$DOTFILES_TEST_FAST_SHARED_REQUEST"
+					exec {WALLPAPER_TEST_FAST_SERVER_OUTPUT}<"$DOTFILES_TEST_FAST_SHARED_RESPONSE"
+					trap "wallpaper_test_fast_shared_client_stop" EXIT
+				else
+					wallpaper_test_fast_server_start || exit 1
+					trap "wallpaper_test_fast_server_stop" EXIT
+				fi
+				trap "wallpaper_test_fast_server_stop" EXIT
+				trap "wallpaper_test_fast_server_stop; exit 143" TERM
+				trap "wallpaper_test_fast_server_stop; exit 130" INT
+				wallpaper_files() { wallpaper_test_fast_files "$@"; }
+			fi
 			source "$repository/lib/dotfiles/wizard.sh"
 			wallpaper_test_interrupt() {
 				if [[ $DOTFILES_TEST_WALLPAPER_SIGNAL == "$1-kill" ]]; then kill -KILL $$; fi
@@ -1226,6 +2525,11 @@ run_wallpaper_operation() {
 			}
 			"$operation" "$@"
 		' bash "$FIXTURE_REPO" "$operation" "$@"
+	status=$?
+	if [[ $nested_shared_scope == true ]]; then
+		wallpaper_test_fast_shared_sandbox_stop || true
+	fi
+	return "$status"
 }
 
 configure_skill_fakes() {
@@ -1414,10 +2718,12 @@ run_test() {
 	local name=$1
 	local description=$2
 	local test_failed=false
+	shift 2
 
+	WALLPAPER_TEST_FAST_SHARED_WORKER=$BASHPID
 	TESTS_RUN=$((TESTS_RUN + 1))
 	OUTSIDE_CANARY_CHANGED=false
-	if ! "$name"; then
+	if ! "$name" "$@"; then
 		test_failed=true
 	fi
 	if [[ $OUTSIDE_CANARY_CHANGED == true ]] || \
@@ -1431,6 +2737,10 @@ run_test() {
 	else
 		pass "$description"
 	fi
+	if [[ ${DOTFILES_TEST_REUSE_WALLPAPER_SANDBOX:-false} != true ]]; then
+		wallpaper_test_fast_shared_sandbox_stop || true
+	fi
+	WALLPAPER_TEST_FAST_SHARED_WORKER=''
 	if [[ -n ${FIXTURE_ROOT-} && -d $FIXTURE_ROOT ]]; then
 		rm -rf "$FIXTURE_ROOT"
 	fi
@@ -1439,7 +2749,251 @@ run_test() {
 	fi
 }
 
+run_test_group() {
+	local group=$1 name=$2 description=$3 argument=${4-}
+
+	[[ $group =~ ^[1-9][0-9]*$ ]] || return 1
+	PARALLEL_TEST_GROUP_NAMES+=("$name")
+	PARALLEL_TEST_GROUP_DESCRIPTIONS+=("$description")
+	PARALLEL_TEST_GROUP_IDS+=("$group")
+	PARALLEL_TEST_GROUP_ARGUMENTS+=("$argument")
+	TESTS_RUN=$((TESTS_RUN + 1))
+}
+
+parallel_test_wait_for_one_worker_completion() {
+	local kind event_pid index pid marker
+
+	[[ $PARALLEL_TEST_EVENT_READ_FD =~ ^[0-9]+$ ]] || return 1
+	while IFS=' ' read -r kind event_pid <&"$PARALLEL_TEST_EVENT_READ_FD"; do
+		[[ $kind =~ ^(abnormal|exit|watch-failed)$ && $event_pid =~ ^[1-9][0-9]*$ ]] || continue
+		index=-1
+		for ((index = 0; index < ${#PARALLEL_TEST_PIDS[@]}; index++)); do
+			[[ ${PARALLEL_TEST_PIDS[$index]-} == "$event_pid" ]] || continue
+			break
+		done
+		if ((index >= ${#PARALLEL_TEST_PIDS[@]})); then
+			# An abnormal worker notifies before its pidfd watcher; consume that
+			# later watcher event after the worker has been unregistered.
+			continue
+		fi
+		pid=${PARALLEL_TEST_PIDS[$index]}
+		marker=${PARALLEL_TEST_WORKER_MARKERS[$index]-}
+		if [[ -n $marker && -f $marker ]]; then
+			# Completion is worker-owned: its resources are already stopped and the
+			# marker is the final publication. Reap only this registered root.
+			wait "$pid" 2>/dev/null || true
+			parallel_test_unregister_worker_root "$index"
+			return 0
+		fi
+		parallel_test_abort_worker "$index" "$kind" && return 0
+		return 1
+	done
+	printf 'Error: parallel test worker event relay closed before a worker completed.\n' >&2
+	parallel_test_cleanup || true
+	return 1
+}
+
+run_queued_test_groups() {
+	local group_count=0 group index total_tests worker_pid worker_root worker_marker registration_status
+	local limit=${DOTFILES_TEST_PARALLEL_LIMIT:-10}
+
+	for group in "${PARALLEL_TEST_GROUP_IDS[@]}"; do
+		if ((group > group_count)); then group_count=$group; fi
+	done
+	[[ $group_count -gt 0 ]] || return 0
+	total_tests=$TESTS_RUN
+	PARALLEL_TEST_STARTUP_FAILED=false
+	PARALLEL_TEST_STARTUP_ERROR=''
+	if ! PARALLEL_TEST_ROOT=$(mktemp -d "${TMPDIR:-/tmp}/dotfiles-test-workers.XXXXXX"); then
+		PARALLEL_TEST_STARTUP_FAILED=true
+		PARALLEL_TEST_STARTUP_ERROR='could not create queued test worker root'
+		printf 'Error: %s.\n' "$PARALLEL_TEST_STARTUP_ERROR" >&2
+		return 1
+	fi
+	PARALLEL_TEST_PIDS=()
+	PARALLEL_TEST_PGIDS=()
+	PARALLEL_TEST_START_TIMES=()
+	PARALLEL_TEST_PIDFD_INODES=()
+	PARALLEL_TEST_WORKER_MARKERS=()
+	PARALLEL_TEST_WATCHER_PIDS=()
+	PARALLEL_TEST_RUNNING=0
+	if ! parallel_test_start_event_relay; then
+		PARALLEL_TEST_STARTUP_FAILED=true
+		PARALLEL_TEST_STARTUP_ERROR='could not start queued test worker event relay'
+		printf 'Error: %s.\n' "$PARALLEL_TEST_STARTUP_ERROR" >&2
+		return 1
+	fi
+
+	for ((group = 1; group <= group_count; group++)); do
+	if [[ $limit =~ ^[1-9][0-9]*$ ]]; then
+			while ((PARALLEL_TEST_RUNNING >= limit)); do
+				parallel_test_wait_for_one_worker_completion || return 1
+				PARALLEL_TEST_RUNNING=$((PARALLEL_TEST_RUNNING - 1))
+			done
+		fi
+		worker_root="$PARALLEL_TEST_ROOT/worker-${BASHPID}-${group}"
+		if ! mkdir -p -- "$worker_root"; then
+			PARALLEL_TEST_STARTUP_FAILED=true
+			PARALLEL_TEST_STARTUP_ERROR="could not create queued worker directory for group $group"
+			printf 'Error: %s.\n' "$PARALLEL_TEST_STARTUP_ERROR" >&2
+			return 1
+		fi
+		worker_marker="$PARALLEL_TEST_ROOT/group-$group.complete"
+		PARALLEL_TEST_LAUNCHING=true
+		if [[ $- != *m* ]]; then
+			set -m
+			PARALLEL_TEST_MONITOR_CHANGED=true
+		fi
+		PARALLEL_TEST_LAUNCH_PID=''
+		(
+			worker_results_root=$PARALLEL_TEST_ROOT
+			parallel_test_prepare_worker "$worker_marker" || exit 1
+			PARALLEL_TEST_WORKER_ROOT=$worker_root
+			DOTFILES_TEST_REUSE_WALLPAPER_SANDBOX=true
+			TESTS_FAILED=0
+			worker_statuses=()
+			for ((index = 1; index <= total_tests; index++)); do
+				[[ ${PARALLEL_TEST_GROUP_IDS[$((index - 1))]} == "$group" ]] || continue
+				TESTS_RUN=$((index - 1))
+				TESTS_FAILED=0
+				if [[ -n ${PARALLEL_TEST_GROUP_ARGUMENTS[$((index - 1))]} ]]; then
+					run_test "${PARALLEL_TEST_GROUP_NAMES[$((index - 1))]}" \
+						"${PARALLEL_TEST_GROUP_DESCRIPTIONS[$((index - 1))]}" \
+						"${PARALLEL_TEST_GROUP_ARGUMENTS[$((index - 1))]}" \
+						>"$worker_results_root/$index.output" 2>&1 || true
+				else
+					run_test "${PARALLEL_TEST_GROUP_NAMES[$((index - 1))]}" \
+						"${PARALLEL_TEST_GROUP_DESCRIPTIONS[$((index - 1))]}" \
+						>"$worker_results_root/$index.output" 2>&1 || true
+				fi
+				worker_statuses[$index]=$TESTS_FAILED
+			done
+			parallel_test_worker_stop_owned_resources || exit 1
+			for ((index = 1; index <= total_tests; index++)); do
+				[[ ${PARALLEL_TEST_GROUP_IDS[$((index - 1))]} == "$group" ]] || continue
+				printf '%s\n' "${worker_statuses[$index]}" >"$worker_results_root/$index.status" || exit 1
+			done
+			parallel_test_worker_mark_normal_completion || exit 1
+		) >"$PARALLEL_TEST_ROOT/group-$group.output" 2>&1 &
+		worker_pid=$!
+		PARALLEL_TEST_LAUNCH_PID=$worker_pid
+		PARALLEL_TEST_PIDS+=("$worker_pid")
+		PARALLEL_TEST_START_TIMES+=('')
+		PARALLEL_TEST_PGIDS+=('')
+		PARALLEL_TEST_PIDFD_INODES+=('')
+		PARALLEL_TEST_WORKER_MARKERS+=("$worker_marker")
+		PARALLEL_TEST_RUNNING=$((PARALLEL_TEST_RUNNING + 1))
+		if parallel_test_register_or_reap_completed_worker "$(( ${#PARALLEL_TEST_PIDS[@]} - 1 ))"; then
+			registration_status=0
+		else
+			registration_status=$?
+		fi
+		if ((registration_status == 2)); then
+			PARALLEL_TEST_RUNNING=$((PARALLEL_TEST_RUNNING - 1))
+		elif ((registration_status != 0)); then
+			PARALLEL_TEST_STARTUP_FAILED=true
+			PARALLEL_TEST_STARTUP_ERROR="could not register queued worker $worker_pid"
+			printf 'Error: %s.\n' "$PARALLEL_TEST_STARTUP_ERROR" >&2
+			return 1
+		fi
+		PARALLEL_TEST_LAUNCHING=false
+		PARALLEL_TEST_LAUNCH_PID=''
+	done
+}
+
+run_test_parallel() {
+	local name=$1
+	local description=$2
+	local index limit=${DOTFILES_TEST_PARALLEL_LIMIT:-15}
+	local worker_pid worker_root worker_marker registration_status
+	[[ $PARALLEL_TEST_CLEANUP_ACTIVE == false ]] || return 1
+	if [[ -z $PARALLEL_TEST_ROOT ]]; then
+		PARALLEL_TEST_ROOT=$(mktemp -d "${TMPDIR:-/tmp}/dotfiles-test-workers.XXXXXX") || return 1
+		parallel_test_start_event_relay || return 1
+	fi
+	if [[ $limit =~ ^[1-9][0-9]*$ ]]; then
+		while ((PARALLEL_TEST_RUNNING >= limit)); do
+			parallel_test_wait_for_one_worker_completion || return 1
+			PARALLEL_TEST_RUNNING=$((PARALLEL_TEST_RUNNING - 1))
+		done
+	fi
+	TESTS_RUN=$((TESTS_RUN + 1))
+	index=$TESTS_RUN
+	worker_root="$PARALLEL_TEST_ROOT/worker-${BASHPID}-${index}"
+	mkdir -p -- "$worker_root" || return 1
+	worker_marker="$PARALLEL_TEST_ROOT/$index.complete"
+	PARALLEL_TEST_LAUNCHING=true
+	if [[ $- != *m* ]]; then
+		set -m
+		PARALLEL_TEST_MONITOR_CHANGED=true
+	fi
+	PARALLEL_TEST_LAUNCH_PID=''
+	(
+		worker_results_root=$PARALLEL_TEST_ROOT
+		parallel_test_prepare_worker "$worker_marker" || exit 1
+		PARALLEL_TEST_WORKER_ROOT=$worker_root
+		TESTS_RUN=$((index - 1))
+		TESTS_FAILED=0
+		run_test "$name" "$description"
+		parallel_test_worker_stop_owned_resources || exit 1
+		printf '%s\n' "$TESTS_FAILED" >"$worker_results_root/$index.status" || exit 1
+		parallel_test_worker_mark_normal_completion || exit 1
+	) >"$PARALLEL_TEST_ROOT/$index.output" 2>&1 &
+	worker_pid=$!
+	PARALLEL_TEST_LAUNCH_PID=$worker_pid
+	PARALLEL_TEST_PIDS+=("$worker_pid")
+	PARALLEL_TEST_START_TIMES+=('')
+	PARALLEL_TEST_PGIDS+=('')
+	PARALLEL_TEST_PIDFD_INODES+=('')
+	PARALLEL_TEST_WORKER_MARKERS+=("$worker_marker")
+	PARALLEL_TEST_RUNNING=$((PARALLEL_TEST_RUNNING + 1))
+	if parallel_test_register_or_reap_completed_worker "$(( ${#PARALLEL_TEST_PIDS[@]} - 1 ))"; then
+		registration_status=0
+	else
+		registration_status=$?
+	fi
+	if ((registration_status == 2)); then
+		PARALLEL_TEST_RUNNING=$((PARALLEL_TEST_RUNNING - 1))
+	elif ((registration_status != 0)); then
+		return 1
+	fi
+	PARALLEL_TEST_LAUNCHING=false
+	PARALLEL_TEST_LAUNCH_PID=''
+}
+
 finish_tests() {
+	local index pid status
+	if ((${#PARALLEL_TEST_GROUP_NAMES[@]} > 0)); then
+		if ! run_queued_test_groups; then
+			TESTS_FAILED=$((TESTS_FAILED + 1))
+			printf 'not ok 0 - queued test worker startup failed: %s\n' "${PARALLEL_TEST_STARTUP_ERROR:-unknown error}"
+		fi
+	fi
+	if [[ -n $PARALLEL_TEST_ROOT ]]; then
+		while ((PARALLEL_TEST_RUNNING > 0)); do
+			if ! parallel_test_wait_for_one_worker_completion; then
+				TESTS_FAILED=$((TESTS_FAILED + 1))
+				break
+			fi
+			PARALLEL_TEST_RUNNING=$((PARALLEL_TEST_RUNNING - 1))
+		done
+		for ((index = 1; index <= TESTS_RUN; index++)); do
+			if [[ -f $PARALLEL_TEST_ROOT/$index.output ]]; then
+				cat "$PARALLEL_TEST_ROOT/$index.output"
+			else
+				printf 'not ok %d - test worker exited before producing output\n' "$index"
+				TESTS_FAILED=$((TESTS_FAILED + 1))
+			fi
+			if [[ -f $PARALLEL_TEST_ROOT/$index.status ]]; then
+				status=$(<"$PARALLEL_TEST_ROOT/$index.status")
+				[[ $status == 0 ]] || TESTS_FAILED=$((TESTS_FAILED + 1))
+			elif [[ -f $PARALLEL_TEST_ROOT/$index.output ]]; then
+				printf 'not ok %d - test worker exited before reporting its result\n' "$index"
+				TESTS_FAILED=$((TESTS_FAILED + 1))
+			fi
+		done
+		parallel_test_cleanup || true
+	fi
 	printf '1..%d\n' "$TESTS_RUN"
 	return "$TESTS_FAILED"
 }

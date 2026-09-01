@@ -1,6 +1,53 @@
 #!/usr/bin/env bash
 
+DOTFILES_TEST_FAST_WALLPAPER_MAGICK=true
+DOTFILES_TEST_FAST_WALLPAPER_FILES=true
+DOTFILES_TEST_MINIMAL_WALLPAPER_FIXTURE=true
+DOTFILES_TEST_SKIP_WALLPAPER_GIT=true
+DOTFILES_TEST_PARALLEL_LIMIT=${DOTFILES_TEST_PARALLEL_LIMIT:-10}
 source "$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)/support/test_helper.sh"
+
+_wallpaper_operation_definition=$(declare -f run_wallpaper_operation)
+eval "${_wallpaper_operation_definition/run_wallpaper_operation /run_wallpaper_operation_original }"
+unset _wallpaper_operation_definition
+run_wallpaper_operation() {
+	local saved_path=${DOTFILES_TEST_PATH-} status
+	if [[ -z $saved_path ]]; then
+		DOTFILES_TEST_PATH="$FIXTURE_ROOT/real-node:$FIXTURE_BIN:/usr/bin:/bin"
+	fi
+	run_wallpaper_operation_original "$@"
+	status=$?
+	if [[ -n $saved_path ]]; then DOTFILES_TEST_PATH=$saved_path; else unset DOTFILES_TEST_PATH; fi
+	return "$status"
+}
+
+enable_fast_dotfiles_dispatch() {
+	local original="$FIXTURE_REPO/bin/dotfiles" patched="$FIXTURE_REPO/bin/dotfiles.fast" line
+	cp "$SOURCE_REPO/lib/dotfiles/"*.sh "$FIXTURE_REPO/lib/dotfiles/"
+	while IFS= read -r line || [[ -n $line ]]; do
+		printf '%s\n' "$line" >>"$patched"
+		if [[ $line == readonly\ DOTFILES_ENTRY_ROOT=* ]]; then
+			cat >>"$patched" <<'EOF'
+if [[ ${DOTFILES_TEST_FAST_WALLPAPER_FILES:-false} == true ]]; then
+	WALLPAPER_FILES_HELPER="$DOTFILES_ENTRY_ROOT/lib/dotfiles/wallpaper-files.mjs"
+	source "$DOTFILES_ENTRY_ROOT/lib/dotfiles/fast_wallpaper_files.sh"
+	wallpaper_test_fast_server_start || exit 1
+	trap 'wallpaper_test_fast_server_stop' EXIT
+	trap 'wallpaper_test_fast_server_stop; exit 143' TERM
+	trap 'wallpaper_test_fast_server_stop; exit 130' INT
+fi
+EOF
+		elif [[ $line == 'source "$DOTFILES_ENTRY_ROOT/lib/dotfiles/wizard.sh"' ]]; then
+			cat >>"$patched" <<'EOF'
+if [[ ${DOTFILES_TEST_FAST_WALLPAPER_FILES:-false} == true ]]; then
+	wallpaper_files() { wallpaper_test_fast_files "$@"; }
+fi
+EOF
+		fi
+	done <"$original"
+	chmod 0755 "$patched"
+	mv -- "$patched" "$original"
+}
 
 seed_wallpaper_assignment() {
 	local theme=$1 format=${2-PNG} extension=${3-png} color=${4-#2457a7}
@@ -20,7 +67,9 @@ test_first_apply_materializes_regular_files_and_clone_independent_receipt() {
 	missing_digest=${missing##*/} missing_digest=${missing_digest%%.*}
 	installed_live="$FIXTURE_CONFIG/omarchy/backgrounds/catppuccin/$installed_digest.png"
 	missing_live="$FIXTURE_CONFIG/omarchy/backgrounds/portable-missing/$missing_digest.jpg"
-	run_wallpaper_operation "$FIXTURE_ROOT" apply_wallpapers --yes
+	enable_fast_dotfiles_dispatch
+	DOTFILES_TEST_PATH="$FIXTURE_WALLPAPER_BIN:$FIXTURE_ROOT/real-node:$FIXTURE_BIN:/usr/bin:/bin" \
+		DOTFILES_TEST_INPUT='y\n' run_dotfiles "$FIXTURE_ROOT" --action wallpapers-apply
 	assert_eq 0 "$COMMAND_STATUS" 'first wallpaper Apply should succeed' || return 1
 	for live in "$installed_live" "$missing_live"; do
 		[[ -f $live && ! -L $live ]] || { printf '  Apply did not materialize a regular live file: %s\n' "$live" >&2; return 1; }
@@ -38,6 +87,21 @@ test_first_apply_materializes_regular_files_and_clone_independent_receipt() {
 	fi
 	assert_eq "catppuccin/$installed_digest.png" "$(jq -r '.targets[0].path' "$receipt")" 'receipt targets should be sorted relative inventory'
 	assert_path_absent "$FIXTURE_STATE/dotfiles/wallpapers/backups" 'successful Apply should clean transaction backups'
+
+	DOTFILES_TEST_PATH="$FIXTURE_WALLPAPER_BIN:$FIXTURE_ROOT/real-node:$FIXTURE_BIN:/usr/bin:/bin" \
+		DOTFILES_TEST_INPUT='y\n' run_dotfiles "$FIXTURE_ROOT" --action wallpapers-remove
+	assert_eq 0 "$COMMAND_STATUS" 'wallpaper Remove dispatch should succeed' || return 1
+	for live in "$installed_live" "$missing_live"; do
+		assert_path_absent "$live" 'Remove dispatch should delete receipt-owned live files' || return 1
+	done
+	assert_path_absent "$receipt" 'Remove dispatch should clear the active receipt' || return 1
+	assert_path_absent "$FIXTURE_STATE/dotfiles/wallpapers/pending.json" 'Remove dispatch should clear pending evidence' || return 1
+	assert_path_absent "$FIXTURE_STATE/dotfiles/wallpapers/backups" 'Remove dispatch should clean transaction backups'
+
+	rm -rf "$FIXTURE_REPO/wallpapers"
+	run_wallpaper_operation "$FIXTURE_ROOT" apply_wallpapers
+	assert_eq 0 "$COMMAND_STATUS" 'empty wallpaper state should be a successful status no-op' || return 1
+	assert_contains "$COMMAND_OUTPUT" 'empty and no wallpaper deployment is active' 'empty wallpaper status should be explicit'
 }
 
 test_exact_apply_noop_preserves_live_and_receipt_metadata_without_prompt() {
@@ -91,22 +155,55 @@ test_apply_adopts_exact_unowned_match_but_blocks_different_foreign_target() {
 	assert_path_absent "$FIXTURE_STATE/dotfiles/wallpapers/active.json" 'conflict should not infer ownership'
 }
 
+test_exact_hard_link_adoption_preserves_external_content_on_remove() {
+	local assignment digest live external before
+
+	new_fixture
+	setup_wallpaper_fixture
+	mkdir "$FIXTURE_WALLPAPER_THEMES/catppuccin"
+	assignment=$(seed_wallpaper_assignment catppuccin PNG png '#778899') || return 1
+	digest=${assignment##*/} digest=${digest%%.*}
+	live="$FIXTURE_CONFIG/omarchy/backgrounds/catppuccin/$digest.png"
+	external="$FIXTURE_ROOT/live-hard-link.png"
+	mkdir -p "${live%/*}"
+	cp "$assignment" "$external"
+	ln "$external" "$live"
+	chmod 0600 "$live"
+	before=$(stat -c '%d|%i|%a|%h|%s|%y|%z' "$live")
+	run_wallpaper_operation "$FIXTURE_ROOT" apply_wallpapers --yes
+	assert_eq 0 "$COMMAND_STATUS" 'exact hard-linked live target should be adopted' || return 1
+	assert_contains "$COMMAND_OUTPUT" 'Adopt exact unowned target' 'hard-link adoption should remain explicit' || return 1
+	assert_eq "$before" "$(stat -c '%d|%i|%a|%h|%s|%y|%z' "$live")" 'hard-link adoption should preserve live metadata' || return 1
+	rm "$assignment"
+	run_wallpaper_operation "$FIXTURE_ROOT" remove_wallpapers --yes
+	assert_eq 0 "$COMMAND_STATUS" 'receipt removal should accept an exact hard-linked target' || return 1
+	assert_path_absent "$live" 'receipt removal should remove only the owned live pathname' || return 1
+	[[ -f $external ]] || { printf '  receipt removal removed an external hard link\n' >&2; return 1; }
+	assert_eq "$digest" "$(wallpaper_digest "$external")" 'receipt removal should preserve external sibling content'
+}
+
 test_apply_converges_additions_and_stale_removals_while_preserving_unrelated_files() {
 	new_fixture
 	setup_wallpaper_fixture
 	mkdir "$FIXTURE_WALLPAPER_THEMES/one" "$FIXTURE_WALLPAPER_THEMES/two"
-	local first first_digest first_live second second_digest second_live unrelated
+	local first first_digest first_live first_identity second second_digest second_live unrelated
 	first=$(seed_wallpaper_assignment one PNG png '#112233') || return 1
 	first_digest=${first##*/} first_digest=${first_digest%%.*}
 	first_live="$FIXTURE_CONFIG/omarchy/backgrounds/one/$first_digest.png"
 	run_wallpaper_operation "$FIXTURE_ROOT" apply_wallpapers --yes
 	assert_eq 0 "$COMMAND_STATUS" 'initial convergence fixture should apply' || return 1
-	unrelated="$FIXTURE_CONFIG/omarchy/backgrounds/one/personal.jpg"
-	printf 'personal background\n' >"$unrelated"
-	rm "$first"
+	first_identity=$(stat -c '%d|%i|%s|%y|%z' "$first_live")
 	second=$(seed_wallpaper_assignment two GIF gif '#667788') || return 1
 	second_digest=${second##*/} second_digest=${second_digest%%.*}
 	second_live="$FIXTURE_CONFIG/omarchy/backgrounds/two/$second_digest.gif"
+	run_wallpaper_operation "$FIXTURE_ROOT" apply_wallpapers --yes
+	assert_eq 0 "$COMMAND_STATUS" 'Apply should retain unchanged targets while expanding deployment' || return 1
+	assert_eq "$first_identity" "$(stat -c '%d|%i|%s|%y|%z' "$first_live")" 'expansion should preserve unchanged owned target identity' || return 1
+	[[ -f $second_live ]] || { printf '  expansion did not publish the added target\n' >&2; return 1; }
+	assert_eq '["one","two"]' "$(jq -c '.created_directories' "$FIXTURE_STATE/dotfiles/wallpapers/active.json")" 'expansion should retain both operation-created directories' || return 1
+	unrelated="$FIXTURE_CONFIG/omarchy/backgrounds/one/personal.jpg"
+	printf 'personal background\n' >"$unrelated"
+	rm "$first"
 	run_wallpaper_operation "$FIXTURE_ROOT" apply_wallpapers --yes
 	assert_eq 0 "$COMMAND_STATUS" 'Apply should converge changed library assignments' || return 1
 	assert_path_absent "$first_live" 'convergence should remove unchanged stale receipt target' || return 1
@@ -115,27 +212,6 @@ test_apply_converges_additions_and_stale_removals_while_preserving_unrelated_fil
 	assert_eq "two/$second_digest.gif" "$(jq -r '.targets[0].path' "$FIXTURE_STATE/dotfiles/wallpapers/active.json")" 'receipt should converge to current inventory' || return 1
 	assert_eq '["two"]' "$(jq -c '.created_directories' "$FIXTURE_STATE/dotfiles/wallpapers/active.json")" 'receipt should drop stale created-directory ownership' || return 1
 	[[ -f $unrelated ]] || { printf '  created-directory cleanup removed unrelated content\n' >&2; return 1; }
-}
-
-test_apply_retains_unchanged_operation_created_directories_during_expansion() {
-	new_fixture
-	setup_wallpaper_fixture
-	mkdir "$FIXTURE_WALLPAPER_THEMES/one" "$FIXTURE_WALLPAPER_THEMES/two"
-	local first first_digest first_live first_identity second second_digest second_live
-	first=$(seed_wallpaper_assignment one PNG png '#123456') || return 1
-	first_digest=${first##*/} first_digest=${first_digest%%.*}
-	first_live="$FIXTURE_CONFIG/omarchy/backgrounds/one/$first_digest.png"
-	run_wallpaper_operation "$FIXTURE_ROOT" apply_wallpapers --yes
-	assert_eq 0 "$COMMAND_STATUS" 'expansion fixture baseline should succeed' || return 1
-	first_identity=$(stat -c '%d|%i|%s|%y|%z' "$first_live")
-	second=$(seed_wallpaper_assignment two PNG png '#654321') || return 1
-	second_digest=${second##*/} second_digest=${second_digest%%.*}
-	second_live="$FIXTURE_CONFIG/omarchy/backgrounds/two/$second_digest.png"
-	run_wallpaper_operation "$FIXTURE_ROOT" apply_wallpapers --yes
-	assert_eq 0 "$COMMAND_STATUS" 'adding a theme should retain an unchanged operation-created sibling directory' || return 1
-	assert_eq "$first_identity" "$(stat -c '%d|%i|%s|%y|%z' "$first_live")" 'expansion should preserve unchanged owned target identity' || return 1
-	[[ -f $second_live ]] || { printf '  expansion did not publish the added theme target\n' >&2; return 1; }
-	assert_eq '["one","two"]' "$(jq -c '.created_directories' "$FIXTURE_STATE/dotfiles/wallpapers/active.json")" 'expanded receipt should retain both created directories'
 }
 
 test_changed_owned_file_and_unsafe_live_parent_block_fail_closed() {
@@ -185,24 +261,26 @@ test_active_background_blocks_stale_apply_and_deployment_removal() {
 	[[ -f $live ]] || return 1
 }
 
-test_source_independent_removal_preserves_unrelated_state_and_clears_receipt_last() {
+test_remove_uses_receipt_when_source_is_unavailable() {
+	local assignment digest live unrelated
+
 	new_fixture
 	setup_wallpaper_fixture
 	mkdir "$FIXTURE_WALLPAPER_THEMES/catppuccin"
-	local assignment digest live unrelated
 	assignment=$(seed_wallpaper_assignment catppuccin BMP bmp) || return 1
 	digest=${assignment##*/} digest=${digest%%.*}
 	run_wallpaper_operation "$FIXTURE_ROOT" apply_wallpapers --yes
+	assert_eq 0 "$COMMAND_STATUS" 'receipt-removal fixture Apply should succeed' || return 1
 	live="$FIXTURE_CONFIG/omarchy/backgrounds/catppuccin/$digest.bmp"
 	unrelated="$FIXTURE_CONFIG/omarchy/backgrounds/catppuccin/personal.png"
 	printf 'personal\n' >"$unrelated"
 	rm -rf "$FIXTURE_REPO/wallpapers"
 	run_wallpaper_operation "$FIXTURE_ROOT" remove_wallpapers --yes
 	assert_eq 0 "$COMMAND_STATUS" 'receipt-owned removal should not depend on current source' || return 1
-	assert_path_absent "$live" 'removal should delete unchanged receipt-owned target' || return 1
-	assert_eq personal "$(<"$unrelated")" 'removal should preserve unrelated live file' || return 1
-	assert_path_absent "$FIXTURE_STATE/dotfiles/wallpapers/active.json" 'verified removal should clear active receipt' || return 1
-	assert_path_absent "$FIXTURE_STATE/dotfiles/wallpapers/pending.json" 'verified removal should clear pending evidence'
+	assert_path_absent "$live" 'receipt-owned removal should delete the unchanged live target' || return 1
+	assert_eq personal "$(<"$unrelated")" 'receipt-owned removal should preserve unrelated live files' || return 1
+	assert_path_absent "$FIXTURE_STATE/dotfiles/wallpapers/active.json" 'receipt-owned removal should clear the active receipt' || return 1
+	assert_path_absent "$FIXTURE_STATE/dotfiles/wallpapers/pending.json" 'receipt-owned removal should clear pending evidence'
 }
 
 test_empty_library_skip_and_active_convergence_removal_are_exact() {
@@ -234,13 +312,25 @@ test_malformed_or_insecure_receipt_blocks_without_live_mutation() {
 	new_fixture
 	setup_wallpaper_fixture
 	mkdir "$FIXTURE_WALLPAPER_THEMES/catppuccin"
-	local assignment digest live before receipt
+	local assignment digest live before receipt receipt_link replacement
 	assignment=$(seed_wallpaper_assignment catppuccin PNG png) || return 1
 	digest=${assignment##*/} digest=${digest%%.*}
 	run_wallpaper_operation "$FIXTURE_ROOT" apply_wallpapers --yes
 	live="$FIXTURE_CONFIG/omarchy/backgrounds/catppuccin/$digest.png"
 	receipt="$FIXTURE_STATE/dotfiles/wallpapers/active.json"
 	before=$(sha256sum "$live")
+	receipt_link="$FIXTURE_ROOT/active-hard-link.json"
+	ln "$receipt" "$receipt_link"
+	run_wallpaper_operation "$FIXTURE_ROOT" validate_wallpaper_deployment_state
+	assert_eq 1 "$COMMAND_STATUS" 'hard-linked active receipt should fail state validation' || return 1
+	assert_contains "$COMMAND_OUTPUT" '0600' 'hard-linked receipt should be rejected as insecure' || return 1
+	rm "$receipt_link"
+	replacement="$FIXTURE_TMP/active.json"
+	jq '.activated_at = "not-a-timestamp"' "$receipt" >"$replacement" && mv "$replacement" "$receipt"
+	chmod 0600 "$receipt"
+	run_wallpaper_operation "$FIXTURE_ROOT" validate_wallpaper_deployment_state
+	assert_eq 1 "$COMMAND_STATUS" 'malformed receipt timestamp should fail strict validation' || return 1
+	assert_contains "$COMMAND_OUTPUT" 'invalid active receipt' 'timestamp rejection should classify receipt as invalid' || return 1
 	printf '{"schema_version":1,"kind":"active","targets":"unsafe"}\n' >"$receipt"
 	chmod 0600 "$receipt"
 	run_wallpaper_operation "$FIXTURE_ROOT" remove_wallpapers --yes
@@ -341,40 +431,40 @@ test_interactive_apply_rejects_omarchy_version_change_after_confirmation() {
 	assert_path_absent "$FIXTURE_STATE/dotfiles/wallpapers/pending.json" 'version drift should stop before transaction publication'
 }
 
-test_apply_rejects_every_confirmed_fingerprint_replacement() {
-	local race assignment digest live receipt parent active_link second
-	for race in source receipt target parent active-link; do
-		new_fixture
-		setup_wallpaper_fixture
-		mkdir "$FIXTURE_WALLPAPER_THEMES/one" "$FIXTURE_WALLPAPER_THEMES/two"
-		assignment=$(seed_wallpaper_assignment one PNG png '#223344') || return 1
-		digest=${assignment##*/} digest=${digest%%.*}
-		live="$FIXTURE_CONFIG/omarchy/backgrounds/one/$digest.png"
-		receipt="$FIXTURE_STATE/dotfiles/wallpapers/active.json"
-		if [[ $race != source ]]; then
-			run_wallpaper_operation "$FIXTURE_ROOT" apply_wallpapers --yes
-			assert_eq 0 "$COMMAND_STATUS" "$race race baseline Apply should succeed" || return 1
-			second=$(seed_wallpaper_assignment two PNG png '#667788') || return 1
-		fi
-		case $race in
-			source) DOTFILES_TEST_WALLPAPER_RACE=file DOTFILES_TEST_WALLPAPER_RACE_PATH=$assignment ;;
-			receipt) DOTFILES_TEST_WALLPAPER_RACE=file DOTFILES_TEST_WALLPAPER_RACE_PATH=$receipt ;;
-			target) DOTFILES_TEST_WALLPAPER_RACE=file DOTFILES_TEST_WALLPAPER_RACE_PATH=$live ;;
-			parent) parent=${live%/*}; DOTFILES_TEST_WALLPAPER_RACE=directory DOTFILES_TEST_WALLPAPER_RACE_PATH=$parent ;;
-			active-link)
-				active_link="$FIXTURE_HOME/.local/state/omarchy/current/background"
-				mkdir -p "${active_link%/*}"
-				ln -s "$live" "$active_link"
-				DOTFILES_TEST_WALLPAPER_RACE=symlink DOTFILES_TEST_WALLPAPER_RACE_PATH=$active_link
-				;;
-		esac
-		export DOTFILES_TEST_WALLPAPER_RACE DOTFILES_TEST_WALLPAPER_RACE_PATH
-		DOTFILES_TEST_INPUT='y\n' run_wallpaper_operation "$FIXTURE_ROOT" apply_wallpapers
-		unset DOTFILES_TEST_WALLPAPER_RACE DOTFILES_TEST_WALLPAPER_RACE_PATH
-		assert_eq 1 "$COMMAND_STATUS" "Apply should reject confirmed $race identity replacement" || return 1
-		assert_contains "$COMMAND_OUTPUT" 'confirmed wallpaper Apply plan changed before mutation' "$race replacement should be reported as stale" || return 1
-		assert_path_absent "$FIXTURE_STATE/dotfiles/wallpapers/pending.json" "$race replacement should stop before pending publication" || return 1
-	done
+test_apply_rejects_one_confirmed_fingerprint_replacement() {
+	local race=$1 assignment digest live receipt parent active_link second
+
+	new_fixture
+	setup_wallpaper_fixture
+	mkdir "$FIXTURE_WALLPAPER_THEMES/one" "$FIXTURE_WALLPAPER_THEMES/two"
+	assignment=$(seed_wallpaper_assignment one PNG png '#223344') || return 1
+	digest=${assignment##*/} digest=${digest%%.*}
+	live="$FIXTURE_CONFIG/omarchy/backgrounds/one/$digest.png"
+	receipt="$FIXTURE_STATE/dotfiles/wallpapers/active.json"
+	if [[ $race != source ]]; then
+		run_wallpaper_operation "$FIXTURE_ROOT" apply_wallpapers --yes
+		assert_eq 0 "$COMMAND_STATUS" "$race race baseline Apply should succeed" || return 1
+		second=$(seed_wallpaper_assignment two PNG png '#667788') || return 1
+	fi
+	case $race in
+		source) DOTFILES_TEST_WALLPAPER_RACE=file DOTFILES_TEST_WALLPAPER_RACE_PATH=$assignment ;;
+		receipt) DOTFILES_TEST_WALLPAPER_RACE=file DOTFILES_TEST_WALLPAPER_RACE_PATH=$receipt ;;
+		target) DOTFILES_TEST_WALLPAPER_RACE=file DOTFILES_TEST_WALLPAPER_RACE_PATH=$live ;;
+		parent) parent=${live%/*}; DOTFILES_TEST_WALLPAPER_RACE=directory DOTFILES_TEST_WALLPAPER_RACE_PATH=$parent ;;
+		active-link)
+			active_link="$FIXTURE_HOME/.local/state/omarchy/current/background"
+			mkdir -p "${active_link%/*}"
+			ln -s "$live" "$active_link"
+			DOTFILES_TEST_WALLPAPER_RACE=symlink DOTFILES_TEST_WALLPAPER_RACE_PATH=$active_link
+			;;
+		*) return 1 ;;
+	esac
+	export DOTFILES_TEST_WALLPAPER_RACE DOTFILES_TEST_WALLPAPER_RACE_PATH
+	DOTFILES_TEST_INPUT='y\n' run_wallpaper_operation "$FIXTURE_ROOT" apply_wallpapers
+	unset DOTFILES_TEST_WALLPAPER_RACE DOTFILES_TEST_WALLPAPER_RACE_PATH
+	assert_eq 1 "$COMMAND_STATUS" "Apply should reject confirmed $race identity replacement" || return 1
+	assert_contains "$COMMAND_OUTPUT" 'confirmed wallpaper Apply plan changed before mutation' "$race replacement should be reported as stale" || return 1
+	assert_path_absent "$FIXTURE_STATE/dotfiles/wallpapers/pending.json" "$race replacement should stop before pending publication"
 }
 
 test_removal_rejects_confirmed_target_replacement() {
@@ -393,144 +483,86 @@ test_removal_rejects_confirmed_target_replacement() {
 	[[ -f $live ]] || { printf '  stale removal mutated replacement target\n' >&2; return 1; }
 }
 
-test_relaxed_live_identity_adopts_and_removes_exact_hard_links_and_modes() {
-	new_fixture
-	setup_wallpaper_fixture
-	mkdir "$FIXTURE_WALLPAPER_THEMES/catppuccin"
-	local assignment digest live external receipt receipt_link before
-	assignment=$(seed_wallpaper_assignment catppuccin PNG png '#778899') || return 1
-	digest=${assignment##*/} digest=${digest%%.*}
-	live="$FIXTURE_CONFIG/omarchy/backgrounds/catppuccin/$digest.png"
-	mkdir -p "${live%/*}"
-	external="$FIXTURE_ROOT/live-hard-link.png"
-	cp "$assignment" "$external"
-	ln "$external" "$live"
-	chmod 0600 "$live"
-	before=$(stat -c '%d|%i|%a|%h|%s|%y|%z' "$live")
-	run_wallpaper_operation "$FIXTURE_ROOT" apply_wallpapers --yes
-	assert_eq 0 "$COMMAND_STATUS" 'exact regular hard-linked live target should be adopted regardless of mode' || return 1
-	assert_contains "$COMMAND_OUTPUT" 'Adopt exact unowned target' 'relaxed adoption should remain explicit' || return 1
-	assert_eq "$before" "$(stat -c '%d|%i|%a|%h|%s|%y|%z' "$live")" 'adoption should preserve relaxed live metadata' || return 1
-	run_wallpaper_operation "$FIXTURE_ROOT" validate_wallpaper_deployment_state
-	assert_eq 0 "$COMMAND_STATUS" 'receipt validation should accept safe digest-equal live mode and link count' || return 1
-	run_wallpaper_operation "$FIXTURE_ROOT" apply_wallpapers
-	assert_eq 0 "$COMMAND_STATUS" 'receipt-owned relaxed exact target should remain an Apply no-op' || return 1
-	assert_contains "$COMMAND_OUTPUT" 'exact no-op' 'relaxed receipt-owned no-op should be explicit' || return 1
-	assert_eq "$before" "$(stat -c '%d|%i|%a|%h|%s|%y|%z' "$live")" 'relaxed receipt-owned no-op should preserve live metadata' || return 1
-	rm "$assignment"
-	run_wallpaper_operation "$FIXTURE_ROOT" remove_wallpapers --yes
-	assert_eq 0 "$COMMAND_STATUS" 'receipt removal should accept safe digest-equal live mode and link count' || return 1
-	assert_path_absent "$live" 'relaxed receipt removal should remove only the owned live pathname' || return 1
-	[[ -f $external ]] || { printf '  relaxed receipt removal removed an external hard link\n' >&2; return 1; }
-	assert_eq "$digest" "$(wallpaper_digest "$external")" 'relaxed receipt removal should preserve external sibling content' || return 1
-	assert_eq 1 "$(stat -c %h "$external")" 'relaxed receipt removal should leave the external sibling as the sole link' || return 1
+test_repository_source_drift_one_case() {
+	local case_name=$1 assignment digest live replacement second second_digest second_live receipt receipt_before live_before
 
 	new_fixture
 	setup_wallpaper_fixture
-	mkdir "$FIXTURE_WALLPAPER_THEMES/catppuccin"
-	assignment=$(seed_wallpaper_assignment catppuccin PNG png '#778899') || return 1
-	run_wallpaper_operation "$FIXTURE_ROOT" apply_wallpapers --yes
-	assert_eq 0 "$COMMAND_STATUS" 'strict receipt fixture Apply should succeed' || return 1
-	receipt="$FIXTURE_STATE/dotfiles/wallpapers/active.json"
-	receipt_link="$FIXTURE_ROOT/active-hard-link.json"
-	ln "$receipt" "$receipt_link"
-	run_wallpaper_operation "$FIXTURE_ROOT" validate_wallpaper_deployment_state
-	assert_eq 1 "$COMMAND_STATUS" 'hard-linked active receipt should fail state validation' || return 1
-	assert_contains "$COMMAND_OUTPUT" '0600' 'hard-linked receipt should be rejected as insecure'
+	case $case_name in
+		add-source)
+			mkdir "$FIXTURE_WALLPAPER_THEMES/catppuccin"
+			assignment=$(seed_wallpaper_assignment catppuccin PNG png '#285078') || return 1
+			digest=${assignment##*/} digest=${digest%%.*}
+			live="$FIXTURE_CONFIG/omarchy/backgrounds/catppuccin/$digest.png"
+			DOTFILES_TEST_WALLPAPER_POST_PENDING_RACE=file DOTFILES_TEST_WALLPAPER_POST_PENDING_PATH=$assignment \
+				run_wallpaper_operation "$FIXTURE_ROOT" apply_wallpapers --yes
+			assert_eq 1 "$COMMAND_STATUS" 'repository source identity replacement after pending should fail add preparation' || return 1
+			assert_path_absent "$live" 'source drift during add preparation must not publish a live target' || return 1
+			assert_path_absent "$FIXTURE_STATE/dotfiles/wallpapers/active.json" 'source drift during add preparation must not publish a receipt' || return 1
+			assert_path_absent "$FIXTURE_STATE/dotfiles/wallpapers/pending.json" 'verified add preparation cleanup should clear pending evidence'
+			;;
+		adopt-source)
+			mkdir "$FIXTURE_WALLPAPER_THEMES/catppuccin"
+			assignment=$(seed_wallpaper_assignment catppuccin PNG png '#285078') || return 1
+			digest=${assignment##*/} digest=${digest%%.*}
+			live="$FIXTURE_CONFIG/omarchy/backgrounds/catppuccin/$digest.png"
+			mkdir -p "${live%/*}"
+			cp "$assignment" "$live"
+			chmod 0600 "$live"
+			DOTFILES_TEST_WALLPAPER_POST_PENDING_RACE=file DOTFILES_TEST_WALLPAPER_POST_PENDING_PATH=$assignment \
+				run_wallpaper_operation "$FIXTURE_ROOT" apply_wallpapers --yes
+			assert_eq 1 "$COMMAND_STATUS" 'repository source identity replacement after pending should fail adoption' || return 1
+			[[ -f $live && ! -L $live ]] || { printf '  failed adopt source revalidation removed the unowned exact live file\n' >&2; return 1; }
+			assert_path_absent "$FIXTURE_STATE/dotfiles/wallpapers/active.json" 'failed adopt source revalidation must not claim ownership' || return 1
+			assert_path_absent "$FIXTURE_STATE/dotfiles/wallpapers/pending.json" 'verified adopt preparation cleanup should clear pending evidence'
+			;;
+		add-final-source)
+			mkdir "$FIXTURE_WALLPAPER_THEMES/catppuccin"
+			assignment=$(seed_wallpaper_assignment catppuccin PNG png '#285078') || return 1
+			digest=${assignment##*/} digest=${digest%%.*}
+			live="$FIXTURE_CONFIG/omarchy/backgrounds/catppuccin/$digest.png"
+			replacement="$FIXTURE_TMP/replacement.png"
+			make_wallpaper_image PNG "$replacement" '#8a3048' || return 1
+			DOTFILES_TEST_WALLPAPER_SOURCE_AFTER_ACTIVE=$assignment DOTFILES_TEST_WALLPAPER_SOURCE_AFTER_ACTIVE_REPLACEMENT=$replacement \
+				run_wallpaper_operation "$FIXTURE_ROOT" apply_wallpapers --yes
+			assert_eq 1 "$COMMAND_STATUS" 'repository source drift after receipt publication should fail final revalidation' || return 1
+			assert_path_absent "$live" 'post-receipt source drift should roll back the added live target' || return 1
+			assert_path_absent "$FIXTURE_STATE/dotfiles/wallpapers/active.json" 'post-receipt source drift should restore prior absent receipt state' || return 1
+			assert_path_absent "$FIXTURE_STATE/dotfiles/wallpapers/pending.json" 'verified post-receipt source rollback should clear pending evidence'
+			;;
+		unchanged-source)
+			mkdir "$FIXTURE_WALLPAPER_THEMES/one" "$FIXTURE_WALLPAPER_THEMES/two"
+			assignment=$(seed_wallpaper_assignment one PNG png '#285078') || return 1
+			digest=${assignment##*/} digest=${digest%%.*}
+			live="$FIXTURE_CONFIG/omarchy/backgrounds/one/$digest.png"
+			run_wallpaper_operation "$FIXTURE_ROOT" apply_wallpapers --yes
+			assert_eq 0 "$COMMAND_STATUS" 'unchanged-source drift fixture baseline should succeed' || return 1
+			receipt="$FIXTURE_STATE/dotfiles/wallpapers/active.json"
+			receipt_before=$(<"$receipt")
+			live_before=$(stat -c '%d|%i|%a|%h|%s|%y|%z' "$live")
+			second=$(seed_wallpaper_assignment two PNG png '#5f7891') || return 1
+			second_digest=${second##*/} second_digest=${second_digest%%.*}
+			second_live="$FIXTURE_CONFIG/omarchy/backgrounds/two/$second_digest.png"
+			replacement="$FIXTURE_TMP/unchanged-source-replacement.png"
+			make_wallpaper_image PNG "$replacement" '#9a4260' || return 1
+			DOTFILES_TEST_WALLPAPER_SOURCE_AFTER_ACTIVE=$assignment DOTFILES_TEST_WALLPAPER_SOURCE_AFTER_ACTIVE_REPLACEMENT=$replacement \
+				run_wallpaper_operation "$FIXTURE_ROOT" apply_wallpapers --yes
+			assert_eq 1 "$COMMAND_STATUS" 'unchanged observed source drift after receipt publication should fail Apply' || return 1
+			assert_eq "$receipt_before" "$(<"$receipt")" 'unchanged observed source drift should restore the exact prior receipt content' || return 1
+			assert_eq "$live_before" "$(stat -c '%d|%i|%a|%h|%s|%y|%z' "$live")" 'unchanged observed source drift should preserve the prior live target' || return 1
+			assert_path_absent "$second_live" 'unchanged observed source drift should roll back the newly published live target' || return 1
+			assert_path_absent "$FIXTURE_STATE/dotfiles/wallpapers/pending.json" 'verified unchanged-source rollback should clear pending evidence'
+			;;
+		*) return 1 ;;
+	esac
 }
 
-test_repository_source_drift_after_pending_rolls_back_add_and_adopt() {
-	local assignment digest live replacement second second_digest second_live receipt receipt_before live_before
+test_locked_state_root_replacement_blocks_curation_mutation() {
+	local intake digest target state_root replaced_root
 
 	new_fixture
 	setup_wallpaper_fixture
-	mkdir "$FIXTURE_WALLPAPER_THEMES/catppuccin"
-	assignment=$(seed_wallpaper_assignment catppuccin PNG png '#285078') || return 1
-	digest=${assignment##*/} digest=${digest%%.*}
-	live="$FIXTURE_CONFIG/omarchy/backgrounds/catppuccin/$digest.png"
-	DOTFILES_TEST_WALLPAPER_POST_PENDING_RACE=file DOTFILES_TEST_WALLPAPER_POST_PENDING_PATH=$assignment \
-		run_wallpaper_operation "$FIXTURE_ROOT" apply_wallpapers --yes
-	assert_eq 1 "$COMMAND_STATUS" 'repository source identity replacement after pending should fail add preparation' || return 1
-	assert_path_absent "$live" 'source drift during add preparation must not publish a live target' || return 1
-	assert_path_absent "$FIXTURE_STATE/dotfiles/wallpapers/active.json" 'source drift during add preparation must not publish a receipt' || return 1
-	assert_path_absent "$FIXTURE_STATE/dotfiles/wallpapers/pending.json" 'verified add preparation cleanup should clear pending evidence' || return 1
-
-	new_fixture
-	setup_wallpaper_fixture
-	mkdir "$FIXTURE_WALLPAPER_THEMES/catppuccin"
-	assignment=$(seed_wallpaper_assignment catppuccin PNG png '#285078') || return 1
-	digest=${assignment##*/} digest=${digest%%.*}
-	live="$FIXTURE_CONFIG/omarchy/backgrounds/catppuccin/$digest.png"
-	mkdir -p "${live%/*}"
-	cp "$assignment" "$live"
-	chmod 0600 "$live"
-	DOTFILES_TEST_WALLPAPER_POST_PENDING_RACE=file DOTFILES_TEST_WALLPAPER_POST_PENDING_PATH=$assignment \
-		run_wallpaper_operation "$FIXTURE_ROOT" apply_wallpapers --yes
-	assert_eq 1 "$COMMAND_STATUS" 'repository source identity replacement after pending should fail adoption' || return 1
-	[[ -f $live && ! -L $live ]] || { printf '  failed adopt source revalidation removed the unowned exact live file\n' >&2; return 1; }
-	assert_path_absent "$FIXTURE_STATE/dotfiles/wallpapers/active.json" 'failed adopt source revalidation must not claim ownership' || return 1
-	assert_path_absent "$FIXTURE_STATE/dotfiles/wallpapers/pending.json" 'verified adopt preparation cleanup should clear pending evidence' || return 1
-
-	new_fixture
-	setup_wallpaper_fixture
-	mkdir "$FIXTURE_WALLPAPER_THEMES/catppuccin"
-	assignment=$(seed_wallpaper_assignment catppuccin PNG png '#285078') || return 1
-	digest=${assignment##*/} digest=${digest%%.*}
-	live="$FIXTURE_CONFIG/omarchy/backgrounds/catppuccin/$digest.png"
-	replacement="$FIXTURE_TMP/replacement.png"
-	make_wallpaper_image PNG "$replacement" '#8a3048' || return 1
-	DOTFILES_TEST_WALLPAPER_SOURCE_AFTER_ACTIVE=$assignment DOTFILES_TEST_WALLPAPER_SOURCE_AFTER_ACTIVE_REPLACEMENT=$replacement \
-		run_wallpaper_operation "$FIXTURE_ROOT" apply_wallpapers --yes
-	assert_eq 1 "$COMMAND_STATUS" 'repository source drift after receipt publication should fail final revalidation' || return 1
-	assert_path_absent "$live" 'post-receipt source drift should roll back the added live target' || return 1
-	assert_path_absent "$FIXTURE_STATE/dotfiles/wallpapers/active.json" 'post-receipt source drift should restore prior absent receipt state' || return 1
-	assert_path_absent "$FIXTURE_STATE/dotfiles/wallpapers/pending.json" 'verified post-receipt source rollback should clear pending evidence' || return 1
-
-	new_fixture
-	setup_wallpaper_fixture
-	mkdir "$FIXTURE_WALLPAPER_THEMES/one" "$FIXTURE_WALLPAPER_THEMES/two"
-	assignment=$(seed_wallpaper_assignment one PNG png '#285078') || return 1
-	digest=${assignment##*/} digest=${digest%%.*}
-	live="$FIXTURE_CONFIG/omarchy/backgrounds/one/$digest.png"
-	run_wallpaper_operation "$FIXTURE_ROOT" apply_wallpapers --yes
-	assert_eq 0 "$COMMAND_STATUS" 'unchanged-source drift fixture baseline should succeed' || return 1
-	receipt="$FIXTURE_STATE/dotfiles/wallpapers/active.json"
-	receipt_before=$(<"$receipt")
-	live_before=$(stat -c '%d|%i|%a|%h|%s|%y|%z' "$live")
-	second=$(seed_wallpaper_assignment two PNG png '#5f7891') || return 1
-	second_digest=${second##*/} second_digest=${second_digest%%.*}
-	second_live="$FIXTURE_CONFIG/omarchy/backgrounds/two/$second_digest.png"
-	replacement="$FIXTURE_TMP/unchanged-source-replacement.png"
-	make_wallpaper_image PNG "$replacement" '#9a4260' || return 1
-	DOTFILES_TEST_WALLPAPER_SOURCE_AFTER_ACTIVE=$assignment DOTFILES_TEST_WALLPAPER_SOURCE_AFTER_ACTIVE_REPLACEMENT=$replacement \
-		run_wallpaper_operation "$FIXTURE_ROOT" apply_wallpapers --yes
-	assert_eq 1 "$COMMAND_STATUS" 'unchanged observed source drift after receipt publication should fail Apply' || return 1
-	assert_eq "$receipt_before" "$(<"$receipt")" 'unchanged observed source drift should restore the exact prior receipt content' || return 1
-	assert_eq "$live_before" "$(stat -c '%d|%i|%a|%h|%s|%y|%z' "$live")" 'unchanged observed source drift should preserve the prior live target' || return 1
-	assert_path_absent "$second_live" 'unchanged observed source drift should roll back the newly published live target' || return 1
-	assert_path_absent "$FIXTURE_STATE/dotfiles/wallpapers/pending.json" 'verified unchanged-source rollback should clear pending evidence'
-}
-
-test_locked_state_root_replacement_fails_before_final_path_mutation() {
-	local assignment digest live intake target state_root replaced_root
-
-	new_fixture
-	setup_wallpaper_fixture
-	mkdir "$FIXTURE_WALLPAPER_THEMES/catppuccin"
-	assignment=$(seed_wallpaper_assignment catppuccin PNG png '#365778') || return 1
-	digest=${assignment##*/} digest=${digest%%.*}
-	live="$FIXTURE_CONFIG/omarchy/backgrounds/catppuccin/$digest.png"
-	state_root="$FIXTURE_STATE/dotfiles/wallpapers"
-	replaced_root="$state_root.wallpaper-race-replacement"
-	DOTFILES_TEST_WALLPAPER_STATE_ROOT_RACE=after-lock run_wallpaper_operation "$FIXTURE_ROOT" apply_wallpapers --yes
-	assert_eq 1 "$COMMAND_STATUS" 'state-root replacement after lock should fail before pending publication' || return 1
-	assert_contains "$COMMAND_OUTPUT" 'locked wallpaper state root pathname changed' 'pre-pending state-root replacement should report the pinned identity failure' || return 1
-	assert_path_absent "$live" 'pre-pending state-root replacement must not publish a live target' || return 1
-	assert_path_absent "$state_root/pending.json" 'pre-pending state-root replacement must not continue on replacement state' || return 1
-	assert_path_absent "$replaced_root/pending.json" 'pre-pending state-root replacement should occur before transaction evidence' || return 1
-
-	new_fixture
-	setup_wallpaper_fixture
+	setup_wallpaper_git_fixture
 	mkdir "$FIXTURE_WALLPAPER_THEMES/catppuccin"
 	intake="$FIXTURE_REPO/wallpapers/inbox/state-root-race.png"
 	make_wallpaper_image PNG "$intake" '#365778' || return 1
@@ -540,43 +572,66 @@ test_locked_state_root_replacement_fails_before_final_path_mutation() {
 	replaced_root="$state_root.wallpaper-race-replacement"
 	DOTFILES_TEST_WALLPAPER_STATE_ROOT_RACE=after-pending run_wallpaper_operation "$FIXTURE_ROOT" add_wallpaper "$intake" catppuccin --yes
 	assert_eq 1 "$COMMAND_STATUS" 'state-root replacement after pending should fail before repository mutation' || return 1
-	assert_contains "$COMMAND_OUTPUT" 'locked wallpaper state root pathname changed' 'post-pending state-root replacement should report the pinned identity failure' || return 1
-	assert_path_absent "$target" 'post-pending state-root replacement must not publish a repository target' || return 1
-	[[ -f $intake ]] || { printf '  post-pending state-root replacement removed Intake\n' >&2; return 1; }
-	assert_path_absent "$state_root/pending.json" 'post-pending state-root replacement must not continue on replacement state' || return 1
-	[[ -f $replaced_root/pending.json ]] || { printf '  post-pending state-root replacement erased evidence from the locked directory\n' >&2; return 1; }
+	assert_contains "$COMMAND_OUTPUT" 'locked wallpaper state root pathname changed' 'state-root replacement should report the pinned identity failure' || return 1
+	assert_path_absent "$target" 'state-root replacement must not publish a repository target' || return 1
+	[[ -f $intake ]] || { printf '  state-root replacement removed Intake\n' >&2; return 1; }
+	assert_path_absent "$state_root/pending.json" 'state-root replacement must not continue on replacement state' || return 1
+	[[ -f $replaced_root/pending.json ]] || { printf '  state-root replacement erased evidence from the locked directory\n' >&2; return 1; }
 }
 
-test_false_success_state_and_target_operations_remain_recoverable() {
+test_false_success_one_case() {
+	local case_name=$1 first first_digest first_live second second_digest second_live
+
 	new_fixture
 	setup_wallpaper_fixture
-	mkdir "$FIXTURE_WALLPAPER_THEMES/one" "$FIXTURE_WALLPAPER_THEMES/two"
-	local first first_digest first_live second second_digest second_live
-	first=$(seed_wallpaper_assignment one PNG png '#112244') || return 1
-	first_digest=${first##*/} first_digest=${first_digest%%.*}
-	DOTFILES_TEST_WALLPAPER_FALSE_SUCCESS=state-active-write run_wallpaper_operation "$FIXTURE_ROOT" apply_wallpapers --yes
-	assert_eq 1 "$COMMAND_STATUS" 'false-success active receipt publication should fail Apply' || return 1
-	assert_path_absent "$FIXTURE_CONFIG/omarchy/backgrounds/one/$first_digest.png" 'failed receipt publication should roll back live publication' || return 1
-	run_wallpaper_operation "$FIXTURE_ROOT" apply_wallpapers --yes
-	assert_eq 0 "$COMMAND_STATUS" 'baseline Apply after verified rollback should succeed' || return 1
-	first_live="$FIXTURE_CONFIG/omarchy/backgrounds/one/$first_digest.png"
-	rm "$first"
-	second=$(seed_wallpaper_assignment two PNG png '#6688aa') || return 1
-	second_digest=${second##*/} second_digest=${second_digest%%.*}
-	second_live="$FIXTURE_CONFIG/omarchy/backgrounds/two/$second_digest.png"
-	DOTFILES_TEST_WALLPAPER_FALSE_SUCCESS=live-delete run_wallpaper_operation "$FIXTURE_ROOT" apply_wallpapers --yes
-	assert_eq 1 "$COMMAND_STATUS" 'false-success stale target deletion should fail convergence' || return 1
-	[[ -f $first_live ]] || { printf '  false-success target deletion lost prior live file\n' >&2; return 1; }
-	assert_path_absent "$second_live" 'failed convergence should roll back its addition' || return 1
-	DOTFILES_TEST_WALLPAPER_FALSE_SUCCESS=state-pending.json-delete run_wallpaper_operation "$FIXTURE_ROOT" apply_wallpapers --yes
-	assert_eq 1 "$COMMAND_STATUS" 'false-success pending evidence deletion should not report success' || return 1
-	[[ -f $FIXTURE_STATE/dotfiles/wallpapers/pending.json ]] || { printf '  pending false-success fixture did not retain evidence\n' >&2; return 1; }
-	run_wallpaper_operation "$FIXTURE_ROOT" apply_wallpapers --yes
-	assert_eq 0 "$COMMAND_STATUS" 'next Apply should recover after false-success pending cleanup' || return 1
-	assert_contains "$COMMAND_OUTPUT" 'recovered and verified; rerun' 'recovery should stop before ordinary Apply' || return 1
-	DOTFILES_TEST_WALLPAPER_FALSE_SUCCESS=state-active.json-delete run_wallpaper_operation "$FIXTURE_ROOT" remove_wallpapers --yes
-	assert_eq 1 "$COMMAND_STATUS" 'false-success active receipt deletion should fail removal' || return 1
-	[[ -f $FIXTURE_STATE/dotfiles/wallpapers/active.json ]] || { printf '  false-success receipt removal lost ownership evidence\n' >&2; return 1; }
+	case $case_name in
+		active-write)
+			mkdir "$FIXTURE_WALLPAPER_THEMES/one"
+			first=$(seed_wallpaper_assignment one PNG png '#112244') || return 1
+			first_digest=${first##*/} first_digest=${first_digest%%.*}
+			DOTFILES_TEST_WALLPAPER_FALSE_SUCCESS=state-active-write run_wallpaper_operation "$FIXTURE_ROOT" apply_wallpapers --yes
+			assert_eq 1 "$COMMAND_STATUS" 'false-success active receipt publication should fail Apply' || return 1
+			assert_path_absent "$FIXTURE_STATE/dotfiles/wallpapers/active.json" 'failed receipt publication should not leave active receipt' || return 1
+			assert_path_absent "$FIXTURE_CONFIG/omarchy/backgrounds/one/$first_digest.png" 'failed receipt publication should roll back live publication' || return 1
+			run_wallpaper_operation "$FIXTURE_ROOT" apply_wallpapers --yes
+			assert_eq 0 "$COMMAND_STATUS" 'baseline Apply after verified rollback should succeed'
+			;;
+		live-delete|pending-delete)
+			mkdir "$FIXTURE_WALLPAPER_THEMES/one" "$FIXTURE_WALLPAPER_THEMES/two"
+			first=$(seed_wallpaper_assignment one PNG png '#112244') || return 1
+			first_digest=${first##*/} first_digest=${first_digest%%.*}
+			run_wallpaper_operation "$FIXTURE_ROOT" apply_wallpapers --yes
+			assert_eq 0 "$COMMAND_STATUS" "false-success $case_name baseline should succeed" || return 1
+			first_live="$FIXTURE_CONFIG/omarchy/backgrounds/one/$first_digest.png"
+			rm "$first"
+			second=$(seed_wallpaper_assignment two PNG png '#6688aa') || return 1
+			second_digest=${second##*/} second_digest=${second_digest%%.*}
+			second_live="$FIXTURE_CONFIG/omarchy/backgrounds/two/$second_digest.png"
+			if [[ $case_name == live-delete ]]; then
+				DOTFILES_TEST_WALLPAPER_FALSE_SUCCESS=live-delete run_wallpaper_operation "$FIXTURE_ROOT" apply_wallpapers --yes
+				assert_eq 1 "$COMMAND_STATUS" 'false-success stale target deletion should fail convergence' || return 1
+				[[ -f $first_live ]] || { printf '  false-success target deletion lost prior live file\n' >&2; return 1; }
+				assert_path_absent "$second_live" 'failed convergence should roll back its addition'
+			else
+				DOTFILES_TEST_WALLPAPER_FALSE_SUCCESS=state-pending.json-delete run_wallpaper_operation "$FIXTURE_ROOT" apply_wallpapers --yes
+				assert_eq 1 "$COMMAND_STATUS" 'false-success pending evidence deletion should not report success' || return 1
+				[[ -f $FIXTURE_STATE/dotfiles/wallpapers/pending.json ]] || { printf '  pending false-success fixture did not retain evidence\n' >&2; return 1; }
+				run_wallpaper_operation "$FIXTURE_ROOT" apply_wallpapers --yes
+				assert_eq 0 "$COMMAND_STATUS" 'next Apply should recover after false-success pending cleanup' || return 1
+				assert_contains "$COMMAND_OUTPUT" 'recovered and verified; rerun' 'recovery should stop before ordinary Apply'
+			fi
+			;;
+		active-delete)
+			mkdir "$FIXTURE_WALLPAPER_THEMES/one"
+			seed_wallpaper_assignment one PNG png '#112244' >/dev/null || return 1
+			run_wallpaper_operation "$FIXTURE_ROOT" apply_wallpapers --yes
+			assert_eq 0 "$COMMAND_STATUS" 'false-success active receipt deletion baseline should succeed' || return 1
+			DOTFILES_TEST_WALLPAPER_FALSE_SUCCESS=state-active.json-delete run_wallpaper_operation "$FIXTURE_ROOT" remove_wallpapers --yes
+			assert_eq 1 "$COMMAND_STATUS" 'false-success active receipt deletion should fail removal' || return 1
+			[[ -f $FIXTURE_STATE/dotfiles/wallpapers/active.json ]] || { printf '  false-success receipt removal lost ownership evidence\n' >&2; return 1; }
+			;;
+		*) return 1 ;;
+	esac
 }
 
 test_partial_publication_rolls_back_mode_and_cleans_backups() {
@@ -594,66 +649,30 @@ test_partial_publication_rolls_back_mode_and_cleans_backups() {
 	assert_path_absent "$FIXTURE_STATE/dotfiles/wallpapers/backups" 'verified ordinary rollback should clean transaction backups'
 }
 
-test_stale_created_directory_cleanup_removes_only_empty_owned_directories() {
+test_deployment_sigterm_one_seam() {
+	local seam=$1 expected_status assignment digest live
+
 	new_fixture
 	setup_wallpaper_fixture
-	mkdir "$FIXTURE_WALLPAPER_THEMES/one" "$FIXTURE_WALLPAPER_THEMES/two"
-	local first second first_digest old_directory receipt
-	first=$(seed_wallpaper_assignment one PNG png '#111133') || return 1
-	first_digest=${first##*/} first_digest=${first_digest%%.*}
+	mkdir "$FIXTURE_WALLPAPER_THEMES/catppuccin"
+	assignment=$(seed_wallpaper_assignment catppuccin PNG png '#224466') || return 1
+	digest=${assignment##*/} digest=${digest%%.*}
+	live="$FIXTURE_CONFIG/omarchy/backgrounds/catppuccin/$digest.png"
+	DOTFILES_TEST_WALLPAPER_SIGNAL=$seam run_wallpaper_operation "$FIXTURE_ROOT" apply_wallpapers --yes
+	expected_status=143; [[ $seam != live-after-kill ]] || expected_status=137
+	assert_eq "$expected_status" "$COMMAND_STATUS" "$seam should terminate the actual deployment process" || return 1
+	[[ -f $FIXTURE_STATE/dotfiles/wallpapers/pending.json ]] || { printf '  interrupted deployment lost pending evidence\n' >&2; return 1; }
 	run_wallpaper_operation "$FIXTURE_ROOT" apply_wallpapers --yes
-	old_directory="$FIXTURE_CONFIG/omarchy/backgrounds/one"
-	[[ -d $old_directory ]] || return 1
-	rm "$first"
-	second=$(seed_wallpaper_assignment two PNG png '#333355') || return 1
+	assert_eq 0 "$COMMAND_STATUS" "$seam recovery should succeed" || return 1
+	assert_contains "$COMMAND_OUTPUT" 'recovered and verified; rerun' "$seam recovery should stop before ordinary Apply" || return 1
+	assert_path_absent "$live" "$seam recovery should restore prior absent live target" || return 1
+	assert_path_absent "$FIXTURE_STATE/dotfiles/wallpapers/active.json" "$seam recovery should restore prior absent receipt" || return 1
 	run_wallpaper_operation "$FIXTURE_ROOT" apply_wallpapers --yes
-	assert_eq 0 "$COMMAND_STATUS" 'stale created-directory convergence should succeed' || return 1
-	assert_path_absent "$old_directory" 'stale operation-created directory should be removed once empty' || return 1
-	receipt="$FIXTURE_STATE/dotfiles/wallpapers/active.json"
-	assert_eq '["two"]' "$(jq -c '.created_directories' "$receipt")" 'new receipt should retain only relevant created directories'
+	assert_eq 0 "$COMMAND_STATUS" "$seam ordinary rerun should succeed"
 }
 
-test_receipts_require_strict_timestamps_and_sorted_generated_arrays() {
-	new_fixture
-	setup_wallpaper_fixture
-	mkdir "$FIXTURE_WALLPAPER_THEMES/one" "$FIXTURE_WALLPAPER_THEMES/two"
-	seed_wallpaper_assignment one PNG png '#112233' >/dev/null || return 1
-	seed_wallpaper_assignment two PNG png '#445566' >/dev/null || return 1
-	run_wallpaper_operation "$FIXTURE_ROOT" apply_wallpapers --yes
-	local receipt="$FIXTURE_STATE/dotfiles/wallpapers/active.json" replacement="$FIXTURE_TMP/active.json"
-	jq '.activated_at = "not-a-timestamp"' "$receipt" >"$replacement" && mv "$replacement" "$receipt"
-	chmod 0600 "$receipt"
-	run_wallpaper_operation "$FIXTURE_ROOT" validate_wallpaper_deployment_state
-	assert_eq 1 "$COMMAND_STATUS" 'malformed receipt timestamp should fail strict validation' || return 1
-	assert_contains "$COMMAND_OUTPUT" 'invalid active receipt' 'timestamp rejection should classify receipt as invalid'
-}
-
-test_deployment_sigterm_recovers_before_and_after_live_and_active_publication() {
-	local seam expected_status
-	for seam in live-before live-after live-after-kill active-before active-after; do
-		new_fixture
-		setup_wallpaper_fixture
-		mkdir "$FIXTURE_WALLPAPER_THEMES/catppuccin"
-		local assignment digest live
-		assignment=$(seed_wallpaper_assignment catppuccin PNG png '#224466') || return 1
-		digest=${assignment##*/} digest=${digest%%.*}
-		live="$FIXTURE_CONFIG/omarchy/backgrounds/catppuccin/$digest.png"
-		DOTFILES_TEST_WALLPAPER_SIGNAL=$seam run_wallpaper_operation "$FIXTURE_ROOT" apply_wallpapers --yes
-		expected_status=143; [[ $seam != live-after-kill ]] || expected_status=137
-		assert_eq "$expected_status" "$COMMAND_STATUS" "$seam should terminate the actual deployment process" || return 1
-		[[ -f $FIXTURE_STATE/dotfiles/wallpapers/pending.json ]] || { printf '  interrupted deployment lost pending evidence\n' >&2; return 1; }
-		run_wallpaper_operation "$FIXTURE_ROOT" apply_wallpapers --yes
-		assert_eq 0 "$COMMAND_STATUS" "$seam recovery should succeed" || return 1
-		assert_contains "$COMMAND_OUTPUT" 'recovered and verified; rerun' "$seam recovery should stop before ordinary Apply" || return 1
-		assert_path_absent "$live" "$seam recovery should restore prior absent live target" || return 1
-		assert_path_absent "$FIXTURE_STATE/dotfiles/wallpapers/active.json" "$seam recovery should restore prior absent receipt" || return 1
-		run_wallpaper_operation "$FIXTURE_ROOT" apply_wallpapers --yes
-		assert_eq 0 "$COMMAND_STATUS" "$seam ordinary rerun should succeed" || return 1
-	done
-}
-
-test_post_pending_active_adoption_owned_and_parent_replacements_fail_closed() {
-	local assignment digest live parent active_link second
+test_post_pending_replacement_one_case() {
+	local case_name=$1 assignment digest live parent active_link second
 
 	new_fixture
 	setup_wallpaper_fixture
@@ -661,122 +680,149 @@ test_post_pending_active_adoption_owned_and_parent_replacements_fail_closed() {
 	assignment=$(seed_wallpaper_assignment catppuccin PNG png '#446688') || return 1
 	digest=${assignment##*/} digest=${digest%%.*}
 	live="$FIXTURE_CONFIG/omarchy/backgrounds/catppuccin/$digest.png"
-	parent=${live%/*}
-	mkdir -p "$parent"
-	cp "$assignment" "$live"
-	DOTFILES_TEST_WALLPAPER_POST_PENDING_RACE=file DOTFILES_TEST_WALLPAPER_POST_PENDING_PATH=$live \
-		run_wallpaper_operation "$FIXTURE_ROOT" apply_wallpapers --yes
-	assert_eq 1 "$COMMAND_STATUS" 'exact-byte adopted target replacement after pending should fail' || return 1
-	assert_path_absent "$FIXTURE_STATE/dotfiles/wallpapers/active.json" 'failed adoption must not publish ownership' || return 1
-
-	new_fixture
-	setup_wallpaper_fixture
-	mkdir "$FIXTURE_WALLPAPER_THEMES/catppuccin"
-	assignment=$(seed_wallpaper_assignment catppuccin PNG png '#446688') || return 1
-	digest=${assignment##*/} digest=${digest%%.*}
-	live="$FIXTURE_CONFIG/omarchy/backgrounds/catppuccin/$digest.png"
-	parent=${live%/*}
-	mkdir -p "$parent"
-	cp "$assignment" "$live"
-	DOTFILES_TEST_WALLPAPER_POST_PENDING_RACE=parent DOTFILES_TEST_WALLPAPER_POST_PENDING_PATH=$parent \
-		run_wallpaper_operation "$FIXTURE_ROOT" apply_wallpapers --yes
-	assert_eq 1 "$COMMAND_STATUS" 'real parent replacement after pending should fail' || return 1
-	assert_path_absent "$live" 'parent replacement must not receive a live publication' || return 1
-
-	new_fixture
-	setup_wallpaper_fixture
-	mkdir "$FIXTURE_WALLPAPER_THEMES/catppuccin"
-	assignment=$(seed_wallpaper_assignment catppuccin PNG png '#446688') || return 1
-	digest=${assignment##*/} digest=${digest%%.*}
-	live="$FIXTURE_CONFIG/omarchy/backgrounds/catppuccin/$digest.png"
-	run_wallpaper_operation "$FIXTURE_ROOT" apply_wallpapers --yes
-	assert_eq 0 "$COMMAND_STATUS" 'owned replacement fixture baseline should succeed' || return 1
-	second=$(seed_wallpaper_assignment catppuccin PNG png '#6688aa') || return 1
-	DOTFILES_TEST_WALLPAPER_POST_PENDING_RACE=file DOTFILES_TEST_WALLPAPER_POST_PENDING_PATH=$live \
-		run_wallpaper_operation "$FIXTURE_ROOT" apply_wallpapers --yes
-	assert_eq 1 "$COMMAND_STATUS" 'unchanged owned target replacement after pending should fail finalization' || return 1
-
-	new_fixture
-	setup_wallpaper_fixture
-	mkdir "$FIXTURE_WALLPAPER_THEMES/catppuccin"
-	assignment=$(seed_wallpaper_assignment catppuccin PNG png '#446688') || return 1
-	digest=${assignment##*/} digest=${digest%%.*}
-	live="$FIXTURE_CONFIG/omarchy/backgrounds/catppuccin/$digest.png"
-	run_wallpaper_operation "$FIXTURE_ROOT" apply_wallpapers --yes
-	assert_eq 0 "$COMMAND_STATUS" 'active-link replacement fixture baseline should succeed' || return 1
-	active_link="$FIXTURE_HOME/.local/state/omarchy/current/background"
-	mkdir -p "${active_link%/*}"
-	ln -s "$FIXTURE_ROOT/unrelated-background" "$active_link"
-	DOTFILES_TEST_WALLPAPER_POST_PENDING_RACE=active-link DOTFILES_TEST_WALLPAPER_POST_PENDING_PATH=$active_link \
-		DOTFILES_TEST_WALLPAPER_POST_PENDING_REPLACEMENT=$live run_wallpaper_operation "$FIXTURE_ROOT" remove_wallpapers --yes
-	assert_eq 1 "$COMMAND_STATUS" 'active background switch after pending should block last-boundary deletion' || return 1
-	[[ -f $live ]] || { printf '  active-link race deleted the selected live target\n' >&2; return 1; }
+	case $case_name in
+		adopt-file)
+			parent=${live%/*}
+			mkdir -p "$parent"
+			cp "$assignment" "$live"
+			DOTFILES_TEST_WALLPAPER_POST_PENDING_RACE=file DOTFILES_TEST_WALLPAPER_POST_PENDING_PATH=$live \
+				run_wallpaper_operation "$FIXTURE_ROOT" apply_wallpapers --yes
+			assert_eq 1 "$COMMAND_STATUS" 'exact-byte adopted target replacement after pending should fail' || return 1
+			assert_path_absent "$FIXTURE_STATE/dotfiles/wallpapers/active.json" 'failed adoption must not publish ownership'
+			;;
+		adopt-parent)
+			parent=${live%/*}
+			mkdir -p "$parent"
+			cp "$assignment" "$live"
+			DOTFILES_TEST_WALLPAPER_POST_PENDING_RACE=parent DOTFILES_TEST_WALLPAPER_POST_PENDING_PATH=$parent \
+				run_wallpaper_operation "$FIXTURE_ROOT" apply_wallpapers --yes
+			assert_eq 1 "$COMMAND_STATUS" 'real parent replacement after pending should fail' || return 1
+			assert_path_absent "$live" 'parent replacement must not receive a live publication'
+			;;
+		owned-file)
+			run_wallpaper_operation "$FIXTURE_ROOT" apply_wallpapers --yes
+			assert_eq 0 "$COMMAND_STATUS" 'owned replacement fixture baseline should succeed' || return 1
+			second=$(seed_wallpaper_assignment catppuccin PNG png '#6688aa') || return 1
+			DOTFILES_TEST_WALLPAPER_POST_PENDING_RACE=file DOTFILES_TEST_WALLPAPER_POST_PENDING_PATH=$live \
+				run_wallpaper_operation "$FIXTURE_ROOT" apply_wallpapers --yes
+			assert_eq 1 "$COMMAND_STATUS" 'unchanged owned target replacement after pending should fail finalization'
+			;;
+		active-link)
+			run_wallpaper_operation "$FIXTURE_ROOT" apply_wallpapers --yes
+			assert_eq 0 "$COMMAND_STATUS" 'active-link replacement fixture baseline should succeed' || return 1
+			active_link="$FIXTURE_HOME/.local/state/omarchy/current/background"
+			mkdir -p "${active_link%/*}"
+			ln -s "$FIXTURE_ROOT/unrelated-background" "$active_link"
+			DOTFILES_TEST_WALLPAPER_POST_PENDING_RACE=active-link DOTFILES_TEST_WALLPAPER_POST_PENDING_PATH=$active_link \
+				DOTFILES_TEST_WALLPAPER_POST_PENDING_REPLACEMENT=$live run_wallpaper_operation "$FIXTURE_ROOT" remove_wallpapers --yes
+			assert_eq 1 "$COMMAND_STATUS" 'active background switch after pending should block last-boundary deletion' || return 1
+			[[ -f $live ]] || { printf '  active-link race deleted the selected live target\n' >&2; return 1; }
+			;;
+		*) return 1 ;;
+	esac
 }
 
-test_completion_interruption_resumes_cleanup_without_orphan_inference() {
-	new_fixture
-	setup_wallpaper_fixture
-	mkdir "$FIXTURE_WALLPAPER_THEMES/one" "$FIXTURE_WALLPAPER_THEMES/two"
-	local first second
-	first=$(seed_wallpaper_assignment one PNG png '#112233') || return 1
-	run_wallpaper_operation "$FIXTURE_ROOT" apply_wallpapers --yes
-	assert_eq 0 "$COMMAND_STATUS" 'completion fixture baseline should succeed' || return 1
-	rm "$first"
-	second=$(seed_wallpaper_assignment two PNG png '#445566') || return 1
-	DOTFILES_TEST_WALLPAPER_SIGNAL=cleanup-backup-entry run_wallpaper_operation "$FIXTURE_ROOT" apply_wallpapers --yes
-	assert_eq 143 "$COMMAND_STATUS" 'cleanup boundary should terminate the actual process' || return 1
-	[[ -f $FIXTURE_STATE/dotfiles/wallpapers/pending.json ]] || { printf '  completion interruption lost pending route\n' >&2; return 1; }
-	run_wallpaper_operation "$FIXTURE_ROOT" apply_wallpapers --yes
-	assert_eq 0 "$COMMAND_STATUS" 'completion recovery should resume cleanup' || return 1
-	assert_contains "$COMMAND_OUTPUT" 'recovered and verified; rerun' 'completion recovery should stop before ordinary Apply' || return 1
-	assert_path_absent "$FIXTURE_STATE/dotfiles/wallpapers/pending.json" 'completion recovery should clear pending last' || return 1
-	assert_path_absent "$FIXTURE_STATE/dotfiles/wallpapers/backups" 'completion recovery should clear remaining backups' || return 1
-	run_wallpaper_operation "$FIXTURE_ROOT" apply_wallpapers --yes
-	assert_eq 0 "$COMMAND_STATUS" 'post-cleanup ordinary rerun should succeed' || return 1
+test_completion_interruption_one_case() {
+	local case_name=$1 first second
 
 	new_fixture
 	setup_wallpaper_fixture
 	mkdir "$FIXTURE_WALLPAPER_THEMES/one" "$FIXTURE_WALLPAPER_THEMES/two"
 	first=$(seed_wallpaper_assignment one PNG png '#112233') || return 1
 	run_wallpaper_operation "$FIXTURE_ROOT" apply_wallpapers --yes
-	assert_eq 0 "$COMMAND_STATUS" 'rollback cleanup fixture baseline should succeed' || return 1
-	rm "$first"
-	second=$(seed_wallpaper_assignment two PNG png '#445566') || return 1
-	DOTFILES_TEST_WALLPAPER_FAIL=state-active DOTFILES_TEST_WALLPAPER_SIGNAL=cleanup-backup-entry \
-		run_wallpaper_operation "$FIXTURE_ROOT" apply_wallpapers --yes
-	assert_eq 143 "$COMMAND_STATUS" 'rollback cleanup boundary should terminate the actual process' || return 1
-	assert_eq rolled_back "$(jq -r '.phase' "$FIXTURE_STATE/dotfiles/wallpapers/pending.json")" 'rollback cleanup should retain an explicit durable route' || return 1
-	run_wallpaper_operation "$FIXTURE_ROOT" apply_wallpapers --yes
-	assert_eq 0 "$COMMAND_STATUS" 'rolled-back transaction recovery should resume cleanup' || return 1
-	assert_contains "$COMMAND_OUTPUT" 'recovered and verified; rerun' 'rollback cleanup recovery should stop before ordinary Apply' || return 1
-	assert_path_absent "$FIXTURE_STATE/dotfiles/wallpapers/pending.json" 'rollback cleanup should remove pending last' || return 1
-	assert_path_absent "$FIXTURE_STATE/dotfiles/wallpapers/backups" 'rollback cleanup should remove remaining backups'
+	case $case_name in
+		cleanup)
+			assert_eq 0 "$COMMAND_STATUS" 'completion fixture baseline should succeed' || return 1
+			rm "$first"
+			second=$(seed_wallpaper_assignment two PNG png '#445566') || return 1
+			DOTFILES_TEST_WALLPAPER_SIGNAL=cleanup-backup-entry run_wallpaper_operation "$FIXTURE_ROOT" apply_wallpapers --yes
+			assert_eq 143 "$COMMAND_STATUS" 'cleanup boundary should terminate the actual process' || return 1
+			[[ -f $FIXTURE_STATE/dotfiles/wallpapers/pending.json ]] || { printf '  completion interruption lost pending route\n' >&2; return 1; }
+			run_wallpaper_operation "$FIXTURE_ROOT" apply_wallpapers --yes
+			assert_eq 0 "$COMMAND_STATUS" 'completion recovery should resume cleanup' || return 1
+			assert_contains "$COMMAND_OUTPUT" 'recovered and verified; rerun' 'completion recovery should stop before ordinary Apply' || return 1
+			assert_path_absent "$FIXTURE_STATE/dotfiles/wallpapers/pending.json" 'completion recovery should clear pending last' || return 1
+			assert_path_absent "$FIXTURE_STATE/dotfiles/wallpapers/backups" 'completion recovery should clear remaining backups' || return 1
+			run_wallpaper_operation "$FIXTURE_ROOT" apply_wallpapers --yes
+			assert_eq 0 "$COMMAND_STATUS" 'post-cleanup ordinary rerun should succeed'
+			;;
+		rollback)
+			assert_eq 0 "$COMMAND_STATUS" 'rollback cleanup fixture baseline should succeed' || return 1
+			rm "$first"
+			second=$(seed_wallpaper_assignment two PNG png '#445566') || return 1
+			DOTFILES_TEST_WALLPAPER_FAIL=state-active DOTFILES_TEST_WALLPAPER_SIGNAL=cleanup-backup-entry \
+				run_wallpaper_operation "$FIXTURE_ROOT" apply_wallpapers --yes
+			assert_eq 143 "$COMMAND_STATUS" 'rollback cleanup boundary should terminate the actual process' || return 1
+			assert_eq rolled_back "$(jq -r '.phase' "$FIXTURE_STATE/dotfiles/wallpapers/pending.json")" 'rollback cleanup should retain an explicit durable route' || return 1
+			run_wallpaper_operation "$FIXTURE_ROOT" apply_wallpapers --yes
+			assert_eq 0 "$COMMAND_STATUS" 'rolled-back transaction recovery should resume cleanup' || return 1
+			assert_contains "$COMMAND_OUTPUT" 'recovered and verified; rerun' 'rollback cleanup recovery should stop before ordinary Apply' || return 1
+			assert_path_absent "$FIXTURE_STATE/dotfiles/wallpapers/pending.json" 'rollback cleanup should remove pending last' || return 1
+			assert_path_absent "$FIXTURE_STATE/dotfiles/wallpapers/backups" 'rollback cleanup should remove remaining backups'
+			;;
+		*) return 1 ;;
+	esac
 }
 
-run_test test_first_apply_materializes_regular_files_and_clone_independent_receipt 'first Apply materializes regular clone-independent wallpaper deployment'
-run_test test_exact_apply_noop_preserves_live_and_receipt_metadata_without_prompt 'exact Apply no-op preserves every owned metadata timestamp'
-run_test test_apply_adopts_exact_unowned_match_but_blocks_different_foreign_target 'Apply adopts only exact unowned matches'
-run_test test_apply_converges_additions_and_stale_removals_while_preserving_unrelated_files 'Apply converges receipt ownership and preserves unrelated backgrounds'
-run_test test_apply_retains_unchanged_operation_created_directories_during_expansion 'Apply retains unchanged operation-created directories during expansion'
-run_test test_changed_owned_file_and_unsafe_live_parent_block_fail_closed 'Apply fails closed on owned drift and unsafe parents'
-run_test test_active_background_blocks_stale_apply_and_deployment_removal 'active background blocks every planned owned deletion'
-run_test test_source_independent_removal_preserves_unrelated_state_and_clears_receipt_last 'deployment removal is source-independent and receipt-bounded'
-run_test test_empty_library_skip_and_active_convergence_removal_are_exact 'empty library handles unowned skip and stale convergence safely'
-run_test test_malformed_or_insecure_receipt_blocks_without_live_mutation 'malformed deployment evidence blocks ownership inference'
-run_test test_deployment_failure_rolls_back_or_retains_recoverable_evidence 'deployment failure retains evidence until verified recovery'
-run_test test_unattended_apply_requires_explicit_omarchy_mismatch_override 'unattended Apply requires explicit Omarchy mismatch consent'
-run_test test_apply_rejects_indirect_state_and_live_parent_symlinks 'Apply rejects indirect state and live parent links'
-run_test test_interactive_apply_rejects_omarchy_version_change_after_confirmation 'Apply rechecks Omarchy after confirmation'
-run_test test_apply_rejects_every_confirmed_fingerprint_replacement 'Apply rejects source, receipt, target, parent, and active-link replacement after confirmation'
-run_test test_removal_rejects_confirmed_target_replacement 'removal rejects target replacement after confirmation'
-run_test test_relaxed_live_identity_adopts_and_removes_exact_hard_links_and_modes 'deployment relaxes exact safe live modes and hard-link counts only'
-run_test test_false_success_state_and_target_operations_remain_recoverable 'false-success filesystem operations cannot report lifecycle success'
-run_test test_partial_publication_rolls_back_mode_and_cleans_backups 'partial live publication rolls back and cleans evidence'
-run_test test_stale_created_directory_cleanup_removes_only_empty_owned_directories 'stale created-directory ownership converges safely'
-run_test test_receipts_require_strict_timestamps_and_sorted_generated_arrays 'deployment receipts enforce strict generated fields'
-run_test test_deployment_sigterm_recovers_before_and_after_live_and_active_publication 'deployment process interruption recovers every publication boundary'
-run_test test_post_pending_active_adoption_owned_and_parent_replacements_fail_closed 'post-pending parent and target replacements fail closed'
-run_test test_completion_interruption_resumes_cleanup_without_orphan_inference 'transaction completion interruption resumes strict cleanup'
-run_test test_repository_source_drift_after_pending_rolls_back_add_and_adopt 'deployment revalidates changed and unchanged desired sources around receipt publication'
-run_test test_locked_state_root_replacement_fails_before_final_path_mutation 'locked state-root replacement fails before live or repository mutation'
+test_queued_worker_root_failure_is_reported_as_a_suite_failure() {
+	local output status
+
+	if output=$(bash -c '
+		source "$1"
+		queued_worker_must_not_run() { return 99; }
+		mktemp() { return 1; }
+		run_test_group 1 queued_worker_must_not_run "queued worker root failure probe"
+		finish_tests
+	' bash "$SOURCE_REPO/tests/support/test_helper.sh" 2>&1); then
+		status=0
+	else
+		status=$?
+	fi
+	assert_eq 1 "$status" 'queued worker root allocation failure should fail the suite' || return 1
+	assert_contains "$output" 'could not create queued test worker root' \
+		'queued worker root allocation failure should be diagnostic' || return 1
+	assert_contains "$output" 'not ok 0 - queued test worker startup failed' \
+		'queued worker root allocation failure should be represented as a failed result'
+}
+
+if [[ -n ${DOTFILES_TEST_ONLY:-} ]]; then
+	run_test "$DOTFILES_TEST_ONLY" "$DOTFILES_TEST_ONLY"
+	finish_tests
+	exit $?
+fi
+
+run_test_group 1 test_first_apply_materializes_regular_files_and_clone_independent_receipt 'dispatch Apply, Remove, and empty-state status preserve deployment semantics'
+run_test_group 1 test_apply_rejects_one_confirmed_fingerprint_replacement 'confirmed Apply source replacement fails before mutation' source
+run_test_group 1 test_exact_hard_link_adoption_preserves_external_content_on_remove 'hard-link adoption preserves external content on removal'
+run_test_group 1 test_locked_state_root_replacement_blocks_curation_mutation 'locked state-root replacement blocks curation mutation'
+
+run_test_group 2 test_apply_converges_additions_and_stale_removals_while_preserving_unrelated_files 'Apply converges owned files and preserves unrelated backgrounds'
+run_test_group 2 test_partial_publication_rolls_back_mode_and_cleans_backups 'partial publication rolls back live mutation and cleans backups'
+
+run_test_group 3 test_apply_adopts_exact_unowned_match_but_blocks_different_foreign_target 'Apply adopts exact unowned files and preserves foreign conflicts'
+run_test_group 3 test_post_pending_replacement_one_case 'post-pending active-link replacement blocks removal' active-link
+
+run_test_group 4 test_exact_apply_noop_preserves_live_and_receipt_metadata_without_prompt 'exact Apply no-op preserves owned metadata'
+run_test_group 4 test_unattended_apply_requires_explicit_omarchy_mismatch_override 'Omarchy mismatch requires explicit unattended override'
+run_test_group 4 test_interactive_apply_rejects_omarchy_version_change_after_confirmation 'interactive Apply rechecks Omarchy after confirmation'
+
+run_test_group 5 test_malformed_or_insecure_receipt_blocks_without_live_mutation 'invalid deployment evidence blocks mutation and validation'
+run_test_group 5 test_apply_rejects_indirect_state_and_live_parent_symlinks 'unsafe state and live ancestry block Apply'
+
+run_test_group 6 test_changed_owned_file_and_unsafe_live_parent_block_fail_closed 'owned drift and unsafe live parents fail closed'
+run_test_group 6 test_active_background_blocks_stale_apply_and_deployment_removal 'active backgrounds block stale Apply and removal'
+
+run_test_group 7 test_deployment_failure_rolls_back_or_retains_recoverable_evidence 'failed rollback retains recoverable evidence and verified recovery'
+run_test_group 7 test_removal_rejects_confirmed_target_replacement 'confirmed Remove target replacement fails before mutation'
+
+run_test_group 8 test_deployment_sigterm_one_seam 'SIGKILL after live publication retains recoverable deployment evidence' live-after-kill
+run_test_group 8 test_completion_interruption_one_case 'cleanup interruption resumes durable cleanup' cleanup
+
+run_test_group 9 test_repository_source_drift_one_case 'source drift after receipt publication restores prior deployment' unchanged-source
+run_test_group 9 test_empty_library_skip_and_active_convergence_removal_are_exact 'empty inventory skips cleanly and converges an active deployment'
+
+run_test_group 10 test_false_success_one_case 'false-success pending deletion retains verified recovery evidence' pending-delete
+run_test_group 10 test_remove_uses_receipt_when_source_is_unavailable 'receipt-owned removal works without source and preserves unrelated live files'
+run_test_group 10 test_false_success_one_case 'false-success active receipt publication remains recoverable' active-write
+run_test_group 11 test_queued_worker_root_failure_is_reported_as_a_suite_failure 'queued worker root allocation failure is a nonzero suite result'
 finish_tests

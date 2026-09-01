@@ -10,7 +10,7 @@ The package does not manage `.bash_profile`, `~/.config/starship.toml`, terminal
 
 Selecting `bash` in `Guided setup` or `Apply Stow packages` installs the official Arch `thefuck` package through Omarchy when it is missing.
 
-The `bash` package depends on the `tmux` Stow package. The complete plan links the complete tmux configuration and private starter and installs the official Arch `tmux`, `fzf`, and `less` packages when they are missing.
+The `bash` package depends on the `tmux` Stow package. The complete plan links the complete tmux configuration and both private helpers and installs the official Arch `tmux`, `fzf`, and `less` packages when they are missing.
 
 ## Shortcuts
 

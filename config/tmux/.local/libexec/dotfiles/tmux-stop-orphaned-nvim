@@ -1,0 +1,125 @@
+#!/usr/bin/bash
+
+set -u
+
+readonly proc_root=${DOTFILES_TMUX_PROC_ROOT:-/proc}
+readonly initial_grace_seconds=0.5
+readonly term_grace_seconds=1
+
+declare -a candidate_pids=()
+declare -a candidate_start_times=()
+declare -a candidate_pidfd_inodes=()
+matched_start_time=
+
+process_start_time() {
+	local process=$1
+	local pid=$2
+	local stat_line remainder
+	local -a stat_fields
+
+	[[ -f $process/stat && ! -L $process/stat ]] || return 1
+	IFS= read -r stat_line <"$process/stat" || return 1
+	case $stat_line in
+		"$pid ("*") "*) ;;
+		*) return 1 ;;
+	esac
+	remainder=${stat_line##*) }
+	[[ $remainder != "$stat_line" ]] || return 1
+	read -r -a stat_fields <<<"$remainder"
+	((${#stat_fields[@]} >= 20)) || return 1
+	[[ ${stat_fields[19]} =~ ^[0-9]+$ ]] || return 1
+	printf '%s\n' "${stat_fields[19]}"
+}
+
+process_qualifies() {
+	local process=$1
+	local pid=$2
+	local executable argv0 argv1 start_time
+	local cgroup_line cgroup_remainder cgroup_path cgroup_name
+	local descriptor target
+	local in_tmux_spawn_scope=false
+
+	[[ $pid =~ ^[0-9]+$ ]] || return 1
+	[[ -d /proc/$pid && ! -L /proc/$pid ]] || return 1
+	[[ -d $process && ! -L $process ]] || return 1
+
+	start_time=$(process_start_time "$process" "$pid") || return 1
+	[[ -L $process/exe ]] || return 1
+	executable=$(/usr/bin/readlink -- "$process/exe") || return 1
+	[[ ${executable##*/} == nvim ]] || return 1
+
+	[[ -f $process/cmdline && ! -L $process/cmdline ]] || return 1
+	if ! {
+		IFS= read -r -d '' argv0 &&
+			IFS= read -r -d '' argv1
+	} <"$process/cmdline"; then
+		return 1
+	fi
+	[[ ${argv0##*/} == nvim && $argv1 == --embed ]] || return 1
+
+	[[ -f $process/cgroup && ! -L $process/cgroup ]] || return 1
+	while IFS= read -r cgroup_line; do
+		[[ ${cgroup_line%%:*} =~ ^[0-9]+$ ]] || continue
+		cgroup_remainder=${cgroup_line#*:}
+		[[ $cgroup_remainder != "$cgroup_line" ]] || continue
+		cgroup_path=${cgroup_remainder#*:}
+		[[ $cgroup_path != "$cgroup_remainder" && $cgroup_path == /* ]] || continue
+		cgroup_name=${cgroup_path##*/}
+		case $cgroup_name in
+			tmux-spawn-?*.scope)
+				in_tmux_spawn_scope=true
+				break
+				;;
+		esac
+	done <"$process/cgroup"
+	[[ $in_tmux_spawn_scope == true ]] || return 1
+
+	for descriptor in 0 1 2; do
+		[[ -L $process/fd/$descriptor ]] || return 1
+		target=$(/usr/bin/readlink -- "$process/fd/$descriptor") || return 1
+		[[ $target =~ ^/dev/pts/[0-9]+\ \(deleted\)$ ]] || return 1
+	done
+
+	matched_start_time=$start_time
+}
+
+# util-linux's PID:inode form resolves the pidfs identity and sends through a
+# pidfd, so PID reuse cannot redirect either signal. Keep that identity from
+# discovery through both signals instead of falling back to numeric kill.
+signal_process_by_identity() {
+	local signal=$1
+	local pid=$2
+	local pidfd_inode=$3
+
+	/usr/bin/kill --signal "$signal" -- "$pid:$pidfd_inode"
+}
+
+[[ $proc_root == /* && -d $proc_root && ! -L $proc_root ]] || exit 0
+[[ -x /usr/bin/getino && -x /usr/bin/kill ]] || exit 0
+/usr/bin/sleep "$initial_grace_seconds"
+
+for process in "$proc_root"/[0-9]*; do
+	pid=${process##*/}
+	process_qualifies "$process" "$pid" || continue
+	start_time=$matched_start_time
+	pidfd_inode=$(/usr/bin/getino --pidfs "$pid" 2>/dev/null) || continue
+	[[ $pidfd_inode =~ ^[0-9]+$ ]] || continue
+	process_qualifies "$process" "$pid" || continue
+	[[ $matched_start_time == "$start_time" ]] || continue
+	if signal_process_by_identity TERM "$pid" "$pidfd_inode" 2>/dev/null; then
+		candidate_pids+=("$pid")
+		candidate_start_times+=("$start_time")
+		candidate_pidfd_inodes+=("$pidfd_inode")
+	fi
+done
+
+((${#candidate_pids[@]} > 0)) || exit 0
+/usr/bin/sleep "$term_grace_seconds"
+
+for index in "${!candidate_pids[@]}"; do
+	pid=${candidate_pids[index]}
+	process=$proc_root/$pid
+	process_qualifies "$process" "$pid" || continue
+	[[ $matched_start_time == "${candidate_start_times[index]}" ]] || continue
+	signal_process_by_identity KILL "$pid" "${candidate_pidfd_inodes[index]}" 2>/dev/null || true
+done

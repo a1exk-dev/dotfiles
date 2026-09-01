@@ -49,7 +49,7 @@ Applying the policy also requires `brave-bin` and its package-owned `brave` comm
 
 Gum is optional. The wizard uses Bash prompts when Gum is not available.
 
-The integration tests require Bubblewrap (`bwrap`), GNU Stow, ImageMagick, btop 1.4.7, tmux 3.7b, Starship 1.26.0, OpenCode 1.18.23, the Omarchy 4.0.1 stock themes, `ttfx` 0.3.2, `socat`, `zip`, `unzip`, and `inotifywait`.
+The integration tests require Bubblewrap (`bwrap`), GNU Stow, ImageMagick, btop 1.4.7, tmux 3.7b, Starship 1.26.0, a Mise-managed OpenCode executable installed in a semantic-version directory that matches `opencode --version`, the Omarchy 4.0.1 stock themes, `ttfx` 0.3.2, `socat`, `zip`, `unzip`, `inotifywait`, Python 3, a running user systemd manager, and util-linux `getino --pidfs` plus `kill PID:inode` support.
 
 ## Quick start
 

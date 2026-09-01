@@ -105,6 +105,9 @@ test_structural_validator_reports_complete_clone_surface_inventory_drift() {
 	setup_structural_omarchy_fixture || return 1
 	printf 'unexpected clone source\n' >"$STRUCTURAL_OMARCHY_ROOT/shell/plugins/services/idle/Unexpected.qml"
 	rm "$STRUCTURAL_OMARCHY_ROOT/shell/plugins/bar/indicators/Dictation.qml"
+	make_fake omarchy 'if [[ ${1-} == version ]]; then printf "4.0.1-1\n"; else exit 64; fi'
+	make_fake pacman 'if [[ $* == "-Q omarchy" ]]; then printf "omarchy 4.0.1-1\n"; else exit 64; fi'
+	STRUCTURAL_PATH=$FIXTURE_BIN:/usr/bin:/bin
 	run_structural_validator
 	assert_eq 1 "$COMMAND_STATUS" 'clone inventory drift should fail on the supported Omarchy baseline' || return 1
 	assert_contains "$COMMAND_OUTPUT" \

@@ -1154,6 +1154,33 @@ test_starship_validator_rejects_repeated_status_zero_diagnostics_and_cleans_cach
 	fi
 )
 
+configure_tmux_runtime_requirement_fakes() {
+	make_fake systemd-run '
+if (( $# != 5 )) || [[ $1 != --user || $2 != --quiet || $3 != --collect || $4 != --no-block || $5 != /usr/bin/true ]]; then
+	printf "invalid tmux-runtime-systemd-run\n" >>"$DOTFILES_TEST_CALL_LOG"
+	exit 64
+fi
+printf "tmux-runtime-systemd-run\n" >>"$DOTFILES_TEST_CALL_LOG"'
+	make_fake getino '
+if (( $# != 2 )) || [[ $1 != --pidfs || ! $2 =~ ^[0-9]+$ ]]; then
+	printf "invalid tmux-runtime-getino\n" >>"$DOTFILES_TEST_CALL_LOG"
+	exit 64
+fi
+printf "tmux-runtime-getino\n" >>"$DOTFILES_TEST_CALL_LOG"
+printf "424242\n"'
+	make_fake kill '
+if (( $# != 4 )) || [[ $1 != --signal || $2 != 0 || $3 != -- || ! $4 =~ ^[0-9]+:424242$ ]]; then
+	printf "invalid tmux-runtime-kill\n" >>"$DOTFILES_TEST_CALL_LOG"
+	exit 64
+fi
+printf "tmux-runtime-kill\n" >>"$DOTFILES_TEST_CALL_LOG"'
+	BWRAP_EXTRA_ARGS+=(
+		--ro-bind "$FIXTURE_BIN/systemd-run" /usr/bin/systemd-run
+		--ro-bind "$FIXTURE_BIN/getino" /usr/bin/getino
+		--ro-bind "$FIXTURE_BIN/kill" /usr/bin/kill
+	)
+}
+
 test_real_tmux_dependency_and_leaf_only_lifecycle() (
 	new_fixture
 	DOTFILES_TEST_INPUT='1\nn\n' run_dotfiles "$FIXTURE_ROOT" --action apply
@@ -1167,6 +1194,8 @@ test_real_tmux_dependency_and_leaf_only_lifecycle() (
 		'the real plan should attribute fzf to the tmux Stow package' || return 1
 	assert_contains "$COMMAND_OUTPUT" 'less (required by tmux): installed' \
 		'the real plan should attribute less to the tmux Stow package' || return 1
+	assert_contains "$COMMAND_OUTPUT" 'Package tmux prerequisites: /usr/bin/systemd-run, /usr/bin/getino, /usr/bin/kill' \
+		'the real plan should list tmux runtime commands without claiming their base packages' || return 1
 	assert_contains "$COMMAND_OUTPUT" 'thefuck (required by bash): installed' \
 		'Bash should retain its own Arch requirement' || return 1
 	if [[ $(<"$CALL_LOG") == *$'stow --no-folding --verbose=2 '* ]]; then
@@ -1176,14 +1205,16 @@ test_real_tmux_dependency_and_leaf_only_lifecycle() (
 
 	new_fixture
 	local starter=$FIXTURE_REPO/config/tmux/.local/libexec/dotfiles/tmux-starter
+	local nvim_cleanup=$FIXTURE_REPO/config/tmux/.local/libexec/dotfiles/tmux-stop-orphaned-nvim
 	local config=$FIXTURE_REPO/config/tmux/.config/tmux/tmux.conf
-	if [[ ! -f $starter || ! -f $config ]]; then
-		printf '  the real tmux package must contain its complete config and private starter\n' >&2
+	if [[ ! -f $starter || ! -f $nvim_cleanup || ! -f $config ]]; then
+		printf '  the real tmux package must contain its complete config and private helpers\n' >&2
 		return 1
 	fi
 	mkdir -p "$FIXTURE_HOME/.config/tmux" "$FIXTURE_HOME/.local/libexec/dotfiles"
 	ln -s "$config" "$FIXTURE_HOME/.config/tmux/tmux.conf"
 	ln -s "$starter" "$FIXTURE_HOME/.local/libexec/dotfiles/tmux-starter"
+	ln -s "$nvim_cleanup" "$FIXTURE_HOME/.local/libexec/dotfiles/tmux-stop-orphaned-nvim"
 	ln -s "$FIXTURE_REPO/config/bash/.bashrc" "$FIXTURE_HOME/.bashrc"
 	DOTFILES_TEST_INPUT='3\n' run_dotfiles "$FIXTURE_ROOT" --action remove
 
@@ -1195,6 +1226,8 @@ test_real_tmux_dependency_and_leaf_only_lifecycle() (
 		'blocked removal should preserve the complete config link' || return 1
 	assert_eq "$starter" "$(readlink -f "$FIXTURE_HOME/.local/libexec/dotfiles/tmux-starter")" \
 		'blocked removal should preserve the private starter link' || return 1
+	assert_eq "$nvim_cleanup" "$(readlink -f "$FIXTURE_HOME/.local/libexec/dotfiles/tmux-stop-orphaned-nvim")" \
+		'blocked removal should preserve the orphaned-Neovim cleanup helper link' || return 1
 	if [[ $(<"$CALL_LOG") == *'stow '* ]]; then
 		printf '  blocked real tmux removal should not invoke Stow\n' >&2
 		return 1
@@ -1203,9 +1236,11 @@ test_real_tmux_dependency_and_leaf_only_lifecycle() (
 	new_fixture
 	set_installed_arch_packages thefuck tmux fzf
 	starter=$FIXTURE_REPO/config/tmux/.local/libexec/dotfiles/tmux-starter
+	nvim_cleanup=$FIXTURE_REPO/config/tmux/.local/libexec/dotfiles/tmux-stop-orphaned-nvim
 	config=$FIXTURE_REPO/config/tmux/.config/tmux/tmux.conf
 	local config_target=$FIXTURE_HOME/.config/tmux/tmux.conf
 	local starter_target=$FIXTURE_HOME/.local/libexec/dotfiles/tmux-starter
+	local nvim_cleanup_target=$FIXTURE_HOME/.local/libexec/dotfiles/tmux-stop-orphaned-nvim
 	local retained_state=$FIXTURE_STATE/tmux/session-state
 	local retained_log=$FIXTURE_CACHE/tmux/server.log
 	local tmux_tmpdir=$FIXTURE_TMP/default-tmux
@@ -1214,6 +1249,7 @@ test_real_tmux_dependency_and_leaf_only_lifecycle() (
 	mkdir -p "$FIXTURE_HOME/.config/tmux" "$FIXTURE_HOME/.local/libexec/dotfiles" \
 		"$(dirname -- "$retained_state")" "$(dirname -- "$retained_log")" "$tmux_tmpdir" "$real_command_bin"
 	ln -s "$FIXTURE_BIN/omarchy" "$real_command_bin/omarchy"
+	configure_tmux_runtime_requirement_fakes
 	printf 'retained tmux state\n' >"$retained_state"
 	printf 'retained tmux log\n' >"$retained_log"
 	if ! TMUX= TMUX_TMPDIR="$tmux_tmpdir" tmux -f /dev/null new-session -d -s retained-runtime 'sleep 300'; then
@@ -1273,7 +1309,7 @@ test_real_tmux_dependency_and_leaf_only_lifecycle() (
 		return 1
 	}
 	assert_contains "$COMMAND_OUTPUT" 'Applied and verified package: tmux' \
-		'real tmux apply should complete starter and config validation' || return 1
+		'real tmux apply should complete configuration and both-helper validation' || return 1
 	assert_contains "$COMMAND_OUTPUT" 'Arch packages verified: tmux fzf less' \
 		'the successful real lifecycle should validate every tmux Arch requirement' || return 1
 	assert_contains "$COMMAND_OUTPUT" 'dotfiles-tmux-validator' \
@@ -1290,14 +1326,26 @@ test_real_tmux_dependency_and_leaf_only_lifecycle() (
 			return 1
 		fi
 	done
-	if [[ ! -L $config_target || ! -L $starter_target ]]; then
-		printf '  real Stow apply should create both tmux leaf links\n' >&2
+	if [[ ! -L $config_target || ! -L $starter_target || ! -L $nvim_cleanup_target ]]; then
+		printf '  real Stow apply should create all tmux leaf links\n' >&2
 		return 1
 	fi
 	assert_eq "$config" "$(readlink -f "$config_target")" \
 		'leaf-only apply should link tmux.conf to its exact source' || return 1
 	assert_eq "$starter" "$(readlink -f "$starter_target")" \
 		'leaf-only apply should link tmux-starter to its exact source' || return 1
+	assert_eq "$nvim_cleanup" "$(readlink -f "$nvim_cleanup_target")" \
+		'leaf-only apply should link the orphaned-Neovim helper to its exact source' || return 1
+	assert_eq 2 "$(awk '/^tmux-runtime-systemd-run$/ { count++ } END { print count + 0 }' "$CALL_LOG")" \
+		'each tmux validation should submit one no-op transient user service' || return 1
+	assert_eq 4 "$(awk '/^tmux-runtime-getino$/ { count++ } END { print count + 0 }' "$CALL_LOG")" \
+		'each tmux validation should verify getino pidfs support for both pidfd checks' || return 1
+	assert_eq 2 "$(awk '/^tmux-runtime-kill$/ { count++ } END { print count + 0 }' "$CALL_LOG")" \
+		'each tmux validation should verify kill PID:inode support without a process signal' || return 1
+	if [[ $(<"$CALL_LOG") == *'invalid tmux-runtime-'* ]]; then
+		printf '  tmux runtime validator used an unexpected exact-command protocol\n' >&2
+		return 1
+	fi
 	if compgen -G "$FIXTURE_TMP/dotfiles-tmux-validator.*" >/dev/null; then
 		printf '  complete-config validation should remove its isolated socket directory\n' >&2
 		return 1
@@ -1319,15 +1367,16 @@ test_real_tmux_dependency_and_leaf_only_lifecycle() (
 		return 1
 	}
 	assert_contains "$COMMAND_OUTPUT" 'Removed and verified package: tmux' \
-		'real tmux removal should verify both links are absent' || return 1
+		'real tmux removal should verify all links are absent' || return 1
 	assert_contains "$COMMAND_OUTPUT" 'Arch packages tmux, fzf, and less remain installed' \
 		'real tmux removal should report retained Arch packages' || return 1
 	assert_contains "$COMMAND_OUTPUT" 'The tmux server, sessions, panes, logs, and other runtime state are not removed' \
 		'real tmux removal should report retained runtime state' || return 1
 	assert_contains "$COMMAND_OUTPUT" 'Run omarchy refresh tmux after removal to restore the Omarchy baseline' \
 		'real tmux removal should report the explicit baseline restoration command' || return 1
-	if [[ -e $config_target || -L $config_target || -e $starter_target || -L $starter_target ]]; then
-		printf '  tmux removal should remove both managed leaf links\n' >&2
+	if [[ -e $config_target || -L $config_target || -e $starter_target || -L $starter_target || \
+		-e $nvim_cleanup_target || -L $nvim_cleanup_target ]]; then
+		printf '  tmux removal should remove all managed leaf links\n' >&2
 		return 1
 	fi
 	for parent in \

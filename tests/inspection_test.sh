@@ -375,19 +375,19 @@ test_check_validates_complete_package_metadata() {
 test_catalog_declares_package_specific_arch_requirements() {
 	new_fixture
 
-	assert_eq 'Complete Omarchy-based tmux configuration and private session starter' \
+	assert_eq 'Complete Omarchy-based tmux configuration, private session starter, and orphaned-Neovim cleanup helper' \
 		"$(jq -r '.packages[] | select(.name == "tmux") | .description' "$FIXTURE_REPO/packages.json")" \
-		'tmux should describe both owned targets' || return 1
+		'tmux should describe its complete config and both private helpers' || return 1
 	assert_eq '["thefuck"]' "$(jq -c '.packages[] | select(.name == "bash") | .arch_packages' "$FIXTURE_REPO/packages.json")" \
 		'Bash should declare exactly its required Arch package' || return 1
 	assert_eq '["tmux"]' "$(jq -c '.packages[] | select(.name == "bash") | .dependencies' "$FIXTURE_REPO/packages.json")" \
 		'Bash should declare the tmux Stow package dependency' || return 1
 	assert_eq '["tmux","fzf","less"]' "$(jq -c '.packages[] | select(.name == "tmux") | .arch_packages' "$FIXTURE_REPO/packages.json")" \
-		'tmux should declare exactly its official Arch requirements' || return 1
+		'tmux should declare only its removable official Arch requirements' || return 1
 	assert_eq '[]' "$(jq -c '.packages[] | select(.name == "tmux") | .dependencies' "$FIXTURE_REPO/packages.json")" \
 		'tmux should have no Stow dependencies' || return 1
-	assert_eq '[]' "$(jq -c '.packages[] | select(.name == "tmux") | .prerequisites' "$FIXTURE_REPO/packages.json")" \
-		'tmux should have no command prerequisites' || return 1
+	assert_eq '["/usr/bin/systemd-run","/usr/bin/getino","/usr/bin/kill"]' "$(jq -c '.packages[] | select(.name == "tmux") | .prerequisites' "$FIXTURE_REPO/packages.json")" \
+		'tmux should declare exact base-runtime command prerequisites without owning their packages' || return 1
 	assert_eq 'docs/tmux.md' "$(jq -r '.packages[] | select(.name == "tmux") | .documentation' "$FIXTURE_REPO/packages.json")" \
 		'tmux should reference its package guide' || return 1
 	assert_eq 'screensaver-effects' "$(jq -r '.packages[-1].name' "$FIXTURE_REPO/packages.json")" \
@@ -490,14 +490,25 @@ test_catalog_declares_isolated_tmux_config_validation() {
 	local validators config_validator validator_without_isolated_tmux
 	validators=$(jq -c '.packages[] | select(.name == "tmux") | .validators' "$FIXTURE_REPO/packages.json")
 
-	assert_eq 3 "$(jq 'length' <<<"$validators")" \
-		'tmux should retain both starter checks and add one complete-config validator' || return 1
+	assert_eq 8 "$(jq 'length' <<<"$validators")" \
+		'tmux should validate both private helpers, runtime requirements, and its complete config' || return 1
 	assert_eq 'sh -n "$HOME/.local/libexec/dotfiles/tmux-starter"' "$(jq -r '.[0]' <<<"$validators")" \
 		'tmux should retain starter syntax validation' || return 1
 	assert_eq 'sh -c '\''test -x "$HOME/.local/libexec/dotfiles/tmux-starter"'\''' "$(jq -r '.[1]' <<<"$validators")" \
 		'tmux should retain starter executable validation' || return 1
+	assert_eq 'bash -n "$HOME/.local/libexec/dotfiles/tmux-stop-orphaned-nvim"' "$(jq -r '.[2]' <<<"$validators")" \
+		'tmux should validate orphaned-Neovim helper syntax' || return 1
+	assert_eq 'bash -c '\''test -x "$HOME/.local/libexec/dotfiles/tmux-stop-orphaned-nvim"'\''' "$(jq -r '.[3]' <<<"$validators")" \
+		'tmux should validate the orphaned-Neovim helper mode' || return 1
 
-	config_validator=$(jq -r '.[2]' <<<"$validators")
+	assert_eq 'bash -c '\''/usr/bin/systemd-run --user --quiet --collect --no-block /usr/bin/true'\''' "$(jq -r '.[4]' <<<"$validators")" \
+		'tmux should verify transient user-systemd submission' || return 1
+	assert_eq 'bash -c '\''pidfd_inode=$(/usr/bin/getino --pidfs "$$") && [[ $pidfd_inode =~ ^[0-9]+$ ]]'\''' "$(jq -r '.[5]' <<<"$validators")" \
+		'tmux should verify util-linux getino pidfs support' || return 1
+	assert_eq 'bash -c '\''pidfd_inode=$(/usr/bin/getino --pidfs "$$") && /usr/bin/kill --signal 0 -- "$$:$pidfd_inode"'\''' "$(jq -r '.[6]' <<<"$validators")" \
+		'tmux should verify util-linux kill PID:inode support without signaling a process' || return 1
+
+	config_validator=$(jq -r '.[7]' <<<"$validators")
 	assert_eq bash "${config_validator%% *}" \
 		'the config validator should remain preflight-safe before tmux is installed' || return 1
 	assert_contains "$config_validator" 'mktemp -d' \
@@ -506,8 +517,18 @@ test_catalog_declares_isolated_tmux_config_validation() {
 		'the config validator should always clean up on shell exit' || return 1
 	assert_contains "$config_validator" 'tmux -S "$socket" -f /dev/null new-session -d -s dotfiles-validator \; source-file "$HOME/.config/tmux/tmux.conf"' \
 		'the config validator should explicitly source the linked complete config through its isolated socket' || return 1
-	assert_contains "$config_validator" 'tmux -S "$socket" kill-server' \
-		'the config validator should stop only its isolated server' || return 1
+	assert_contains "$config_validator" 'set-hook -gu pane-exited' \
+		'the config validator should disable pane-exited cleanup before teardown' || return 1
+	assert_contains "$config_validator" 'set-hook -gu pane-died' \
+		'the config validator should disable pane-died cleanup before teardown' || return 1
+	assert_contains "$config_validator" 'set-hook -gu after-kill-pane' \
+		'the config validator should disable after-kill-pane cleanup before teardown' || return 1
+	assert_contains "$config_validator" 'set-hook -gu window-unlinked' \
+		'the config validator should disable window-unlinked cleanup before teardown' || return 1
+	assert_contains "$config_validator" 'set-hook -gu session-closed' \
+		'the config validator should disable session-closed cleanup before teardown' || return 1
+	assert_contains "$config_validator" 'kill-server' \
+		'the config validator should stop only its isolated server after disabling cleanup hooks' || return 1
 	assert_contains "$config_validator" 'rm -rf -- "$socket_dir"' \
 		'the config validator should remove its isolated socket directory' || return 1
 	validator_without_isolated_tmux=${config_validator//'tmux -S "$socket"'/}
@@ -517,7 +538,7 @@ test_catalog_declares_isolated_tmux_config_validation() {
 	fi
 }
 
-test_check_accepts_tmux_validator_before_tmux_is_installed() {
+test_tmux_validator_preflight_does_not_require_tmux() {
 	new_fixture
 	ln -s "$(command -v sh)" "$FIXTURE_BIN/sh"
 	make_fake ghostty 'exit 0'
@@ -528,12 +549,10 @@ test_check_accepts_tmux_validator_before_tmux_is_installed() {
 		return 1
 	fi
 
-	DOTFILES_TEST_PATH=$command_path run_operation "$FIXTURE_ROOT" check
+	DOTFILES_TEST_PATH=$command_path run_operation "$FIXTURE_ROOT" validator_executables_available tmux
 
 	assert_eq 0 "$COMMAND_STATUS" \
-		'check should accept the shell-fronted tmux validator before its declared Arch package is installed' || return 1
-	assert_contains "$COMMAND_OUTPUT" 'Package catalog: valid (8 packages)' \
-		'preflight should still inspect the complete real catalog'
+		'tmux validator executable preflight should not require tmux itself'
 }
 
 test_check_accepts_starship_validator_before_starship_is_installed() {
@@ -682,7 +701,7 @@ run_test test_check_validates_complete_package_metadata 'check validates complet
 run_test test_catalog_declares_package_specific_arch_requirements 'catalog declares package-specific Arch requirements'
 run_test test_catalog_declares_strict_isolated_starship_validation 'catalog declares strict isolated Starship validation'
 run_test test_catalog_declares_isolated_tmux_config_validation 'catalog declares isolated tmux config validation'
-run_test test_check_accepts_tmux_validator_before_tmux_is_installed 'check accepts the tmux validator before tmux is installed'
+run_test test_tmux_validator_preflight_does_not_require_tmux 'tmux validator executable preflight does not require tmux'
 run_test test_check_accepts_starship_validator_before_starship_is_installed 'check accepts the Starship validator before Starship is installed'
 run_test test_check_rejects_invalid_arch_package_metadata 'check rejects invalid Arch package metadata'
 run_test test_check_reports_missing_declared_arch_package_without_mutation 'check reports a missing declared Arch package without mutation'

@@ -18,14 +18,19 @@
 	}, {
 		"name": "tmux",
 		"path": "config/tmux",
-		"description": "Complete Omarchy-based tmux configuration and private session starter",
+		"description": "Complete Omarchy-based tmux configuration, private session starter, and orphaned-Neovim cleanup helper",
 		"dependencies": [],
 		"arch_packages": ["tmux", "fzf", "less"],
-		"prerequisites": [],
+		"prerequisites": ["/usr/bin/systemd-run", "/usr/bin/getino", "/usr/bin/kill"],
 		"validators": [
 			"sh -n \"$HOME/.local/libexec/dotfiles/tmux-starter\"",
 			"sh -c 'test -x \"$HOME/.local/libexec/dotfiles/tmux-starter\"'",
-			"bash -c 'socket_dir=$(mktemp -d \"${TMPDIR:-/tmp}/dotfiles-tmux-validator.XXXXXX\") || exit 1; socket=$socket_dir/socket; cleanup() { TMUX= tmux -S \"$socket\" kill-server >/dev/null 2>&1 || true; rm -rf -- \"$socket_dir\"; }; trap cleanup EXIT; trap \"exit 1\" HUP INT TERM; TMUX= tmux -S \"$socket\" -f /dev/null new-session -d -s dotfiles-validator \\; source-file \"$HOME/.config/tmux/tmux.conf\"'"
+			"bash -n \"$HOME/.local/libexec/dotfiles/tmux-stop-orphaned-nvim\"",
+			"bash -c 'test -x \"$HOME/.local/libexec/dotfiles/tmux-stop-orphaned-nvim\"'",
+			"bash -c '/usr/bin/systemd-run --user --quiet --collect --no-block /usr/bin/true'",
+			"bash -c 'pidfd_inode=$(/usr/bin/getino --pidfs \"$$\") && [[ $pidfd_inode =~ ^[0-9]+$ ]]'",
+			"bash -c 'pidfd_inode=$(/usr/bin/getino --pidfs \"$$\") && /usr/bin/kill --signal 0 -- \"$$:$pidfd_inode\"'",
+			"bash -c 'socket_dir=$(mktemp -d \"${TMPDIR:-/tmp}/dotfiles-tmux-validator.XXXXXX\") || exit 1; socket=$socket_dir/socket; cleanup() { TMUX= tmux -S \"$socket\" set-hook -gu pane-exited \\; set-hook -gu pane-died \\; set-hook -gu after-kill-pane \\; set-hook -gu window-unlinked \\; set-hook -gu session-closed \\; kill-server >/dev/null 2>&1 || true; rm -rf -- \"$socket_dir\"; }; trap cleanup EXIT; trap \"exit 1\" HUP INT TERM; TMUX= tmux -S \"$socket\" -f /dev/null new-session -d -s dotfiles-validator \\; source-file \"$HOME/.config/tmux/tmux.conf\"'"
 		],
 		"documentation": "docs/tmux.md",
 		"cleanup": [
