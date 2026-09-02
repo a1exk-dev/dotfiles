@@ -15,6 +15,7 @@ readonly SUITES=(
 	cleanup_test.sh
 	modem_test.sh
 	brave_test.sh
+	power_policy_test.sh
 	telegram_theme_generator_test.sh
 	telegram_theme_hook_test.sh
 	telegram_theme_lifecycle_test.sh

@@ -3,7 +3,6 @@
 - **Tickets:** Before creating, locating, changing, reviewing, blocking, or completing local specs, maps, and tickets, read `docs/agents/issue-tracker.md`.
 - **Triage:** When a skill names a canonical triage role, translate it through `docs/agents/triage-labels.md`.
 - **Grilling:** Ask one question at a time, provide concrete answer options with a recommended option first, and wait for the human's answer before asking the next question.
-- **Design:** An architecture decision or code plan is complete only when it follows KISS and SOLID, prefers composition over inheritance, and starts with the smallest viable implementation for current requirements. Preserve later extension through clear boundaries; defer speculative abstractions until a concrete requirement demands them.
 - **Models:** Terra is `openai/gpt-5.6-terra` and Sol is `openai/gpt-5.6-sol`. Select the model and effort explicitly when the dispatcher supports both. Otherwise, the dedicated `terra-developer` and `sol-reviewer` agent types confirm their named identities; state the required effort in the dispatch prompt. Generic agent types and role wording do not confirm identity. If neither exact model selection nor the dedicated type is available, stop and ask the human; never launch a nested OpenCode process.
 - **Development:** For behavior-changing implementation, limit the coordinating Sol to architecture, decomposition, dispatch, integration assessment, and final synthesis. Terra developer subagents at `xhigh` effort exclusively edit implementation code, tests, configuration, scripts, and implementation documentation, divided into at most three non-overlapping scopes. Small prose, metadata, and mechanical edits may be made directly.
 - **Review:** After integrating a behavior change, dispatch exactly two independent Sol reviewer subagents at maximum effort in parallel to review the complete diff and verification results. Reviewers do not implement or write fixes. Return every required fix to a Terra developer and repeat independent parallel review until both reviewers approve. The final report identifies every Terra implementer and both Sol reviewers.
@@ -14,3 +13,9 @@
 - **Human docs:** When work changes setup, usage, or repository structure, update root `README.md`. Before applying any user-facing documentation change, use `wait-what` and then `humanizer` to review and rewrite the draft, show the revised text to the human, and edit only after approval. Keep README as the purpose and quick start with a complete requirements section, keep shared Stow guidance in `docs/stow.md`, keep global skill setup in `docs/agent-setup.md`, and add package guides under `docs/` only when a package needs more detail.
 - **Knowledge:** Before exploring or changing the repo, read `CONTEXT.md` for canonical concepts and `MEMORY.md` for applicable durable guidance.
 - **Preservation:** Before defining or editing `AGENTS.md`, `CONTEXT.md`, or `MEMORY.md`, and at task completion, follow `docs/agents/domain.md`.
+
+## System design
+
+- Let evidence-led KISS govern system design. Choose the simplest design that meets current requirements.
+- Consider SOLID for every system design decision, and prefer composition over inheritance.
+- Design functionality and tests around standard usage and feasible failures reachable through production inputs, dependencies, or execution paths. Failures possible only through test-only construction are outside scope.

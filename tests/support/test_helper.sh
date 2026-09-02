@@ -1317,6 +1317,9 @@ new_fixture() {
 	ARCH_PACKAGE_STATE="$FIXTURE_ROOT/installed-arch-packages"
 	ARCH_PACKAGE_ADD_MARKER="$FIXTURE_ROOT/arch-package-add-attempted"
 	FIXTURE_BRAVE_SYSTEM="$FIXTURE_ROOT/system/etc/brave"
+	FIXTURE_POWER_POLICY_SYSTEM="$FIXTURE_ROOT/system/etc"
+	POWER_POLICY_METADATA_ROOT="$FIXTURE_ROOT/power-policy-metadata"
+	POWER_POLICY_RUNTIME="$FIXTURE_ROOT/power-policy-runtime"
 	BRAVE_METADATA_ROOT="$FIXTURE_ROOT/brave-metadata"
 	BRAVE_PACKAGE_DB="$FIXTURE_ROOT/brave-packages"
 	BRAVE_PROVIDER_DB="$FIXTURE_ROOT/brave-providers"
@@ -1329,6 +1332,7 @@ new_fixture() {
 		"$FIXTURE_STATE" "$FIXTURE_CACHE" "$FIXTURE_RUNTIME" "$FIXTURE_TMP" "$FIXTURE_BIN" "$FIXTURE_WALLPAPER_BIN" "$FIXTURE_OMARCHY" \
 		"$FIXTURE_WALLPAPER_THEMES" \
 		"$BRAVE_METADATA_ROOT" "$BRAVE_FAILURE_MARKERS" "$BRAVE_CANARY_ROOT" "$FIXTURE_REAL_NODE_DIR" \
+		"$POWER_POLICY_METADATA_ROOT" "$POWER_POLICY_RUNTIME" \
 		"$OUTSIDE_ROOT/user-config" "$OUTSIDE_ROOT/global-skills" "$OUTSIDE_ROOT/packaged-omarchy"
 	ln -s "$HOST_MAGICK_REAL" "$FIXTURE_BIN/magick"
 	ln -s "$HOST_GIT_REAL" "$FIXTURE_WALLPAPER_BIN/git"
@@ -1383,6 +1387,9 @@ if [[ \$identify == true ]]; then printf '%s|4|3\n' "\$format"; fi
 		fi
 		if [[ -d $SOURCE_REPO/brave ]]; then
 			cp -a "$SOURCE_REPO/brave" "$FIXTURE_REPO/brave"
+		fi
+		if [[ -d $SOURCE_REPO/power-policy ]]; then
+			cp -a "$SOURCE_REPO/power-policy" "$FIXTURE_REPO/power-policy"
 		fi
 		if [[ -d $SOURCE_REPO/config ]]; then
 			cp -a "$SOURCE_REPO/config" "$FIXTURE_REPO/config"
@@ -1858,7 +1865,7 @@ run_in_sandbox() {
 				HOME="$FIXTURE_HOME" \
 				XDG_DATA_HOME="${DOTFILES_TEST_XDG_DATA_HOME-}" \
 				XDG_CONFIG_HOME="$FIXTURE_CONFIG" \
-				XDG_STATE_HOME="$FIXTURE_STATE" \
+				XDG_STATE_HOME="${DOTFILES_TEST_XDG_STATE_HOME:-$FIXTURE_STATE}" \
 				XDG_CACHE_HOME="$FIXTURE_CACHE" \
 				XDG_RUNTIME_DIR="$FIXTURE_RUNTIME" \
 				TMPDIR="$FIXTURE_TMP" \
@@ -1919,6 +1926,10 @@ run_in_sandbox() {
 				DOTFILES_TEST_BRAVE_LOG_RECOVERY_ORDER="${DOTFILES_TEST_BRAVE_LOG_RECOVERY_ORDER:-false}" \
 				DOTFILES_TEST_BRAVE_FALSE_SUCCESS="${DOTFILES_TEST_BRAVE_FALSE_SUCCESS-}" \
 				DOTFILES_TEST_BRAVE_RACE="${DOTFILES_TEST_BRAVE_RACE-}" \
+				DOTFILES_TEST_POWER_POLICY_FAIL_OPERATION="${DOTFILES_TEST_POWER_POLICY_FAIL_OPERATION-}" \
+				DOTFILES_TEST_POWER_POLICY_INTERRUPT="${DOTFILES_TEST_POWER_POLICY_INTERRUPT-}" \
+			DOTFILES_TEST_POWER_POLICY_MUTATE_AFTER_ACQUIRE="${DOTFILES_TEST_POWER_POLICY_MUTATE_AFTER_ACQUIRE-}" \
+				DOTFILES_TEST_POWER_POLICY_MENU_CHOICE="${DOTFILES_TEST_POWER_POLICY_MENU_CHOICE-}" \
 				DOTFILES_TEST_WALLPAPER_FAIL="${DOTFILES_TEST_WALLPAPER_FAIL-}" \
 				DOTFILES_TEST_WALLPAPER_FAIL_ROLLBACK="${DOTFILES_TEST_WALLPAPER_FAIL_ROLLBACK:-false}" \
 				DOTFILES_TEST_WALLPAPER_VERSION_CHANGES="${DOTFILES_TEST_WALLPAPER_VERSION_CHANGES:-false}" \
@@ -1982,6 +1993,9 @@ run_operation() {
 			source "$repository/lib/dotfiles/cleanup.sh"
 			source "$repository/lib/dotfiles/modem.sh"
 			source "$repository/lib/dotfiles/brave.sh"
+			if [[ -f $repository/lib/dotfiles/power-policy.sh ]]; then
+				source "$repository/lib/dotfiles/power-policy.sh"
+			fi
 			if [[ -f $repository/lib/dotfiles/telegram-theme.sh ]]; then
 				source "$repository/lib/dotfiles/telegram-theme.sh"
 			fi
@@ -2201,7 +2215,7 @@ run_brave_operation() {
 				case $DOTFILES_TEST_BRAVE_STAGE_LINK_KIND in
 					file|directory) ln -s "$DOTFILES_TEST_BRAVE_STAGE_REFERENT" "$stage" ;;
 					*) return 64 ;;
-				esac
+					esac
 			}
 			brave_privileged_operation() {
 				local operation=$1
@@ -2329,6 +2343,183 @@ run_brave_operation() {
 			}
 
 			source "$repository/lib/dotfiles/wizard.sh"
+			"$operation" "$@"
+		' bash "$FIXTURE_REPO" "$operation" "$@"
+}
+
+power_policy_metadata_key() {
+	local key=$1
+	key=${key//%/%25}
+	key=${key//\//%2F}
+	printf '%s\n' "$key"
+}
+
+set_power_policy_metadata() {
+	local logical=$1 uid=$2 gid=$3 mode=$4 key
+	key=$(power_policy_metadata_key "$logical")
+	printf '%s %s %s\n' "$uid" "$gid" "$mode" >"$POWER_POLICY_METADATA_ROOT/$key"
+}
+
+setup_power_policy_fixture() {
+	mkdir -p "$FIXTURE_POWER_POLICY_SYSTEM/UPower/UPower.conf.d" "$FIXTURE_POWER_POLICY_SYSTEM/systemd/logind.conf.d" \
+		"$FIXTURE_POWER_POLICY_SYSTEM/../run/systemd/logind.conf.d" "$FIXTURE_POWER_POLICY_SYSTEM/../usr/local/lib/systemd/logind.conf.d" "$FIXTURE_POWER_POLICY_SYSTEM/../usr/lib/systemd/logind.conf.d"
+	chmod 0755 "$FIXTURE_POWER_POLICY_SYSTEM" "$FIXTURE_POWER_POLICY_SYSTEM/UPower" "$FIXTURE_POWER_POLICY_SYSTEM/UPower/UPower.conf.d" \
+		"$FIXTURE_POWER_POLICY_SYSTEM/systemd" "$FIXTURE_POWER_POLICY_SYSTEM/systemd/logind.conf.d"
+	set_power_policy_metadata /etc 0 0 0755
+	set_power_policy_metadata /etc/UPower 0 0 0755
+	set_power_policy_metadata /etc/UPower/UPower.conf.d 0 0 0755
+	set_power_policy_metadata /etc/systemd 0 0 0755
+	set_power_policy_metadata /etc/systemd/logind.conf.d 0 0 0755
+	printf '[Login]\n' >"$FIXTURE_POWER_POLICY_SYSTEM/systemd/logind.conf"
+	chmod 0644 "$FIXTURE_POWER_POLICY_SYSTEM/systemd/logind.conf"
+	set_power_policy_metadata /etc/systemd/logind.conf 0 0 0644
+	printf '[UPower]\nUsePercentageForPolicy=false\nPercentageLow=20.0\nPercentageCritical=10.0\nPercentageAction=5.0\nCriticalPowerAction=Auto\n' \
+		>"$FIXTURE_POWER_POLICY_SYSTEM/UPower/UPower.conf"
+	chmod 0644 "$FIXTURE_POWER_POLICY_SYSTEM/UPower/UPower.conf"
+	set_power_policy_metadata /etc/UPower/UPower.conf 0 0 0644
+	printf '4.0.1-1\n' >"$POWER_POLICY_RUNTIME/omarchy-version"
+	printf 'yes\n' >"$POWER_POLICY_RUNTIME/battery"
+	printf 'yes\n' >"$POWER_POLICY_RUNTIME/hibernation"
+	printf 'yes\n' >"$POWER_POLICY_RUNTIME/can-hibernate"
+	printf 'disabled|inactive\n' >"$POWER_POLICY_RUNTIME/upower-service"
+	printf 'suspend||ignore\n' >"$POWER_POLICY_RUNTIME/logind-runtime"
+	printf '15000000\n' >"$POWER_POLICY_RUNTIME/inhibit-delay-us"
+	printf '15000000\n' >"$POWER_POLICY_RUNTIME/configured-inhibit-delay-us"
+	: >"$POWER_POLICY_RUNTIME/restart-delay-us"
+	printf 'safe\n' >"$POWER_POLICY_RUNTIME/target-parent-safe"
+	printf 'Sleep\n' >"$POWER_POLICY_RUNTIME/upower-critical-action"
+	printf 'enabled|active|present\n' >"$POWER_POLICY_RUNTIME/sleep-lock"
+	printf 'merged UPower configuration\n' >"$POWER_POLICY_RUNTIME/merged-upower"
+	printf 'merged logind configuration\n' >"$POWER_POLICY_RUNTIME/merged-logind"
+}
+
+add_power_policy_drop_in() {
+	local kind=$1 name=$2 content=$3 directory logical
+	case $kind in
+		upower) directory="$FIXTURE_POWER_POLICY_SYSTEM/UPower/UPower.conf.d"; logical="/etc/UPower/UPower.conf.d/$name" ;;
+		logind) directory="$FIXTURE_POWER_POLICY_SYSTEM/systemd/logind.conf.d"; logical="/etc/systemd/logind.conf.d/$name" ;;
+		*) return 2 ;;
+	esac
+	printf '%s' "$content" >"$directory/$name"
+	chmod 0644 "$directory/$name"
+	set_power_policy_metadata "$logical" 0 0 0644
+}
+
+run_power_policy_operation() {
+	local working_directory=$1 operation=$2
+	shift 2
+	run_in_sandbox "$working_directory" "$FIXTURE_REAL_NODE_DIR:${DOTFILES_TEST_PATH:-$FIXTURE_BIN:/usr/bin:/bin}" \
+		bash -c '
+			set -euo pipefail
+			repository=$1
+			operation=$2
+			shift 2
+			source "$repository/lib/dotfiles/core.sh"
+			source "$repository/lib/dotfiles/power-policy.sh"
+			source "$repository/lib/dotfiles/wizard.sh"
+			root=${repository%/relocated/dotfiles}
+			metadata_root=$root/power-policy-metadata
+			runtime=$root/power-policy-runtime
+			map_target() {
+				case $1 in
+					upower|/etc/UPower/UPower.conf.d/90-dotfiles-laptop-power.conf) printf "%s/system/etc/UPower/UPower.conf.d/90-dotfiles-laptop-power.conf\n" "$root" ;;
+					logind|/etc/systemd/logind.conf.d/90-dotfiles-laptop-power.conf) printf "%s/system/etc/systemd/logind.conf.d/90-dotfiles-laptop-power.conf\n" "$root" ;;
+					*) return 2 ;;
+				esac
+			}
+			map_directory() { case $1 in upower) printf "%s/system/etc/UPower/UPower.conf.d\n" "$root" ;; logind) printf "%s/system/etc/systemd/logind.conf.d\n" "$root" ;; *) return 2 ;; esac; }
+			state_path_safe() { local path=$1 component='' part; IFS=/ read -r -a parts <<<"${path#/}"; for part in "${parts[@]}"; do [[ -n $part ]] || continue; component+=/$part; [[ -e $component || -L $component ]] || break; [[ -d $component && ! -L $component ]] || return 1; done; }
+			meta_key() { local key=$1; key=${key//%/%25}; key=${key//\//%2F}; printf "%s\n" "$key"; }
+			logical_target() { case $1 in upower) printf "/etc/UPower/UPower.conf.d/90-dotfiles-laptop-power.conf\n" ;; logind) printf "/etc/systemd/logind.conf.d/90-dotfiles-laptop-power.conf\n" ;; *) return 2 ;; esac; }
+			metadata() {
+				local logical=$1 actual=$2 key mode uid=0 gid=0 type
+				type=$(power_policy_stat_metadata "$actual") || return 1
+				type=${type%%|*}
+				mode=$(stat -c %a -- "$actual") || return 1
+				key=$(meta_key "$logical")
+				[[ ! -f $metadata_root/$key ]] || read -r uid gid mode <"$metadata_root/$key"
+				printf "%s|%s|%s|%s\n" "$type" "$uid" "$gid" "$mode"
+			}
+			set_metadata() { printf "%s %s %s\n" "$2" "$3" "$4" >"$metadata_root/$(meta_key "$1")"; }
+			remove_metadata() { rm -f -- "$metadata_root/$(meta_key "$1")"; }
+			fail_operation() { [[ ,${DOTFILES_TEST_POWER_POLICY_FAIL_OPERATION-}, == *,$1,* ]]; }
+			refresh_runtime() {
+				local upower logind action lid external docked
+				upower=$(node "$POWER_POLICY_JSON_HELPER" upower-effective "$root/system/etc/UPower/UPower.conf" "$root/system/etc/UPower/UPower.conf.d") || return 1
+				action=$(jq -r ".effective.CriticalPowerAction // \"Sleep\"" <<<"$upower")
+				case $action in PowerOff|Hibernate) ;; *) action=Sleep ;; esac
+				printf "%s\n" "$action" >"$runtime/upower-critical-action"
+				logind=$(node "$POWER_POLICY_JSON_HELPER" logind-effective "$root/system/etc/systemd/logind.conf" "$root/system/etc/systemd/logind.conf.d" "$root/system/run/systemd/logind.conf" "$root/system/run/systemd/logind.conf.d" "$root/system/usr/local/lib/systemd/logind.conf" "$root/system/usr/local/lib/systemd/logind.conf.d" "$root/system/usr/lib/systemd/logind.conf" "$root/system/usr/lib/systemd/logind.conf.d") || return 1
+				lid=$(jq -r ".effective.HandleLidSwitch // \"suspend\"" <<<"$logind")
+				external=$(jq -r ".effective.HandleLidSwitchExternalPower // \"\"" <<<"$logind")
+				docked=$(jq -r ".effective.HandleLidSwitchDocked // \"ignore\"" <<<"$logind")
+				printf "%s|%s|%s\n" "$lid" "$external" "$docked" >"$runtime/logind-runtime"
+				cat "$runtime/configured-inhibit-delay-us" >"$runtime/inhibit-delay-us"
+			}
+			power_policy_adapter() {
+				local group=$1 action=${2-} name=${3-} actual logical stage backup enabled active value
+				shift 2
+				case "$group:$action" in
+					lock:shared|lock:exclusive) printf "lock %s\n" "$action" >>"$DOTFILES_TEST_CALL_LOG" ;;
+					lock:release) printf "lock release\n" >>"$DOTFILES_TEST_CALL_LOG" ;;
+					inspect:version) cat "$runtime/omarchy-version" ;;
+					inspect:battery) [[ $(<"$runtime/battery") == yes ]] ;;
+					inspect:hibernation) [[ $(<"$runtime/hibernation") == yes ]] ;;
+					inspect:can-hibernate) cat "$runtime/can-hibernate" ;;
+					inspect:service) cat "$runtime/upower-service" ;;
+					inspect:sleep-lock) cat "$runtime/sleep-lock" ;;
+					inspect:critical-action) cat "$runtime/upower-critical-action" ;;
+					inspect:logind-runtime) cat "$runtime/logind-runtime" ;;
+					inspect:inhibit-delay) cat "$runtime/inhibit-delay-us" ;;
+					inspect:target)
+						if [[ $name == parent-* ]]; then printf "directory|0|0|0755\n"; return; fi
+						actual=$(map_target "$name") || return 2; [[ -e $actual || -L $actual ]] || { printf "absent\n"; return; }; logical=$(logical_target "$name"); value=$(metadata "$logical" "$actual") || return 1; [[ $value == "regular file|"* && ! -L $actual ]] && value+="|$(sha256sum "$actual" | { read -r digest _; printf "%s" "$digest"; })"; printf "%s\n" "$value" ;;
+					inspect:target-parent-safe) [[ $(<"$runtime/target-parent-safe") == safe ]] || { cat "$runtime/target-parent-safe"; return; }; [[ ! -L $(map_directory "$name") ]] && printf safe || printf unsafe ;;
+					inspect:state-path-safe) state_path_safe "$name" && printf safe ;;
+					inspect:stage)
+						stage="$root/system$(power_policy_stage_path "$1" "$2")"; [[ -e $stage || -L $stage ]] || return 1; value=$(metadata "$(power_policy_stage_path "$1" "$2")" "$stage") || return 1; [[ $value == "regular file|"* && ! -L $stage ]] && value+="|$(sha256sum "$stage" | { read -r digest _; printf "%s" "$digest"; })"; printf "%s\n" "$value" ;;
+					inspect:upower-effective) node "$POWER_POLICY_JSON_HELPER" upower-effective "$root/system/etc/UPower/UPower.conf" "$root/system/etc/UPower/UPower.conf.d" ;;
+					inspect:logind-effective) node "$POWER_POLICY_JSON_HELPER" logind-effective "$root/system/etc/systemd/logind.conf" "$root/system/etc/systemd/logind.conf.d" "$root/system/run/systemd/logind.conf" "$root/system/run/systemd/logind.conf.d" "$root/system/usr/local/lib/systemd/logind.conf" "$root/system/usr/local/lib/systemd/logind.conf.d" "$root/system/usr/lib/systemd/logind.conf" "$root/system/usr/lib/systemd/logind.conf.d" ;;
+					inspect:upower-plan) node "$POWER_POLICY_JSON_HELPER" upower-plan "$root/system/etc/UPower/UPower.conf" "$root/system/etc/UPower/UPower.conf.d" "$root/system/etc/UPower/UPower.conf.d/90-dotfiles-laptop-power.conf" "$name" ;;
+					inspect:logind-plan) node "$POWER_POLICY_JSON_HELPER" logind-plan "$root/system/etc/systemd/logind.conf" "$root/system/etc/systemd/logind.conf.d" "$root/system/run/systemd/logind.conf" "$root/system/run/systemd/logind.conf.d" "$root/system/usr/local/lib/systemd/logind.conf" "$root/system/usr/local/lib/systemd/logind.conf.d" "$root/system/usr/lib/systemd/logind.conf" "$root/system/usr/lib/systemd/logind.conf.d" "$root/system/etc/systemd/logind.conf.d/90-dotfiles-laptop-power.conf" "$name" ;;
+					mutate:acquire)
+						printf "privileged acquire\n" >>"$DOTFILES_TEST_CALL_LOG"
+						case ${DOTFILES_TEST_POWER_POLICY_MUTATE_AFTER_ACQUIRE-} in
+							source) printf "[UPower]\nCriticalPowerAction=PowerOff\n" >"$repository/power-policy/upower.conf" ;;
+							foreign-upower) printf "[UPower]\nCriticalPowerAction=PowerOff\n" >"$root/system/etc/UPower/UPower.conf.d/99-foreign.conf" ;;
+							delay) printf "[Login]\nInhibitDelayMaxSec=22\n" >"$root/system/etc/systemd/logind.conf.d/99-delay.conf" ;;
+							backup) backup=$(jq -r ".targets[] | select(.name == \"upower\") | .original.backup_path" "$root/user/state/dotfiles/laptop-power-policy/active.json"); printf "changed\n" >"$backup" ;;
+						esac
+						if fail_operation acquire; then return 75; fi ;;
+					mutate:backup)
+						name=$1; backup=$2; printf "privileged backup %s\n" "$name" >>"$DOTFILES_TEST_CALL_LOG"; fail_operation "backup:$name" && return 75; actual=$(map_target "$name"); cp -- "$actual" "$backup" && chmod 0600 "$backup" ;;
+					mutate:stage)
+						name=$1; stage=$(power_policy_stage_path "$name" "$2"); printf "privileged stage %s\n" "$name" >>"$DOTFILES_TEST_CALL_LOG"; fail_operation "stage:$name" && return 75; cp -- "$repository/power-policy/$name.conf" "$root/system$stage" && chmod 0644 "$root/system$stage"; if [[ ${DOTFILES_TEST_POWER_POLICY_INTERRUPT-} == "stage:$name" ]]; then exit 88; fi ;;
+					mutate:publish)
+						name=$1; stage=$(power_policy_stage_path "$name" "$2"); printf "privileged publish %s\n" "$name" >>"$DOTFILES_TEST_CALL_LOG"; fail_operation "publish:$name" && return 75; actual=$(map_target "$name"); mv -fT -- "$root/system$stage" "$actual"; set_metadata "$(logical_target "$name")" 0 0 0644; if [[ ${DOTFILES_TEST_POWER_POLICY_INTERRUPT-} == "publish:$name" ]]; then exit 88; fi ;;
+					mutate:remove)
+						name=$1; printf "privileged remove %s\n" "$name" >>"$DOTFILES_TEST_CALL_LOG"; fail_operation "remove:$name" && return 75; actual=$(map_target "$name"); rm -f -- "$actual"; remove_metadata "$(logical_target "$name")"; if [[ ${DOTFILES_TEST_POWER_POLICY_INTERRUPT-} == "remove:$name" ]]; then exit 88; fi ;;
+					mutate:restore)
+						name=$1; stage=$(power_policy_stage_path "$name" "$2"); backup=$3; printf "privileged restore %s\n" "$name" >>"$DOTFILES_TEST_CALL_LOG"; fail_operation "restore:$name" && return 75; [[ $(sha256sum "$backup" | { read -r digest _; printf "%s" "$digest"; }) == "$4" ]] || return 75; cp -- "$backup" "$root/system$stage" && chmod 0644 "$root/system$stage" ;;
+					mutate:cleanup) rm -f -- "$root/system$(power_policy_stage_path "$1" "$2")" ;;
+					mutate:enable) printf "privileged enable\n" >>"$DOTFILES_TEST_CALL_LOG"; fail_operation enable && return 75; IFS="|" read -r _ active <"$runtime/upower-service"; printf "enabled|%s\n" "$active" >"$runtime/upower-service" ;;
+					mutate:start) printf "privileged start\n" >>"$DOTFILES_TEST_CALL_LOG"; fail_operation start && return 75; printf "enabled|active\n" >"$runtime/upower-service" ;;
+					mutate:reload-logind) printf "privileged reload-logind\n" >>"$DOTFILES_TEST_CALL_LOG"; fail_operation reload-logind && return 75; refresh_runtime ;;
+					mutate:restart) printf "privileged restart\n" >>"$DOTFILES_TEST_CALL_LOG"; fail_operation restart && return 75; printf "enabled|active\n" >"$runtime/upower-service"; refresh_runtime || return; if [[ -s $runtime/restart-delay-us ]]; then cat "$runtime/restart-delay-us" >"$runtime/inhibit-delay-us"; : >"$runtime/restart-delay-us"; fi ;;
+					mutate:restore-service) enabled=$1; active=$2; printf "privileged restore-service\n" >>"$DOTFILES_TEST_CALL_LOG"; fail_operation restore-service && return 75; printf "%s|%s\n" "$enabled" "$active" >"$runtime/upower-service"; refresh_runtime ;;
+					*) return 2 ;;
+				esac
+			}
+			power_policy_test_write_prepared_pending() {
+				local transaction pending
+				power_policy_state_paths || return 1
+				power_policy_collect_apply_snapshot || return 1
+				power_policy_prepare_state_root || return 1
+				transaction=$(power_policy_transaction) || return 1
+				pending=$(power_policy_pending_json apply "$transaction") || return 1
+				power_policy_write_receipt pending "$pending"
+			}
+			wizard_choose() { printf "%s\n" "${DOTFILES_TEST_POWER_POLICY_MENU_CHOICE:-Back}"; }
 			"$operation" "$@"
 		' bash "$FIXTURE_REPO" "$operation" "$@"
 }

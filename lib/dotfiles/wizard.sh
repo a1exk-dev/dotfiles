@@ -108,6 +108,7 @@ wizard_run_action() {
 		skills-update) update_skills --interactive ;;
 		modem) recover_zte_usb_modem ;;
 		brave) manage_brave_policy ;;
+		power-policy) manage_power_policy ;;
 		telegram-theme) manage_telegram_theme ;;
 		wallpapers) manage_wallpapers ;;
 		wallpapers-apply) apply_wallpapers ;;
@@ -182,6 +183,33 @@ guided_setup() {
 			return "$brave_outcome"
 			;;
 	esac
+	printf 'Guided phase 7: optional laptop power policy\n'
+	local power_policy_outcome
+	if apply_power_policy; then
+		power_policy_outcome=$POWER_POLICY_OUTCOME_SUCCESS
+	else
+		power_policy_outcome=$?
+	fi
+	case ${POWER_POLICY_OPERATION_CONTEXT-} in
+		ordinary) ;;
+		recovery-completed|recovery-declined)
+			printf 'Recovery: choose Manage laptop power policy in the Dotfiles wizard.\n' >&2
+			return 1
+			;;
+		*)
+			printf 'Recovery: choose Manage laptop power policy in the Dotfiles wizard.\n' >&2
+			return 1
+			;;
+	esac
+	case $power_policy_outcome in
+		"$POWER_POLICY_OUTCOME_SUCCESS") ;;
+		"$POWER_POLICY_OUTCOME_DECLINED") printf 'Guided phase 7 skipped: laptop power-policy plan declined.\n' ;;
+		"$POWER_POLICY_OUTCOME_INELIGIBLE") printf 'Guided phase 7 skipped: laptop battery or hibernation prerequisite is unavailable.\n' ;;
+		*)
+			printf 'Recovery: choose Manage laptop power policy in the Dotfiles wizard.\n' >&2
+			return "$power_policy_outcome"
+			;;
+	esac
 	printf 'Guided setup complete.\n'
 }
 
@@ -213,8 +241,8 @@ wizard() {
 		labels+=('Migrate competing screensaver clones')
 		actions+=(screensaver-effects-migrate)
 	fi
-	labels+=('Manage screensaver effects' 'Exit')
-	actions+=(screensaver-effects exit)
+	labels+=('Manage screensaver effects' 'Manage laptop power policy' 'Exit')
+	actions+=(screensaver-effects power-policy exit)
 	if ! choice=$(wizard_choose 'Choose an action (none selected by default)' "${labels[@]}"); then
 		printf 'No action selected.\n'
 		return 0

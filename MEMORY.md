@@ -64,14 +64,6 @@ Guidance: Install a complete validated clone before publication. Use one plugin 
 
 Reason: Omarchy's plugin rescan recreates the idle service and resets its timers, active-cycle state, screensaver-window bookkeeping, and pending lock coordination, but it can construct the replacement from stale cached QML. A full shell-process restart provides the cache-safe source-update boundary.
 
-## Keep repository tests focused
-
-Applies when: Adding, maintaining, or running any test in this repository.
-
-Guidance: Keep each test suite under one minute on the supported machine. Refactor or remove redundant coverage when a suite exceeds that limit, and verify changes with the affected suites instead of unrelated repository suites.
-
-Reason: Fast, focused tests keep routine verification practical without growing exhaustive edge-case matrices.
-
 ## Deploy watched Omarchy plugins through complete sources
 
 Applies when: A Stow package provides a complete Omarchy plugin clone whose live directory is recursively watched.
@@ -159,6 +151,14 @@ Applies when: Implementing or maintaining the shared Brave configuration.
 Guidance: Keep one canonical managed-policy source and deploy a root-owned regular copy through a dedicated Dotfiles wizard operation. Keep it out of `config/` and `packages.json`; preserve Omarchy's color policy and launch flags, browser profiles, themes, and fonts. Apply one shared policy to every supported installed Brave consumer, block overlapping foreign policy, and use the approved preview, backup, verification, rollback, and removal lifecycle.
 
 Reason: Both Brave products consume one privileged system policy path. A Stow link would make active policy user-writable through the repository, while taking ownership of Omarchy's color policy would break browser recoloring.
+
+## Keep laptop power policy native and recoverable
+
+Applies when: Implementing, validating, or maintaining the Laptop power policy.
+
+Guidance: Retain native UPower and logind enforcement through the two fixed administrator drop-ins. Before Apply, require supported Omarchy and eligible battery and hibernation; require exact effective policy and an intact Omarchy sleep lock before recording active state. Accept an exact target only when it is absent or a `root:root 0644` regular file. Keep Remove and recovery independent of current canonical source bytes and battery or hibernation eligibility while blocking unsupported Omarchy. Use active and pending receipts as bounded evidence, and reconcile interruptions at coarse durable transaction phases after re-inspecting no-follow fixed paths and current foreign drop-ins. Preserve foreign drop-ins, original target and service state, and retained backups. Do not add custom polling, retry, notification, or fallback behavior, or provision hibernation.
+
+Reason: Native services own transition semantics, while current inspection, transaction evidence, and source-independent rollback keep privileged lifecycle recovery possible without receipts becoming administrator authority.
 
 ## Escalate full Omarchy replacements
 
@@ -308,7 +308,7 @@ Reason: A package must remain recoverable across its full lifecycle, not only du
 
 Applies when: Designing or running the dotfiles wizard.
 
-Guidance: Use `make` and guided setup as the intended human workflow. Keep every operation available as a standalone wizard action. The current sequence is prerequisite preparation, pinned global skill installation, application cleanup, Stow package application, Wallpaper library deployment, and optional shared Brave policy application. Phase five calls the same wallpaper Apply function as the standalone action. A declined plan, empty unowned library, or exact no-op is a successful skip. Phase six calls the standalone Brave Apply function and skips successfully when no supported browser is installed or the human declines. Use Gum with a Bash fallback. Start Stow package selection with no package selected. Continue after a skipped nonessential phase. Stop after an operational failure and name the related standalone action for recovery. Preserve public action preselection and noninteractive operation functions for Make targets, agents, scripts, and tests, but keep them out of normal human instructions.
+Guidance: Use `make` and guided setup as the intended human workflow. Keep every operation available as a standalone wizard action. The current sequence is prerequisite preparation, pinned global skill installation, application cleanup, Stow package application, Wallpaper library deployment, optional shared Brave policy application, and optional Laptop power policy application. Phase five calls the same wallpaper Apply function as the standalone action. A declined plan, empty unowned library, or exact no-op is a successful skip. Phase six calls the standalone Brave Apply function and skips successfully when no supported browser is installed or the human declines. Phase seven calls the standalone Laptop power policy Apply function and skips successfully when battery or hibernation eligibility is unavailable or the human declines. Use Gum with a Bash fallback. Start Stow package selection with no package selected. Continue after a skipped nonessential phase. Stop after an operational failure and name the related standalone action for recovery. Preserve public action preselection and noninteractive operation functions for Make targets, agents, scripts, and tests, but keep them out of normal human instructions.
 
 Reason: The wizard is the normal user interface and must make each system change visible and recoverable; the privileged Brave policy remains optional and reuses one tested lifecycle.
 

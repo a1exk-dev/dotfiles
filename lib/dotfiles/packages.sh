@@ -149,6 +149,9 @@ check() {
 	if ! validate_brave_policy_source; then
 		missing=true
 	fi
+	if ! validate_power_policy_sources; then
+		missing=true
+	fi
 	if command -v magick >/dev/null 2>&1; then
 		printf 'ImageMagick: available (magick)\n'
 		if ! validate_wallpaper_library; then

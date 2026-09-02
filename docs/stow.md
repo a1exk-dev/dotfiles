@@ -24,6 +24,7 @@ The Dotfiles wizard has these Stow actions:
 - `Remove Stow package`
 - `Prepare prerequisites`
 - `Manage screensaver effects`
+- `Manage laptop power policy`
 
 The wizard uses Gum when it is available. Otherwise, it uses Bash prompts.
 
@@ -39,8 +40,9 @@ The wizard uses Gum when it is available. Otherwise, it uses Bash prompts.
 4. Stow package application
 5. Wallpaper library deployment
 6. Optional shared Brave policy application
+7. Optional laptop power policy application
 
-Prerequisite preparation verifies GNU Stow, ImageMagick through `magick`, Node.js 22.20.0 or newer, npm, and npx. If a prerequisite is missing or does not meet its version requirement, the wizard shows one plan and asks for confirmation. Guided setup stops before later phases if you decline the plan, if installation fails, or if verification fails. This guide covers the Stow phase. See [Application cleanup](cleanup.md), [Agent setup](agent-setup.md), and [Brave](brave.md) for the other guided phases.
+Prerequisite preparation verifies GNU Stow, ImageMagick through `magick`, Node.js 22.20.0 or newer, npm, and npx. If a prerequisite is missing or does not meet its version requirement, the wizard shows one plan and asks for confirmation. Guided setup stops before later phases if you decline the plan, if installation fails, or if verification fails. This guide covers the Stow phase. See [Application cleanup](cleanup.md), [Agent setup](agent-setup.md), [Brave](brave.md), and [Laptop power policy](power-policy.md) for the other guided phases.
 
 ```text
 omarchy pkg add stow
@@ -56,6 +58,8 @@ After the Stow phase, phase 5 calls the same operation as `Apply wallpapers`. A 
 
 Phase 6 calls the same apply operation as `Manage Brave policy`. It skips successfully when no supported browser is installed or you decline the plan. It succeeds if the active policy already matches the shared Brave policy exactly or if the apply completes. An operational failure stops Guided setup and directs you to `Manage Brave policy` for recovery.
 
+Phase 7 calls the same apply operation as `Manage laptop power policy`. Battery or hibernation ineligibility and an ordinary declined plan are successful skips. An exact active policy and a completed apply are successes. An unsafe path, unsupported Omarchy version, failed logind capability, failed transaction, or recovery outcome stops Guided setup and directs you to `Manage laptop power policy`.
+
 ## Ownership
 
 Prefer Omarchy-supported user overrides. Track a complete configuration only when an override cannot express the required behavior and a human has reviewed the replacement scope.
@@ -63,6 +67,8 @@ Prefer Omarchy-supported user overrides. Track a complete configuration only whe
 Packages target the user's home directory. A system target or another location requires a separate decision.
 
 The shared Brave policy is a copied system file, not a Stow package. It does not live below `config/` and has no `packages.json` entry. `Manage Brave policy` uses a separate preview, confirmation, backup, verification, recovery, and removal process for its root-owned system copy. See [Brave](brave.md).
+
+The laptop power policy is also outside Stow and `packages.json`. It tracks `power-policy/upower.conf` and `power-policy/logind.conf`, then deploys root-owned regular drop-ins through its own preview, confirmation, backup, verification, recovery, and removal lifecycle. See [Laptop power policy](power-policy.md).
 
 The Wallpaper library is also outside Stow. Git tracks source assignments under `wallpapers/library/`; `Apply wallpapers` creates receipt-owned regular files under `~/.config/omarchy/backgrounds/`. The operation preserves unrelated backgrounds and Omarchy theme state.
 
@@ -90,11 +96,12 @@ Choose `Run structural checks` to validate:
 - The application cleanup profile
 - The skill manifest and required global skill commands
 - The canonical shared Brave policy source
+- The canonical UPower `power-policy/upower.conf` and logind `power-policy/logind.conf` sources
 - ImageMagick and the Wallpaper library
 - GNU Stow availability
 - The complete screensaver package inventory, copied Omarchy plugin baselines, host seams, allowlist, effect mappings, executable modes, and lifecycle ownership boundaries
 
-`Run structural checks` can run without GNU Stow, but it reports a structural error if GNU Stow is missing. It does not require an installed browser. It requires Node.js and npx. Brave source validation does not require a deployed policy or privilege and does not change system or user files.
+`Run structural checks` can run without GNU Stow, but it reports a structural error if GNU Stow is missing. It does not require an installed browser. It requires Node.js and npx. Brave source validation does not require a deployed policy or privilege and does not change system or user files. Laptop power-policy source validation has no battery, deployed-system, service, privilege, or lifecycle-state dependency or mutation.
 
 ## Apply Stow packages
 

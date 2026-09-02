@@ -10,11 +10,15 @@ A lowercase-named deployment unit under `config/<name>/` for one application or 
 
 ## Dotfiles wizard
 
-The intended human interface for repository setup and operations. Guided setup runs prerequisite preparation, pinned global agent-skill installation, application cleanup, Stow package application, and Wallpaper library deployment, then optionally applies the Shared Brave configuration as phase six. Standalone actions provide each operation separately. Public routes provide the same operations to Make targets, agents, scripts, and tests.
+The intended human interface for repository setup and operations. Guided setup runs prerequisite preparation, pinned global agent-skill installation, application cleanup, Stow package application, and Wallpaper library deployment, then optionally applies the Shared Brave configuration as phase six and the Laptop power policy as phase seven. Standalone actions provide each operation separately, including `Manage laptop power policy`. Public routes provide the same operations to Make targets, agents, scripts, and tests.
 
 ## Shared Brave configuration
 
 One repository-owned managed-policy intent for Brave Browser and Brave Origin. Both products consume the same system policy, while browser profiles, Omarchy-owned launch flags and color policy, theme state, and font settings remain outside this boundary. Product differences belong to installed-consumer detection and manual guidance rather than duplicated policy sources.
+
+## Laptop power policy
+
+One repository-owned UPower and logind administrator-drop-in intent with user-owned lifecycle evidence. Native UPower and logind enforce its behavior; hibernation provisioning, foreign drop-ins, and Omarchy packaged power and sleep behavior remain outside this boundary.
 
 ## Application cleanup profile
 

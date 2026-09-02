@@ -1,6 +1,6 @@
 # Dotfiles
 
-Portable dotfiles for Omarchy version 4. GNU Stow links tracked configuration into the user's home directory. The Dotfiles wizard manages prerequisites, pinned global agent skills, application cleanup, Stow packages, repository wallpapers, the optional shared Brave configuration, Telegram Desktop's optional Omarchy theme integration, and selective active-theme Omarchy screensaver effects.
+Portable dotfiles for Omarchy version 4. GNU Stow links tracked configuration into the user's home directory. The Dotfiles wizard manages prerequisites, pinned global agent skills, application cleanup, Stow packages, repository wallpapers, the optional shared Brave configuration, optional laptop power policy, Telegram Desktop's optional Omarchy theme integration, and selective active-theme Omarchy screensaver effects.
 
 ## Requirements
 
@@ -47,6 +47,8 @@ Brave policy management requires `chmod`, `chown`, `date`, `diff`, `find`, `floc
 
 Applying the policy also requires `brave-bin` and its package-owned `brave` command, or `brave-origin-bin` and its package-owned `brave-origin` command. Apply, remove, and recovery require a writable absolute `XDG_STATE_HOME`, or the default `~/.local/state`, for receipts and backups. Remove does not require an installed browser. The wizard reports the supported Omarchy browser installation commands but does not install or remove a browser.
 
+Laptop power-policy management supports Omarchy 4 and requires UPower through `upower.service`, logind, the system D-Bus, the Omarchy sleep-lock service, Node.js, `jq`, `flock`, `stat`, `date`, `mkdir`, `mktemp`, `mv`, `rm`, `systemctl`, `systemd-inhibit`, `busctl`, `sudo`, and fixed `/usr/bin` system tools. Apply also requires a built-in battery reported by `omarchy-battery-present`, working hibernation reported by `omarchy-hibernation-available`, and logind `CanHibernate=yes`. Each exact target must be absent or a `root:root 0644` regular file. Remove and recovery do not require current canonical sources, battery eligibility, working hibernation, or `CanHibernate=yes`. Apply, remove, and recovery run as a regular user and require a writable absolute `XDG_STATE_HOME`, or the default `~/.local/state`. The manager does not provision hibernation or change swap, resume, initramfs, or bootloader state.
+
 Gum is optional. The wizard uses Bash prompts when Gum is not available.
 
 The integration tests require Bubblewrap (`bwrap`), GNU Stow, ImageMagick, btop 1.4.7, tmux 3.7b, Starship 1.26.0, a Mise-managed OpenCode executable installed in a semantic-version directory that matches `opencode --version`, the Omarchy 4.0.1 stock themes, `ttfx` 0.3.2, `socat`, `zip`, `unzip`, `inotifywait`, Python 3, a running user systemd manager, and util-linux `getino --pidfs` plus `kill PID:inode` support.
@@ -59,11 +61,13 @@ cd dotfiles
 make
 ```
 
-Choose `Guided setup` to prepare prerequisites, install pinned global skills, clean up selected Omarchy applications, apply selected Stow packages, deploy the Wallpaper library, and optionally apply the shared Brave policy.
+Choose `Guided setup` to prepare prerequisites, install pinned global skills, clean up selected Omarchy applications, apply selected Stow packages, and deploy the Wallpaper library. Phase 6 optionally applies the shared Brave policy, followed by phase 7 for the optional laptop power policy.
 
 Choose `Recover ZTE USB modem` to inspect and, after confirmation, recover the known ZTE USB modem.
 
 Choose `Manage Telegram theme` to inspect status, run the approved bootstrap refresh, or retry generation.
+
+Choose `Manage laptop power policy` for `Status`, `Apply`, `Remove`, and recovery of an interrupted policy transaction.
 
 Choose `Apply Stow packages` and select `screensaver-effects` to link and activate the selective screensaver integration. After activation, run `make screensaver-effects` to change the tracked allowlist or preview an installed mapped effect. The manager requires terminal input and output.
 
@@ -74,6 +78,7 @@ Place candidate images in `wallpapers/inbox/`, then choose `Manage wallpapers` o
 - `bin/dotfiles`: Dotfiles wizard entry point
 - `lib/dotfiles/`: wizard operation modules
 - `brave/`: canonical source for the shared Brave managed policy
+- `power-policy/`: canonical UPower and logind policy sources
 - `config/`: Stow packages
 - `config/opencode/`: complete global OpenCode runtime and TUI settings
 - `config/telegram-theme/`: Telegram Desktop theme generator and Omarchy integration assets
@@ -101,6 +106,7 @@ bash tests/opencode_test.sh
 
 - [Stow workflow](docs/stow.md)
 - [Shared Brave configuration](docs/brave.md)
+- [Laptop power policy](docs/power-policy.md)
 - [Bash](docs/bash.md)
 - [Starship](docs/starship.md)
 - [Tmux](docs/tmux.md)

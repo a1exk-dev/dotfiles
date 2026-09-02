@@ -9,6 +9,14 @@ configure_brave_structural_canaries() {
 	make_fake sudo 'printf "unexpected sudo call\n" >>"$DOTFILES_TEST_CALL_LOG"; exit 99'
 }
 
+configure_power_policy_structural_canaries() {
+	make_fake sudo 'printf "unexpected sudo call\n" >>"$DOTFILES_TEST_CALL_LOG"; exit 99'
+	make_fake systemctl 'printf "unexpected systemctl call\n" >>"$DOTFILES_TEST_CALL_LOG"; exit 99'
+	make_fake busctl 'printf "unexpected busctl call\n" >>"$DOTFILES_TEST_CALL_LOG"; exit 99'
+	make_fake omarchy-battery-present 'printf "unexpected battery predicate call\n" >>"$DOTFILES_TEST_CALL_LOG"; exit 99'
+	make_fake omarchy-hibernation-available 'printf "unexpected hibernation predicate call\n" >>"$DOTFILES_TEST_CALL_LOG"; exit 99'
+}
+
 stub_wallpaper_library_validator() {
 	local outcome=${1-0}
 	printf '\nvalidate_wallpaper_library() { printf "Stub Wallpaper library validation\\n"; if ((%s == 0)); then printf "Wallpaper library: valid\\n"; fi; return %s; }\n' \
@@ -217,6 +225,39 @@ test_check_propagates_brave_failure_from_conditional_context() {
 		'the conditional check should report the rejected Brave source' || return 1
 	assert_contains "$COMMAND_OUTPUT" 'GNU Stow: unavailable (nonfatal until a package operation is selected)' \
 		'the conditional check should continue useful diagnostics after Brave validation fails' || return 1
+}
+
+test_check_validates_power_policy_sources_without_live_policy_interaction() {
+	new_fixture
+	use_empty_package_catalog
+	configure_brave_structural_canaries
+	configure_power_policy_structural_canaries
+	rm "$FIXTURE_BIN/stow"
+	BWRAP_EXTRA_ARGS+=(--tmpfs /etc --tmpfs /run)
+	local upower_source=$FIXTURE_REPO/power-policy/upower.conf
+	local logind_source=$FIXTURE_REPO/power-policy/logind.conf
+	local before_upower before_logind before_paths
+	before_upower=$(sha256sum "$upower_source")
+	before_logind=$(sha256sum "$logind_source")
+	before_paths=$(snapshot_isolated_paths)
+
+	DOTFILES_TEST_PATH=$(restricted_path_without_stow) run_dotfiles "$FIXTURE_ROOT" --action check
+
+	assert_eq 0 "$COMMAND_STATUS" 'canonical laptop power-policy sources should pass structural checks' || return 1
+	assert_contains "$COMMAND_OUTPUT" 'UPower source: valid' \
+		'structural checks should validate the canonical UPower source' || return 1
+	assert_contains "$COMMAND_OUTPUT" 'logind source: valid' \
+		'structural checks should validate the canonical logind source' || return 1
+	assert_eq "$before_upower" "$(sha256sum "$upower_source")" \
+		'UPower source validation should not rewrite its input' || return 1
+	assert_eq "$before_logind" "$(sha256sum "$logind_source")" \
+		'logind source validation should not rewrite its input' || return 1
+	assert_eq "$before_paths" "$(snapshot_isolated_paths)" \
+		'laptop power-policy source validation should not mutate isolated user paths' || return 1
+	if [[ $(<"$CALL_LOG") == *'unexpected '* ]]; then
+		printf '  structural laptop power-policy validation inspected live battery, hibernation, deployment, service, or privilege state\n' >&2
+		return 1
+	fi
 }
 
 test_brave_focused_suite_is_registered_once() {
@@ -689,6 +730,7 @@ run_test test_check_rejects_invalid_wallpaper_library_without_mutation 'check re
 run_test test_check_validates_brave_source_without_browser_or_deployment 'check validates Brave source without a browser or deployment'
 run_test test_check_rejects_noncanonical_brave_source_without_browser_or_deployment 'check rejects noncanonical Brave source without a browser or deployment'
 run_test test_check_propagates_brave_failure_from_conditional_context 'check propagates Brave failure from an errexit-disabled conditional context'
+run_test test_check_validates_power_policy_sources_without_live_policy_interaction 'check validates laptop power-policy sources without live-policy interaction'
 run_test test_brave_focused_suite_is_registered_once 'focused Brave suite is registered once'
 run_test test_check_rejects_missing_declared_package_prerequisite 'check rejects missing declared package prerequisite'
 run_test test_check_rejects_missing_validator_executable 'check rejects missing validator executable'
