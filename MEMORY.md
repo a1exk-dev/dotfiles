@@ -32,6 +32,14 @@ Guidance: Trace every direct service consumer as well as generic plugin-id routi
 
 Reason: Omarchy's generic clone routing does not cover consumers that read the service registry by the built-in id.
 
+## Treat native touchpad typing suppression as partial
+
+Applies when: Planning, implementing, or diagnosing built-in touchpad suppression during typing on the supported Omarchy target.
+
+Guidance: On Hyprland 0.56.2 with libinput 1.31.3, first inspect the effective `input:touchpad:disable_while_typing` value instead of assuming the switch is missing. Native DWT uses a 200 ms first-key window and a 500 ms continued-typing timeout, keeps physical click buttons active, and exposes its 100-5000 ms timeout API only to the compositor; Hyprland 0.56.2 does not expose that timeout. Use dynamic internal-device classification rather than tracked device names, and establish a privacy-safe red-capable physical loop before selecting a custom mechanism. Revalidate these constraints when the supported Hyprland or libinput version changes.
+
+Reason: Setting the existing Boolean cannot provide a configurable delay or complete suppression, and static classification alone cannot establish the cause of intermittent cursor movement.
+
 ## Carry screensaver overrides through Hyprland dispatch
 
 Applies when: A user-owned Omarchy screensaver launcher must pass a private command or environment into terminals started through Hyprland's Lua dispatcher.
