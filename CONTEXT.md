@@ -28,6 +28,10 @@ The root `cleanup.json` file that contains saved selection defaults for removabl
 
 `packages.json` is the package catalog. Each entry declares a Stow package's description, command prerequisites, Arch package requirements, Stow dependencies, validators, documentation, and cleanup notes.
 
+## Optional application catalog
+
+The repository-owned installation intent for standalone Arch applications that are desired on a fresh machine but are neither Dotfiles wizard prerequisites nor coupled to a Stow package. The wizard delegates package management to Omarchy, while application configuration and state remain outside this catalog.
+
 ## Skill manifest
 
 The root `skills.json` file containing exact source revisions, each repository's official installation method, expected collection sizes, and installation requirements for global agent skills placed under `~/.agents/skills/`.

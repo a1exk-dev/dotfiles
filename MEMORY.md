@@ -216,6 +216,14 @@ Guidance: Declare the package in `arch_packages`. During apply and migration, in
 
 Reason: Arch packages have independent ownership and can be shared. Package-specific planning avoids global installs, while retention avoids removing software without installation provenance.
 
+## Keep optional application installation separate
+
+Applies when: Adding standalone software that is desired on a fresh machine but is not a repository prerequisite or coupled to repository-owned configuration.
+
+Guidance: Declare it in the Optional application catalog instead of the package catalog. Start selection empty, support only explicit official or AUR Arch package sources, delegate installation to the matching Omarchy package route, verify the exact package and expected command, and block installed conflicts without replacement. Keep application configuration and state outside repository ownership unless a separate Stow-package decision establishes a portable configuration boundary.
+
+Reason: Installation intent, Stow configuration ownership, and application state have different lifecycles; separating them keeps optional software reusable without turning state into dotfiles or making the software a core prerequisite.
+
 ## Append package catalog entries
 
 Applies when: Adding a Stow package to `packages.json`.
