@@ -68,7 +68,7 @@ Choose `Manage Brave policy`. The submenu has these choices:
 - `Remove`
 - `Back`
 
-`Guided setup` runs Brave policy apply as optional phase 6, after Wallpaper library deployment. Phase 6 skips successfully if no supported browser is installed or if you decline the policy plan. An exact active policy and a completed apply are successful results. An unsafe provider or path, a transaction failure, or recovery-required state stops Guided setup. Use `Manage Brave policy` to recover.
+`Guided setup` runs Brave policy apply as optional phase 7, after Wallpaper library deployment. Phase 7 skips successfully if no supported browser is installed or if you decline the policy plan. An exact active policy and a completed apply are successful results. An unsafe provider or path, a transaction failure, or recovery-required state stops Guided setup. Use `Manage Brave policy` to recover.
 
 ## Managed policy
 

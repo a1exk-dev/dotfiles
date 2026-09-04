@@ -1,6 +1,6 @@
 # Dotfiles
 
-Portable dotfiles for Omarchy version 4. GNU Stow links tracked configuration into the user's home directory. The Dotfiles wizard manages prerequisites, pinned global agent skills, application cleanup, Stow packages, repository wallpapers, the optional shared Brave configuration, optional laptop power policy, Telegram Desktop's optional Omarchy theme integration, and selective active-theme Omarchy screensaver effects.
+Portable dotfiles for Omarchy version 4. GNU Stow links tracked configuration into the user's home directory. The Dotfiles wizard manages prerequisites, pinned global agent skills, application cleanup, optional application installation, Stow packages, repository wallpapers, the optional shared Brave configuration, optional laptop power policy, Telegram Desktop's optional Omarchy theme integration, and selective active-theme Omarchy screensaver effects.
 
 ## Requirements
 
@@ -13,6 +13,8 @@ The core wizard requires:
 - make
 
 Application cleanup also requires `pacman`, `yay`, `find`, `grep`, `sort`, `basename`, `mktemp`, `rm`, and `omarchy`.
+
+Optional application installation requires `omarchy`. The wizard installs official packages with `omarchy pkg add` and AUR packages with `omarchy pkg aur add`, then verifies the exact package and its declared command. The initial catalog offers Bruno as the AUR package `bruno-bin` and verifies the `bruno` command.
 
 USB modem recovery requires `sudo`, `nmcli`, `readlink`, Linux sysfs, and an xHCI controller with bind and unbind controls.
 
@@ -61,7 +63,9 @@ cd dotfiles
 make
 ```
 
-Choose `Guided setup` to prepare prerequisites, install pinned global skills, clean up selected Omarchy applications, apply selected Stow packages, and deploy the Wallpaper library. Phase 6 optionally applies the shared Brave policy, followed by phase 7 for the optional laptop power policy.
+Choose `Guided setup` to prepare prerequisites, install pinned global agent skills, clean up Omarchy applications, install selected optional applications, apply Stow packages, and deploy the Wallpaper library. The optional Brave policy is phase 7, followed by the optional laptop power policy as phase 8.
+
+Choose `Install optional applications` or run `make applications`. The picker starts empty. For a nonempty selection, the wizard shows package names, sources, and installation status in one plan. It blocks installed conflicts and asks once before installing and verifying each package. The catalog does not own application configuration or state.
 
 Choose `Recover ZTE USB modem` to inspect and, after confirmation, recover the known ZTE USB modem.
 
@@ -86,6 +90,7 @@ Place candidate images in `wallpapers/inbox/`, then choose `Manage wallpapers` o
 - `wallpapers/inbox/`: ignored Intake images awaiting review
 - `wallpapers/library/`: tracked Managed wallpapers grouped by Theme assignment
 - `packages.json`: package catalog
+- `applications.json`: optional application catalog
 - `cleanup.json`: application cleanup profile
 - `skills.json`: pinned global skill sources
 - `tests/`: integration tests

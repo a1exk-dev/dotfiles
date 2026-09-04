@@ -46,7 +46,7 @@ make
 
 Choose `Manage laptop power policy`. Its choices are `Status`, `Apply`, `Remove`, and `Back`.
 
-Guided setup calls Apply as optional phase 7 after optional Brave policy phase 6. Battery or hibernation ineligibility and an ordinary declined plan are successful skips. An exact active policy or a completed Apply succeeds. An unsafe path, unsupported Omarchy version, failed logind capability, transaction failure, or recovery outcome stops Guided setup and directs you to `Manage laptop power policy`.
+Guided setup calls Apply as optional phase 8 after optional Brave policy phase 7. Battery or hibernation ineligibility and an ordinary declined plan are successful skips. An exact active policy or a completed Apply succeeds. An unsafe path, unsupported Omarchy version, failed logind capability, transaction failure, or recovery outcome stops Guided setup and directs you to `Manage laptop power policy`.
 
 ## Status
 

@@ -1175,6 +1175,9 @@ wallpaper_test_fast_shared_sandbox_run() {
 		"DOTFILES_TEST_ARCH_PACKAGE_ADD_MARKER=$ARCH_PACKAGE_ADD_MARKER"
 		"DOTFILES_TEST_ARCH_INSTALL_FAILURE=${DOTFILES_TEST_ARCH_INSTALL_FAILURE:-false}"
 		"DOTFILES_TEST_ARCH_VERIFY_FAILURE=${DOTFILES_TEST_ARCH_VERIFY_FAILURE:-false}"
+		"DOTFILES_TEST_APPLICATION_INSTALL_FAILURE=${DOTFILES_TEST_APPLICATION_INSTALL_FAILURE-}"
+		"DOTFILES_TEST_APPLICATION_EXACT_VERIFY_FAILURE=${DOTFILES_TEST_APPLICATION_EXACT_VERIFY_FAILURE-}"
+		"DOTFILES_TEST_APPLICATION_COMMAND_VERIFY_FAILURE=${DOTFILES_TEST_APPLICATION_COMMAND_VERIFY_FAILURE-}"
 		"DOTFILES_TEST_FIND_COUNT=${DOTFILES_TEST_FIND_COUNT-}"
 		"DOTFILES_TEST_PACMAN_VERIFY_FAILURE=${DOTFILES_TEST_PACMAN_VERIFY_FAILURE:-false}"
 		"DOTFILES_TEST_YAY_METADATA_FAILURE=${DOTFILES_TEST_YAY_METADATA_FAILURE:-false}"
@@ -1380,6 +1383,7 @@ if [[ \$identify == true ]]; then printf '%s|4|3\n' "\$format"; fi
 		cp "$SOURCE_REPO/tests/support/fast_wallpaper_files.sh" "$FIXTURE_REPO/lib/dotfiles/"
 	fi
 	cp "$SOURCE_REPO/packages.json" "$FIXTURE_REPO/packages.json"
+	cp "$SOURCE_REPO/applications.json" "$FIXTURE_REPO/applications.json"
 	cp "$SOURCE_REPO/cleanup.json" "$FIXTURE_REPO/cleanup.json"
 	if [[ ${DOTFILES_TEST_MINIMAL_WALLPAPER_FIXTURE:-false} != true ]]; then
 		if [[ -f $SOURCE_REPO/README.md ]]; then
@@ -1840,6 +1844,36 @@ fi
 exit 64'
 }
 
+configure_optional_application_fakes() {
+	make_fake omarchy 'printf "%s|HOME=%s|XDG_CONFIG_HOME=%s|XDG_STATE_HOME=%s|XDG_CACHE_HOME=%s\n" "$*" "$HOME" "$XDG_CONFIG_HOME" "$XDG_STATE_HOME" "$XDG_CACHE_HOME" >>"$DOTFILES_TEST_CALL_LOG"
+	if [[ ${1-} == version ]]; then printf "%s\n" "${DOTFILES_TEST_OMARCHY_VERSION:-4.0.0-1}"; exit 0; fi
+	if [[ ${1-} == pkg && ${2-} == present ]]; then
+		shift 2
+		for package in "$@"; do grep -Fxq -- "$package" "$DOTFILES_TEST_ARCH_PACKAGE_STATE" || exit 1; done
+		exit 0
+	fi
+	if [[ ${1-} == pkg && ${2-} == add ]]; then
+		package=${3-}
+	elif [[ ${1-} == pkg && ${2-} == aur && ${3-} == add ]]; then
+		package=${4-}
+	else
+		exit 64
+	fi
+	[[ -n $package ]] || exit 64
+	[[ ${DOTFILES_TEST_APPLICATION_INSTALL_FAILURE:-} != "$package" ]] || exit 76
+	if [[ ${DOTFILES_TEST_APPLICATION_EXACT_VERIFY_FAILURE:-} != "$package" ]]; then
+		grep -Fxq -- "$package" "$DOTFILES_TEST_ARCH_PACKAGE_STATE" || printf "%s\n" "$package" >>"$DOTFILES_TEST_ARCH_PACKAGE_STATE"
+	fi
+	case $package in
+		bruno-bin) command=bruno ;;
+		*) command=$package ;;
+	esac
+	if [[ ${DOTFILES_TEST_APPLICATION_COMMAND_VERIFY_FAILURE:-} != "$package" ]]; then
+		printf "#!/usr/bin/env bash\nexit 0\n" >"$DOTFILES_TEST_FAKE_BIN/$command"
+		chmod +x "$DOTFILES_TEST_FAKE_BIN/$command"
+	fi'
+}
+
 add_cleanup_launcher() {
 	local name=$1
 	local exec_line=$2
@@ -1892,6 +1926,9 @@ run_in_sandbox() {
 				DOTFILES_TEST_ARCH_PACKAGE_ADD_MARKER="$ARCH_PACKAGE_ADD_MARKER" \
 				DOTFILES_TEST_ARCH_INSTALL_FAILURE="${DOTFILES_TEST_ARCH_INSTALL_FAILURE:-false}" \
 				DOTFILES_TEST_ARCH_VERIFY_FAILURE="${DOTFILES_TEST_ARCH_VERIFY_FAILURE:-false}" \
+				DOTFILES_TEST_APPLICATION_INSTALL_FAILURE="${DOTFILES_TEST_APPLICATION_INSTALL_FAILURE-}" \
+				DOTFILES_TEST_APPLICATION_EXACT_VERIFY_FAILURE="${DOTFILES_TEST_APPLICATION_EXACT_VERIFY_FAILURE-}" \
+				DOTFILES_TEST_APPLICATION_COMMAND_VERIFY_FAILURE="${DOTFILES_TEST_APPLICATION_COMMAND_VERIFY_FAILURE-}" \
 				DOTFILES_TEST_FIND_COUNT="${DOTFILES_TEST_FIND_COUNT-}" \
 				DOTFILES_TEST_PACMAN_VERIFY_FAILURE="${DOTFILES_TEST_PACMAN_VERIFY_FAILURE:-false}" \
 				DOTFILES_TEST_YAY_METADATA_FAILURE="${DOTFILES_TEST_YAY_METADATA_FAILURE:-false}" \
@@ -1985,6 +2022,7 @@ run_operation() {
 			operation=$2
 			shift 2
 			source "$repository/lib/dotfiles/core.sh"
+			source "$repository/lib/dotfiles/applications.sh"
 			if [[ -f $repository/lib/dotfiles/screensaver-effects.sh ]]; then
 				source "$repository/lib/dotfiles/screensaver-effects.sh"
 			fi

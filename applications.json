@@ -1,0 +1,13 @@
+{
+	"applications": [
+		{
+			"id": "bruno",
+			"name": "Bruno",
+			"description": "API client",
+			"package": "bruno-bin",
+			"source": "aur",
+			"command": "bruno",
+			"conflicts": ["bruno"]
+		}
+	]
+}

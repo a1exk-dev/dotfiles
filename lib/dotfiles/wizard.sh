@@ -104,6 +104,10 @@ wizard_run_action() {
 			;;
 		prerequisites) setup_prerequisites --interactive ;;
 		cleanup) cleanup_applications ;;
+		applications)
+			wizard_optional_applications || return $?
+			install_optional_applications "${OPTIONAL_APPLICATION_SELECTION[@]}"
+			;;
 		skills) install_skills --interactive ;;
 		skills-update) update_skills --interactive ;;
 		modem) recover_zte_usb_modem ;;
@@ -128,13 +132,22 @@ guided_setup() {
 	install_skills --interactive || { printf 'Recovery: choose Install pinned global skills in the Dotfiles wizard.\n' >&2; return 1; }
 	printf 'Guided phase 3: application cleanup\n'
 	cleanup_applications || { printf 'Recovery: choose Clean up Omarchy applications in the Dotfiles wizard.\n' >&2; return 1; }
-	printf 'Guided phase 4: Stow application\n'
+	printf 'Guided phase 4: optional application installation\n'
+	if ! wizard_optional_applications; then
+		printf 'Recovery: choose Install optional applications in the Dotfiles wizard.\n' >&2
+		return 1
+	fi
+	if ! install_optional_applications "${OPTIONAL_APPLICATION_SELECTION[@]}"; then
+		printf 'Recovery: choose Install optional applications in the Dotfiles wizard.\n' >&2
+		return 1
+	fi
+	printf 'Guided phase 5: Stow application\n'
 	if ! wizard_packages; then
 		printf 'Recovery: choose Apply Stow packages in the Dotfiles wizard.\n' >&2
 		return 1
 	fi
 	apply_packages "${WIZARD_PACKAGES[@]}" || { printf 'Recovery: choose Apply Stow packages in the Dotfiles wizard.\n' >&2; return 1; }
-	printf 'Guided phase 5: Wallpaper library deployment\n'
+	printf 'Guided phase 6: Wallpaper library deployment\n'
 	local wallpaper_outcome
 	if apply_wallpapers; then
 		wallpaper_outcome=0
@@ -156,7 +169,7 @@ guided_setup() {
 		printf 'Recovery: choose Apply wallpapers in the Dotfiles wizard.\n' >&2
 		return "$wallpaper_outcome"
 	fi
-	printf 'Guided phase 6: optional Brave policy\n'
+	printf 'Guided phase 7: optional Brave policy\n'
 	local brave_outcome
 	if apply_brave_policy; then
 		brave_outcome=$BRAVE_OUTCOME_SUCCESS
@@ -176,14 +189,14 @@ guided_setup() {
 	esac
 	case $brave_outcome in
 		"$BRAVE_OUTCOME_SUCCESS") ;;
-		"$BRAVE_OUTCOME_DECLINED") printf 'Guided phase 6 skipped: Brave policy plan declined.\n' ;;
-		"$BRAVE_OUTCOME_UNAVAILABLE") printf 'Guided phase 6 skipped: no supported Brave browser is installed.\n' ;;
+		"$BRAVE_OUTCOME_DECLINED") printf 'Guided phase 7 skipped: Brave policy plan declined.\n' ;;
+		"$BRAVE_OUTCOME_UNAVAILABLE") printf 'Guided phase 7 skipped: no supported Brave browser is installed.\n' ;;
 		*)
 			printf 'Recovery: choose Manage Brave policy in the Dotfiles wizard.\n' >&2
 			return "$brave_outcome"
 			;;
 	esac
-	printf 'Guided phase 7: optional laptop power policy\n'
+	printf 'Guided phase 8: optional laptop power policy\n'
 	local power_policy_outcome
 	if apply_power_policy; then
 		power_policy_outcome=$POWER_POLICY_OUTCOME_SUCCESS
@@ -203,8 +216,8 @@ guided_setup() {
 	esac
 	case $power_policy_outcome in
 		"$POWER_POLICY_OUTCOME_SUCCESS") ;;
-		"$POWER_POLICY_OUTCOME_DECLINED") printf 'Guided phase 7 skipped: laptop power-policy plan declined.\n' ;;
-		"$POWER_POLICY_OUTCOME_INELIGIBLE") printf 'Guided phase 7 skipped: laptop battery or hibernation prerequisite is unavailable.\n' ;;
+		"$POWER_POLICY_OUTCOME_DECLINED") printf 'Guided phase 8 skipped: laptop power-policy plan declined.\n' ;;
+		"$POWER_POLICY_OUTCOME_INELIGIBLE") printf 'Guided phase 8 skipped: laptop battery or hibernation prerequisite is unavailable.\n' ;;
 		*)
 			printf 'Recovery: choose Manage laptop power policy in the Dotfiles wizard.\n' >&2
 			return "$power_policy_outcome"
@@ -225,6 +238,7 @@ wizard() {
 		'Remove Stow package'
 		'Prepare prerequisites'
 		'Clean up Omarchy applications'
+		'Install optional applications'
 		'Install pinned global skills'
 		'Update pinned global skills'
 		'Recover ZTE USB modem'
@@ -234,7 +248,7 @@ wizard() {
 		'Apply wallpapers'
 		'Remove deployed wallpapers'
 	)
-	local -a actions=(guided status check apply migrate remove prerequisites cleanup skills skills-update modem brave telegram-theme wallpapers wallpapers-apply wallpapers-remove)
+	local -a actions=(guided status check apply migrate remove prerequisites cleanup applications skills skills-update modem brave telegram-theme wallpapers wallpapers-apply wallpapers-remove)
 	screensaver_effects_set_paths
 	screensaver_effects_find_competing_clones
 	if ((${#SCREENSAVER_EFFECTS_COMPETING_CLONES[@]} > 0)); then

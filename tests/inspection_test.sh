@@ -271,6 +271,37 @@ test_brave_focused_suite_is_registered_once() {
 	assert_eq 1 "$registrations" 'the focused Brave suite should be registered exactly once'
 }
 
+test_optional_application_catalog_is_structurally_checked_before_omarchy_inspection() {
+	new_fixture
+	use_empty_package_catalog
+	jq '.unexpected = true' "$FIXTURE_REPO/applications.json" >"$FIXTURE_REPO/applications.invalid"
+	mv "$FIXTURE_REPO/applications.invalid" "$FIXTURE_REPO/applications.json"
+	make_fake omarchy 'printf "unexpected Omarchy inspection\n" >>"$DOTFILES_TEST_CALL_LOG"; exit 99'
+
+	run_dotfiles "$FIXTURE_ROOT" --action check
+
+	assert_eq 1 "$COMMAND_STATUS" 'structural checks should reject invalid optional application catalog data' || return 1
+	assert_contains "$COMMAND_OUTPUT" "Error: invalid optional application catalog: $FIXTURE_REPO/applications.json" \
+		'structural checks should identify the rejected optional application catalog' || return 1
+	assert_eq '' "$(<"$CALL_LOG")" 'application catalog rejection should precede Omarchy inspection and all mutation'
+}
+
+test_optional_application_catalog_declares_bruno_and_focused_suite() {
+	new_fixture
+	assert_eq '{"id":"bruno","name":"Bruno","description":"API client","package":"bruno-bin","source":"aur","command":"bruno","conflicts":["bruno"]}' \
+		"$(jq -c '.applications[0]' "$FIXTURE_REPO/applications.json")" \
+		'the independent optional application catalog should declare the exact Bruno AUR requirement' || return 1
+	assert_eq 1 "$(jq '.applications | length' "$FIXTURE_REPO/applications.json")" \
+		'the initial optional application catalog should contain only Bruno' || return 1
+	if [[ ! -f $SOURCE_REPO/tests/applications_test.sh ]]; then
+		printf '  registered focused optional application suite is missing: %s\n' "$SOURCE_REPO/tests/applications_test.sh" >&2
+		return 1
+	fi
+	local registrations
+	registrations=$(awk '$1 == "applications_test.sh" { count++ } END { print count + 0 }' "$SOURCE_REPO/tests/run.sh")
+	assert_eq 1 "$registrations" 'the focused optional application suite should be registered exactly once'
+}
+
 test_check_rejects_missing_declared_package_prerequisite() {
 	new_fixture
 	add_package
@@ -732,6 +763,8 @@ run_test test_check_rejects_noncanonical_brave_source_without_browser_or_deploym
 run_test test_check_propagates_brave_failure_from_conditional_context 'check propagates Brave failure from an errexit-disabled conditional context'
 run_test test_check_validates_power_policy_sources_without_live_policy_interaction 'check validates laptop power-policy sources without live-policy interaction'
 run_test test_brave_focused_suite_is_registered_once 'focused Brave suite is registered once'
+run_test test_optional_application_catalog_is_structurally_checked_before_omarchy_inspection 'optional application catalog is structurally checked before Omarchy inspection'
+run_test test_optional_application_catalog_declares_bruno_and_focused_suite 'optional application catalog declares Bruno and focused suite'
 run_test test_check_rejects_missing_declared_package_prerequisite 'check rejects missing declared package prerequisite'
 run_test test_check_rejects_missing_validator_executable 'check rejects missing validator executable'
 run_test test_check_rejects_missing_core_and_global_skill_commands 'check rejects missing core and global skill commands'

@@ -10,7 +10,7 @@ A lowercase-named deployment unit under `config/<name>/` for one application or 
 
 ## Dotfiles wizard
 
-The intended human interface for repository setup and operations. Guided setup runs prerequisite preparation, pinned global agent-skill installation, application cleanup, Stow package application, and Wallpaper library deployment, then optionally applies the Shared Brave configuration as phase six and the Laptop power policy as phase seven. Standalone actions provide each operation separately, including `Manage laptop power policy`. Public routes provide the same operations to Make targets, agents, scripts, and tests.
+The intended human interface for repository setup and operations. Guided setup runs eight phases in order: prerequisite preparation; pinned global agent-skill installation; application cleanup; optional application installation; Stow package application; Wallpaper library deployment; optional Shared Brave configuration application as phase seven; and optional Laptop power policy application as phase eight. Standalone actions provide each operation separately, including `Manage laptop power policy`. Public routes provide the same operations to Make targets, agents, scripts, and tests.
 
 ## Shared Brave configuration
 

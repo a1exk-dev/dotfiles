@@ -2,6 +2,7 @@ readonly SUPPORTED_OMARCHY_VERSION=4
 readonly MINIMUM_NODE_VERSION=22.20.0
 readonly REPOSITORY_ROOT=$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")/../.." && pwd)
 readonly PACKAGE_CATALOG="$REPOSITORY_ROOT/packages.json"
+readonly APPLICATION_CATALOG="$REPOSITORY_ROOT/applications.json"
 readonly SKILL_MANIFEST="$REPOSITORY_ROOT/skills.json"
 
 OMARCHY_DETECTED_VERSION=''
@@ -151,7 +152,14 @@ validate_catalog() {
 
 inspect_omarchy() {
 	local warning_stream=${1-stdout}
-	OMARCHY_DETECTED_VERSION=$(omarchy version)
+	local strict_probe=${2-}
+	if [[ $strict_probe == strict ]]; then
+		if ! OMARCHY_DETECTED_VERSION=$(omarchy version); then
+			return 1
+		fi
+	else
+		OMARCHY_DETECTED_VERSION=$(omarchy version)
+	fi
 	OMARCHY_DETECTED_MAJOR=''
 	OMARCHY_VERSION_MISMATCH=false
 	if [[ $OMARCHY_DETECTED_VERSION =~ (^|[^[:digit:]])([[:digit:]]+)([.]|$) ]]; then

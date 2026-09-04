@@ -5,6 +5,7 @@ set -u
 readonly TEST_ROOT=$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)
 readonly SUITES=(
 	inspection_test.sh
+	applications_test.sh
 	bash_test.sh
 	starship_test.sh
 	btop_test.sh

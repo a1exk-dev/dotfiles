@@ -87,8 +87,8 @@ test_top_level_menu_starts_with_guided_setup() {
 	run_dotfiles "$FIXTURE_ROOT"
 
 	assert_eq 0 "$COMMAND_STATUS" 'an empty menu choice should safely exit' || return 1
-	assert_contains "$COMMAND_OUTPUT" $'  1. Guided setup\n  2. Package status\n  3. Run structural checks\n  4. Apply Stow packages\n  5. Migrate existing target\n  6. Remove Stow package\n  7. Prepare prerequisites\n  8. Clean up Omarchy applications\n  9. Install pinned global skills\n  10. Update pinned global skills\n  11. Recover ZTE USB modem\n  12. Manage Brave policy\n  13. Manage Telegram theme\n  14. Manage wallpapers\n  15. Apply wallpapers\n  16. Remove deployed wallpapers\n  17. Manage screensaver effects\n  18. Manage laptop power policy\n  19. Exit' \
-		'power-policy management should be appended before Exit without renumbering existing actions' || return 1
+	assert_contains "$COMMAND_OUTPUT" $'  1. Guided setup\n  2. Package status\n  3. Run structural checks\n  4. Apply Stow packages\n  5. Migrate existing target\n  6. Remove Stow package\n  7. Prepare prerequisites\n  8. Clean up Omarchy applications\n  9. Install optional applications\n  10. Install pinned global skills\n  11. Update pinned global skills\n  12. Recover ZTE USB modem\n  13. Manage Brave policy\n  14. Manage Telegram theme\n  15. Manage wallpapers\n  16. Apply wallpapers\n  17. Remove deployed wallpapers\n  18. Manage screensaver effects\n  19. Manage laptop power policy\n  20. Exit' \
+		'optional applications should follow cleanup and later actions should remain available' || return 1
 	assert_contains "$COMMAND_OUTPUT" 'No action selected.' 'no action should be selected by default'
 }
 
@@ -102,6 +102,21 @@ test_entrypoint_sources_brave_before_wizard() {
 	wizard_line=$(awk '/^source .*lib\/dotfiles\/wizard[.]sh"$/ { print NR; exit }' "$FIXTURE_REPO/bin/dotfiles")
 	if [[ -z $brave_line || -z $wizard_line || $brave_line -ge $wizard_line ]]; then
 		printf '  the Brave module must be sourced before interactive orchestration\n' >&2
+		return 1
+	fi
+}
+
+test_entrypoint_sources_optional_applications_after_core_before_wizard() {
+	new_fixture
+	local entrypoint core_line applications_line wizard_line
+	entrypoint=$(<"$FIXTURE_REPO/bin/dotfiles")
+	assert_contains "$entrypoint" 'source "$DOTFILES_ENTRY_ROOT/lib/dotfiles/applications.sh"' \
+		'the public entrypoint should source the optional application module' || return 1
+	core_line=$(awk '/^source .*lib\/dotfiles\/core[.]sh"$/ { print NR; exit }' "$FIXTURE_REPO/bin/dotfiles")
+	applications_line=$(awk '/^source .*lib\/dotfiles\/applications[.]sh"$/ { print NR; exit }' "$FIXTURE_REPO/bin/dotfiles")
+	wizard_line=$(awk '/^source .*lib\/dotfiles\/wizard[.]sh"$/ { print NR; exit }' "$FIXTURE_REPO/bin/dotfiles")
+	if [[ -z $core_line || -z $applications_line || -z $wizard_line || $core_line -ge $applications_line || $applications_line -ge $wizard_line ]]; then
+		printf '  the optional application module must be sourced after core and before interactive orchestration\n' >&2
 		return 1
 	fi
 }
@@ -140,7 +155,7 @@ test_legacy_and_invalid_entry_forms_are_rejected() {
 	run_dotfiles "$FIXTURE_ROOT" status
 	assert_eq 2 "$COMMAND_STATUS" 'a removed public route should be rejected' || return 1
 	assert_contains "$COMMAND_OUTPUT" 'Usage: bin/dotfiles [--action' 'invalid entry use should explain the supported interface' || return 1
-	assert_contains "$COMMAND_OUTPUT" 'telegram-theme|wallpapers|wallpapers-apply|wallpapers-remove|screensaver-effects|screensaver-effects-migrate|power-policy>]' \
+	assert_contains "$COMMAND_OUTPUT" 'applications|skills|skills-update|modem|brave|telegram-theme|wallpapers|wallpapers-apply|wallpapers-remove|screensaver-effects|screensaver-effects-migrate|power-policy>]' \
 		'usage should advertise every wallpaper, screensaver, and laptop-power-policy public action' || return 1
 	assert_contains "$COMMAND_OUTPUT" 'wallpapers-apply: deploy the Wallpaper library' \
 		'usage should distinguish deployment Apply from curation' || return 1
@@ -181,9 +196,9 @@ test_modem_public_action_preselection_dispatches() {
 test_modem_menu_selection_dispatches() {
 	new_fixture
 	configure_empty_modem_sysfs
-	DOTFILES_TEST_INPUT='11\n' run_dotfiles "$FIXTURE_ROOT"
+	DOTFILES_TEST_INPUT='12\n' run_dotfiles "$FIXTURE_ROOT"
 
-	assert_eq 1 "$COMMAND_STATUS" 'menu item 11 should dispatch to modem discovery' || return 1
+	assert_eq 1 "$COMMAND_STATUS" 'menu item 12 should dispatch to modem discovery' || return 1
 	if [[ $COMMAND_OUTPUT == *'No action selected.'* ]]; then
 		printf '  modem menu selection exited instead of dispatching\n' >&2
 		return 1
@@ -213,7 +228,7 @@ test_power_policy_public_action_preselection_dispatches() {
 
 test_power_policy_menu_selection_dispatches_to_four_choice_manager() {
 	new_fixture
-	DOTFILES_TEST_INPUT='18\n4\n' run_dotfiles "$FIXTURE_ROOT"
+	DOTFILES_TEST_INPUT='19\n4\n' run_dotfiles "$FIXTURE_ROOT"
 
 	assert_eq 0 "$COMMAND_STATUS" 'the appended laptop power-policy menu selection should dispatch successfully' || return 1
 	assert_contains "$COMMAND_OUTPUT" $'Manage laptop power policy\n  1. Status\n  2. Apply\n  3. Remove\n  4. Back' \
@@ -261,9 +276,9 @@ test_screensaver_effects_public_action_and_make_target_dispatch() {
 
 test_default_make_menu_dispatches_telegram_theme_management() {
 	new_fixture
-	DOTFILES_TEST_INPUT='13\n4\n' run_make "$FIXTURE_ROOT"
+	DOTFILES_TEST_INPUT='14\n4\n' run_make "$FIXTURE_ROOT"
 
-	assert_eq 0 "$COMMAND_STATUS" 'default make menu item 13 should open and leave Telegram theme management' || return 1
+	assert_eq 0 "$COMMAND_STATUS" 'default make menu item 14 should open and leave Telegram theme management' || return 1
 	assert_contains "$COMMAND_OUTPUT" 'Manage Telegram theme' \
 		'the main Bash menu should dispatch its Telegram theme action' || return 1
 	assert_contains "$COMMAND_OUTPUT" $'  1. Status\n  2. Setup / refresh\n  3. Retry\n  4. Back' \
@@ -421,14 +436,14 @@ test_cleanup_skills_and_update_standalone_actions() {
 	new_fixture
 	configure_skill_fakes
 	seed_current_global_skills
-	DOTFILES_TEST_INPUT='9\n' run_dotfiles "$FIXTURE_ROOT"
+	DOTFILES_TEST_INPUT='10\n' run_dotfiles "$FIXTURE_ROOT"
 	assert_eq 0 "$COMMAND_STATUS" 'standalone pinned skill installation should succeed when current' || return 1
 	assert_contains "$COMMAND_OUTPUT" 'All manifest-owned skills already match' 'skill installation should remain independently reachable' || return 1
 
 	new_fixture
 	configure_skill_update_fakes
 	seed_current_global_skills
-	DOTFILES_TEST_SKILL_UPDATE_NO_CHANGE=true DOTFILES_TEST_INPUT='10\n' run_dotfiles "$FIXTURE_ROOT"
+	DOTFILES_TEST_SKILL_UPDATE_NO_CHANGE=true DOTFILES_TEST_INPUT='11\n' run_dotfiles "$FIXTURE_ROOT"
 	assert_eq 0 "$COMMAND_STATUS" 'standalone skill update should succeed when current' || return 1
 	assert_contains "$COMMAND_OUTPUT" 'No upstream skill updates are available.' 'skill update should remain independently reachable'
 }
@@ -442,25 +457,27 @@ test_guided_setup_orders_and_skips_nonessential_phases() {
 	DOTFILES_TEST_INPUT='1\n0\n\n' run_dotfiles "$FIXTURE_ROOT"
 
 	assert_eq 0 "$COMMAND_STATUS" 'guided setup should continue across empty nonessential selections' || return 1
-	local prerequisites skills cleanup stow wallpapers brave power_policy
+	local prerequisites skills cleanup applications stow wallpapers brave power_policy
 	prerequisites=$(awk '/Guided phase 1:/ { print NR; exit }' <<<"$COMMAND_OUTPUT")
 	skills=$(awk '/Guided phase 2:/ { print NR; exit }' <<<"$COMMAND_OUTPUT")
 	cleanup=$(awk '/Guided phase 3:/ { print NR; exit }' <<<"$COMMAND_OUTPUT")
-	stow=$(awk '/Guided phase 4:/ { print NR; exit }' <<<"$COMMAND_OUTPUT")
-	wallpapers=$(awk '/Guided phase 5:/ { print NR; exit }' <<<"$COMMAND_OUTPUT")
-	brave=$(awk '/Guided phase 6:/ { print NR; exit }' <<<"$COMMAND_OUTPUT")
-	power_policy=$(awk '/Guided phase 7:/ { print NR; exit }' <<<"$COMMAND_OUTPUT")
-	if [[ -z $prerequisites || -z $skills || -z $cleanup || -z $stow || -z $wallpapers || -z $brave || -z $power_policy || \
-		$prerequisites -ge $skills || $skills -ge $cleanup || $cleanup -ge $stow || $stow -ge $wallpapers || \
+	applications=$(awk '/Guided phase 4: optional application installation/ { print NR; exit }' <<<"$COMMAND_OUTPUT")
+	stow=$(awk '/Guided phase 5:/ { print NR; exit }' <<<"$COMMAND_OUTPUT")
+	wallpapers=$(awk '/Guided phase 6:/ { print NR; exit }' <<<"$COMMAND_OUTPUT")
+	brave=$(awk '/Guided phase 7:/ { print NR; exit }' <<<"$COMMAND_OUTPUT")
+	power_policy=$(awk '/Guided phase 8:/ { print NR; exit }' <<<"$COMMAND_OUTPUT")
+	if [[ -z $prerequisites || -z $skills || -z $cleanup || -z $applications || -z $stow || -z $wallpapers || -z $brave || -z $power_policy || \
+		$prerequisites -ge $skills || $skills -ge $cleanup || $cleanup -ge $applications || $applications -ge $stow || $stow -ge $wallpapers || \
 		$wallpapers -ge $brave || $brave -ge $power_policy ]]; then
 		printf '  guided phases did not run in the required order\n' >&2
 		return 1
 	fi
 	assert_contains "$COMMAND_OUTPUT" 'No cleanup items selected' 'empty cleanup should continue' || return 1
+	assert_contains "$COMMAND_OUTPUT" 'No optional applications selected' 'empty optional application selection should continue' || return 1
 	assert_contains "$COMMAND_OUTPUT" 'No Stow packages selected' 'empty Stow selection should continue' || return 1
 	assert_contains "$COMMAND_OUTPUT" 'Stub wallpaper Apply outcome: 0' \
 		'Guided setup should use the public wallpaper Apply operation' || return 1
-	assert_contains "$COMMAND_OUTPUT" 'Guided phase 6 skipped: no supported Brave browser is installed.' \
+	assert_contains "$COMMAND_OUTPUT" 'Guided phase 7 skipped: no supported Brave browser is installed.' \
 		'an unavailable browser should skip the new optional phase' || return 1
 	assert_contains "$COMMAND_OUTPUT" 'Guided setup complete.' 'all skipped nonessential phases should complete the guide'
 }
@@ -476,7 +493,7 @@ test_guided_wallpaper_ordinary_success_continues_to_brave() {
 	assert_eq 0 "$COMMAND_STATUS" 'ordinary wallpaper Apply success should complete Guided setup' || return 1
 	assert_contains "$COMMAND_OUTPUT" 'Stub wallpaper Apply outcome: 0; context: ordinary' \
 		'Guided setup should inspect the ordinary Wallpaper operation context' || return 1
-	assert_contains "$COMMAND_OUTPUT" 'Guided phase 6: optional Brave policy' \
+	assert_contains "$COMMAND_OUTPUT" 'Guided phase 7: optional Brave policy' \
 		'ordinary wallpaper success should continue to Brave' || return 1
 	assert_contains "$COMMAND_OUTPUT" 'Stub Brave apply outcome: 0' \
 		'ordinary wallpaper success should invoke Brave Apply' || return 1
@@ -519,7 +536,7 @@ test_guided_wallpaper_recovery_completed_stops_before_brave() {
 		'Guided setup should inspect successful recovery context' || return 1
 	assert_contains "$COMMAND_OUTPUT" 'Recovery: choose Apply wallpapers in the Dotfiles wizard.' \
 		'completed wallpaper recovery should name the standalone rerun route' || return 1
-	if [[ $COMMAND_OUTPUT == *'Guided phase 6:'* || $COMMAND_OUTPUT == *'Stub Brave apply outcome:'* || \
+	if [[ $COMMAND_OUTPUT == *'Guided phase 7:'* || $COMMAND_OUTPUT == *'Stub Brave apply outcome:'* || \
 		$COMMAND_OUTPUT == *'Guided setup complete.'* ]]; then
 		printf '  Guided setup continued after Wallpaper recovery completed\n' >&2
 		return 1
@@ -540,7 +557,7 @@ test_guided_wallpaper_unknown_context_stops_before_brave() {
 		'Guided setup should preserve the unexpected context for diagnosis' || return 1
 	assert_contains "$COMMAND_OUTPUT" 'Recovery: choose Apply wallpapers in the Dotfiles wizard.' \
 		'unknown wallpaper context should name the standalone rerun route' || return 1
-	if [[ $COMMAND_OUTPUT == *'Guided phase 6:'* || $COMMAND_OUTPUT == *'Stub Brave apply outcome:'* || \
+	if [[ $COMMAND_OUTPUT == *'Guided phase 7:'* || $COMMAND_OUTPUT == *'Stub Brave apply outcome:'* || \
 		$COMMAND_OUTPUT == *'Guided setup complete.'* ]]; then
 		printf '  Guided setup continued after an unknown Wallpaper operation context\n' >&2
 		return 1
@@ -556,13 +573,13 @@ test_guided_brave_phase_maps_success() {
 	DOTFILES_TEST_INPUT='0\n\n' run_operation "$FIXTURE_ROOT" guided_setup
 
 	assert_eq 0 "$COMMAND_STATUS" 'a successful Brave apply should complete Guided setup' || return 1
-	assert_contains "$COMMAND_OUTPUT" 'Guided phase 6: optional Brave policy' 'Guided setup should announce phase six' || return 1
-	assert_contains "$COMMAND_OUTPUT" 'Stub Brave apply outcome: 0' 'phase six should call apply_brave_policy' || return 1
-	if [[ $COMMAND_OUTPUT == *'Guided phase 6 skipped:'* ]]; then
+	assert_contains "$COMMAND_OUTPUT" 'Guided phase 7: optional Brave policy' 'Guided setup should announce phase seven' || return 1
+	assert_contains "$COMMAND_OUTPUT" 'Stub Brave apply outcome: 0' 'phase seven should call apply_brave_policy' || return 1
+	if [[ $COMMAND_OUTPUT == *'Guided phase 7 skipped:'* ]]; then
 		printf '  a successful Brave apply was reported as skipped\n' >&2
 		return 1
 	fi
-	assert_contains "$COMMAND_OUTPUT" 'Guided setup complete.' 'successful phase six should complete Guided setup'
+	assert_contains "$COMMAND_OUTPUT" 'Guided setup complete.' 'successful phase seven should complete Guided setup'
 }
 
 test_guided_brave_phase_maps_decline_to_skip() {
@@ -574,8 +591,8 @@ test_guided_brave_phase_maps_decline_to_skip() {
 	DOTFILES_TEST_INPUT='0\n\n' run_operation "$FIXTURE_ROOT" guided_setup
 
 	assert_eq 0 "$COMMAND_STATUS" 'Brave outcome 10 should be a successful optional skip' || return 1
-	assert_contains "$COMMAND_OUTPUT" 'Stub Brave apply outcome: 10' 'phase six should preserve the decline outcome' || return 1
-	assert_contains "$COMMAND_OUTPUT" 'Guided phase 6 skipped: Brave policy plan declined.' \
+	assert_contains "$COMMAND_OUTPUT" 'Stub Brave apply outcome: 10' 'phase seven should preserve the decline outcome' || return 1
+	assert_contains "$COMMAND_OUTPUT" 'Guided phase 7 skipped: Brave policy plan declined.' \
 		'Guided setup should explain the declined optional phase' || return 1
 	assert_contains "$COMMAND_OUTPUT" 'Guided setup complete.' 'a declined optional phase should complete Guided setup'
 }
@@ -589,8 +606,8 @@ test_guided_brave_phase_maps_unavailable_to_skip() {
 	DOTFILES_TEST_INPUT='0\n\n' run_operation "$FIXTURE_ROOT" guided_setup
 
 	assert_eq 0 "$COMMAND_STATUS" 'Brave outcome 11 should be a successful optional skip' || return 1
-	assert_contains "$COMMAND_OUTPUT" 'Stub Brave apply outcome: 11' 'phase six should preserve the unavailable outcome' || return 1
-	assert_contains "$COMMAND_OUTPUT" 'Guided phase 6 skipped: no supported Brave browser is installed.' \
+	assert_contains "$COMMAND_OUTPUT" 'Stub Brave apply outcome: 11' 'phase seven should preserve the unavailable outcome' || return 1
+	assert_contains "$COMMAND_OUTPUT" 'Guided phase 7 skipped: no supported Brave browser is installed.' \
 		'Guided setup should explain the unavailable optional phase' || return 1
 	assert_contains "$COMMAND_OUTPUT" 'Guided setup complete.' 'an unavailable optional phase should complete Guided setup'
 }
@@ -605,10 +622,10 @@ test_guided_brave_phase_stops_after_completed_recovery() {
 
 	assert_eq 1 "$COMMAND_STATUS" 'completed Brave recovery should stop Guided setup with a normal failure' || return 1
 	assert_contains "$COMMAND_OUTPUT" 'Stub Brave apply outcome: 0; context: recovery-completed' \
-		'phase six should inspect completed recovery context after a successful public outcome' || return 1
+		'phase seven should inspect completed recovery context after a successful public outcome' || return 1
 	assert_contains "$COMMAND_OUTPUT" 'Recovery: choose Manage Brave policy in the Dotfiles wizard.' \
 		'completed recovery should direct the user to the standalone Brave action' || return 1
-	if [[ $COMMAND_OUTPUT == *'Guided phase 6 skipped:'* ]]; then
+	if [[ $COMMAND_OUTPUT == *'Guided phase 7 skipped:'* ]]; then
 		printf '  Guided setup reported completed Brave recovery as an optional skip\n' >&2
 		return 1
 	fi
@@ -628,10 +645,10 @@ test_guided_brave_phase_stops_when_recovery_is_declined() {
 
 	assert_eq 1 "$COMMAND_STATUS" 'declined Brave recovery should stop Guided setup with a normal failure' || return 1
 	assert_contains "$COMMAND_OUTPUT" 'Stub Brave apply outcome: 10; context: recovery-declined' \
-		'phase six should inspect declined recovery context after a declined public outcome' || return 1
+		'phase seven should inspect declined recovery context after a declined public outcome' || return 1
 	assert_contains "$COMMAND_OUTPUT" 'Recovery: choose Manage Brave policy in the Dotfiles wizard.' \
 		'declined recovery should direct the user to the standalone Brave action' || return 1
-	if [[ $COMMAND_OUTPUT == *'Guided phase 6 skipped:'* ]]; then
+	if [[ $COMMAND_OUTPUT == *'Guided phase 7 skipped:'* ]]; then
 		printf '  Guided setup reported declined Brave recovery as an optional skip\n' >&2
 		return 1
 	fi
@@ -650,9 +667,9 @@ test_guided_brave_phase_stops_on_operational_failure() {
 	DOTFILES_TEST_INPUT='0\n\n' run_operation "$FIXTURE_ROOT" guided_setup
 
 	assert_eq 73 "$COMMAND_STATUS" 'an untyped Brave failure should stop with its original outcome' || return 1
-	assert_contains "$COMMAND_OUTPUT" 'Stub Brave apply outcome: 73' 'phase six should preserve the operational failure' || return 1
+	assert_contains "$COMMAND_OUTPUT" 'Stub Brave apply outcome: 73' 'phase seven should preserve the operational failure' || return 1
 	assert_contains "$COMMAND_OUTPUT" 'Recovery: choose Manage Brave policy in the Dotfiles wizard.' \
-		'phase-six failure recovery should name the standalone Brave action' || return 1
+		'phase-seven failure recovery should name the standalone Brave action' || return 1
 	if [[ $COMMAND_OUTPUT == *'Guided setup complete.'* ]]; then
 		printf '  Guided setup completed after a Brave operational failure\n' >&2
 		return 1
@@ -669,20 +686,20 @@ test_guided_power_policy_phase_outcomes() {
 		stub_guided_brave_apply 0
 		stub_guided_power_policy_outcome "$outcome" "$context"
 		DOTFILES_TEST_INPUT='0\n\n' run_operation "$FIXTURE_ROOT" guided_setup
-		assert_eq "$expected_status" "$COMMAND_STATUS" "$label should have its documented phase-seven outcome" || return 1
-		assert_contains "$COMMAND_OUTPUT" 'Guided phase 7: optional laptop power policy' "$label should reach phase seven after Brave" || return 1
-		assert_contains "$COMMAND_OUTPUT" "$expected_text" "$label should explain its phase-seven outcome" || return 1
+		assert_eq "$expected_status" "$COMMAND_STATUS" "$label should have its documented phase-eight outcome" || return 1
+		assert_contains "$COMMAND_OUTPUT" 'Guided phase 8: optional laptop power policy' "$label should reach phase eight after Brave" || return 1
+		assert_contains "$COMMAND_OUTPUT" "$expected_text" "$label should explain its phase-eight outcome" || return 1
 	done <<'EOF'
 success|0|ordinary|0|Guided setup complete.
-decline|10|ordinary|0|Guided phase 7 skipped: laptop power-policy plan declined.
-ineligible|11|ordinary|0|Guided phase 7 skipped: laptop battery or hibernation prerequisite is unavailable.
+decline|10|ordinary|0|Guided phase 8 skipped: laptop power-policy plan declined.
+ineligible|11|ordinary|0|Guided phase 8 skipped: laptop battery or hibernation prerequisite is unavailable.
 failure|73|ordinary|73|Recovery: choose Manage laptop power policy in the Dotfiles wizard.
 recovery-completed|0|recovery-completed|1|Recovery: choose Manage laptop power policy in the Dotfiles wizard.
 recovery-declined|10|recovery-declined|1|Recovery: choose Manage laptop power policy in the Dotfiles wizard.
 EOF
 }
 
-test_guided_setup_phase_four_uses_arch_aware_apply_flow() {
+test_guided_setup_phase_five_uses_arch_aware_apply_flow() {
 	new_fixture
 	add_package
 	set_package_arch_packages demo demo-runtime
@@ -691,21 +708,21 @@ test_guided_setup_phase_four_uses_arch_aware_apply_flow() {
 	seed_current_global_skills
 	make_applying_stow
 	stub_guided_brave_apply 11
-	DOTFILES_TEST_INPUT='1\n0\n1\ny\n' run_dotfiles "$FIXTURE_ROOT"
+	DOTFILES_TEST_INPUT='1\n0\n\n1\ny\n' run_dotfiles "$FIXTURE_ROOT"
 
 	assert_eq 0 "$COMMAND_STATUS" 'guided setup should apply a package with a missing Arch requirement' || return 1
 	assert_contains "$COMMAND_OUTPUT" 'demo-runtime (required by demo): will install' \
-		'guided phase 4 should show the same Arch requirement plan as standalone apply' || return 1
+		'guided phase 5 should show the same Arch requirement plan as standalone apply' || return 1
 	assert_contains "$COMMAND_OUTPUT" 'Arch packages installed and verified: demo-runtime' \
-		'guided phase 4 should use the shared installation and verification path' || return 1
+		'guided phase 5 should use the shared installation and verification path' || return 1
 	assert_eq 1 "$(awk '/Apply this complete Stow plan[?]/ { count++ } END { print count + 0 }' <<<"$COMMAND_OUTPUT")" \
-		'guided phase 4 should keep one complete Stow-plan confirmation' || return 1
+		'guided phase 5 should keep one complete Stow-plan confirmation' || return 1
 	assert_eq 2 "$(awk '/^stow --no-folding --simulate .* demo$/ { count++ } END { print count + 0 }' "$CALL_LOG")" \
-		'guided phase 4 should repeat simulation after installing a requirement' || return 1
+		'guided phase 5 should repeat simulation after installing a requirement' || return 1
 	assert_eq 1 "$(awk '/^pkg add demo-runtime[|]/ { count++ } END { print count + 0 }' "$CALL_LOG")" \
-		'guided phase 4 should install the missing requirement once' || return 1
+		'guided phase 5 should install the missing requirement once' || return 1
 	assert_eq "$FIXTURE_REPO/config/demo/.config/demo/config" "$(readlink -f "$FIXTURE_HOME/.config/demo/config")" \
-		'guided phase 4 should finish through the normal verified Stow apply'
+		'guided phase 5 should finish through the normal verified Stow apply'
 }
 
 test_guided_wallpaper_failure_stops_before_brave_with_recovery() {
@@ -724,7 +741,7 @@ test_guided_wallpaper_failure_stops_before_brave_with_recovery() {
 		'operational failure should retain its ordinary Wallpaper operation context' || return 1
 	assert_contains "$COMMAND_OUTPUT" 'Recovery: choose Apply wallpapers in the Dotfiles wizard.' \
 		'wallpaper failure should name its standalone recovery action' || return 1
-	if [[ $COMMAND_OUTPUT == *'Guided phase 6:'* || $COMMAND_OUTPUT == *'Stub Brave apply outcome:'* || \
+	if [[ $COMMAND_OUTPUT == *'Guided phase 7:'* || $COMMAND_OUTPUT == *'Stub Brave apply outcome:'* || \
 		$COMMAND_OUTPUT == *'Guided setup complete.'* ]]; then
 		printf '  Guided setup continued after wallpaper deployment failed\n' >&2
 		return 1
@@ -816,7 +833,7 @@ test_guided_bash_stow_selection_failure_reports_recovery() {
 	configure_cleanup_fakes
 	configure_skill_fakes
 	seed_current_global_skills
-	DOTFILES_TEST_INPUT='1\n0\n99\n' run_dotfiles "$FIXTURE_ROOT"
+	DOTFILES_TEST_INPUT='1\n0\n\n99\n' run_dotfiles "$FIXTURE_ROOT"
 
 	assert_eq 1 "$COMMAND_STATUS" 'an invalid Bash Stow selection should stop guided setup' || return 1
 	assert_contains "$COMMAND_OUTPUT" 'Error: invalid Stow package selection: 99' 'the invalid Bash selection should be identified' || return 1
@@ -878,6 +895,7 @@ test_make_wallpapers_launches_curation_manager() {
 set -e
 run_test test_top_level_menu_starts_with_guided_setup 'top-level menu starts with guided setup'
 run_test test_entrypoint_sources_brave_before_wizard 'entrypoint sources Brave before wizard orchestration'
+run_test test_entrypoint_sources_optional_applications_after_core_before_wizard 'entrypoint sources optional applications after core before wizard orchestration'
 run_test test_entrypoint_sources_power_policy_after_brave_before_wizard 'entrypoint sources laptop power policy after Brave before wizard orchestration'
 run_test test_entrypoint_sources_wallpapers_before_wizard 'entrypoint sources Wallpapers before wizard orchestration'
 run_test test_legacy_and_invalid_entry_forms_are_rejected 'legacy and invalid entry forms are rejected'
@@ -912,7 +930,7 @@ run_test test_guided_brave_phase_stops_after_completed_recovery 'guided Brave ph
 run_test test_guided_brave_phase_stops_when_recovery_is_declined 'guided Brave phase stops when recovery is declined'
 run_test test_guided_brave_phase_stops_on_operational_failure 'guided Brave phase stops on operational failure with recovery'
 run_test test_guided_power_policy_phase_outcomes 'guided laptop power-policy phase standard outcomes'
-run_test test_guided_setup_phase_four_uses_arch_aware_apply_flow 'guided setup phase 4 uses the Arch-aware apply flow'
+run_test test_guided_setup_phase_five_uses_arch_aware_apply_flow 'guided setup phase 5 uses the Arch-aware apply flow'
 run_test test_guided_wallpaper_failure_stops_before_brave_with_recovery 'guided wallpaper failure stops before Brave with recovery'
 run_test test_guided_setup_installs_missing_imagemagick_through_omarchy 'guided setup installs missing ImageMagick through Omarchy'
 run_test test_guided_setup_stops_on_imagemagick_install_failure_with_action_recovery 'guided setup stops on ImageMagick installation failure with wizard recovery'

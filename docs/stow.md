@@ -14,7 +14,7 @@ Package operations disable Stow directory folding when they create links. New pa
 make
 ```
 
-The Dotfiles wizard has these Stow actions:
+The Dotfiles wizard has these actions:
 
 - `Guided setup`
 - `Package status`
@@ -23,6 +23,7 @@ The Dotfiles wizard has these Stow actions:
 - `Migrate existing target`
 - `Remove Stow package`
 - `Prepare prerequisites`
+- `Install optional applications`
 - `Manage screensaver effects`
 - `Manage laptop power policy`
 
@@ -37,10 +38,11 @@ The wizard uses Gum when it is available. Otherwise, it uses Bash prompts.
 1. Prerequisite preparation
 2. Pinned global skill installation
 3. Application cleanup
-4. Stow package application
-5. Wallpaper library deployment
-6. Optional shared Brave policy application
-7. Optional laptop power policy application
+4. Optional application installation
+5. Stow package application
+6. Wallpaper library deployment
+7. Optional shared Brave policy application
+8. Optional laptop power policy application
 
 Prerequisite preparation verifies GNU Stow, ImageMagick through `magick`, Node.js 22.20.0 or newer, npm, and npx. If a prerequisite is missing or does not meet its version requirement, the wizard shows one plan and asks for confirmation. Guided setup stops before later phases if you decline the plan, if installation fails, or if verification fails. This guide covers the Stow phase. See [Application cleanup](cleanup.md), [Agent setup](agent-setup.md), [Brave](brave.md), and [Laptop power policy](power-policy.md) for the other guided phases.
 
@@ -52,19 +54,23 @@ omarchy install dev-env node
 
 Omarchy manages the privilege prompts. The wizard verifies the tools after installation.
 
-The Stow phase shows one package multi-select screen. No package is selected by default. An empty selection skips the Stow phase. An operational failure stops Guided setup and names the standalone wizard action for recovery.
+Phase 4 calls the same operation as `Install optional applications`. Its multi-select picker starts empty. For a nonempty selection, the wizard reports the supported and detected Omarchy versions, checks exact package and conflict state, and shows one complete plan. It installs official and AUR packages through their matching Omarchy routes and verifies each exact package and declared command. Empty, declined, and already healthy selections are successful skips. A catalog, selection, conflict, compatibility, installation, or verification failure stops Guided setup and directs you to `Install optional applications`.
 
-After the Stow phase, phase 5 calls the same operation as `Apply wallpapers`. A declined plan, an empty unowned Wallpaper library, and an exact deployment no-op are successful skips. An operational failure stops Guided setup and directs you to `Apply wallpapers` for recovery.
+Phase 5 shows one package multi-select screen. No package is selected by default. An empty selection skips the Stow phase. An operational failure stops Guided setup and names the standalone wizard action for recovery.
 
-Phase 6 calls the same apply operation as `Manage Brave policy`. It skips successfully when no supported browser is installed or you decline the plan. It succeeds if the active policy already matches the shared Brave policy exactly or if the apply completes. An operational failure stops Guided setup and directs you to `Manage Brave policy` for recovery.
+After the Stow phase, phase 6 calls the same operation as `Apply wallpapers`. A declined plan, an empty unowned Wallpaper library, and an exact deployment no-op are successful skips. An operational failure stops Guided setup and directs you to `Apply wallpapers` for recovery.
 
-Phase 7 calls the same apply operation as `Manage laptop power policy`. Battery or hibernation ineligibility and an ordinary declined plan are successful skips. An exact active policy and a completed apply are successes. An unsafe path, unsupported Omarchy version, failed logind capability, failed transaction, or recovery outcome stops Guided setup and directs you to `Manage laptop power policy`.
+Phase 7 calls the same apply operation as `Manage Brave policy`. It skips successfully when no supported browser is installed or you decline the plan. It succeeds if the active policy already matches the shared Brave policy exactly or if the apply completes. An operational failure stops Guided setup and directs you to `Manage Brave policy` for recovery.
+
+Phase 8 calls the same apply operation as `Manage laptop power policy`. Battery or hibernation ineligibility and an ordinary declined plan are successful skips. An exact active policy and a completed apply are successes. An unsafe path, unsupported Omarchy version, failed logind capability, failed transaction, or recovery outcome stops Guided setup and directs you to `Manage laptop power policy`.
 
 ## Ownership
 
 Prefer Omarchy-supported user overrides. Track a complete configuration only when an override cannot express the required behavior and a human has reviewed the replacement scope.
 
 Packages target the user's home directory. A system target or another location requires a separate decision.
+
+Optional application installation is outside Stow and `packages.json`. The root `applications.json` catalog records install-only intent. It does not own application configuration, credentials, history, caches, or other state.
 
 The shared Brave policy is a copied system file, not a Stow package. It does not live below `config/` and has no `packages.json` entry. `Manage Brave policy` uses a separate preview, confirmation, backup, verification, recovery, and removal process for its root-owned system copy. See [Brave](brave.md).
 
@@ -94,6 +100,7 @@ Choose `Run structural checks` to validate:
 - Package prerequisites and validator executables
 - Package-specific Arch requirements
 - The application cleanup profile
+- The optional application catalog
 - The skill manifest and required global skill commands
 - The canonical shared Brave policy source
 - The canonical UPower `power-policy/upower.conf` and logind `power-policy/logind.conf` sources

@@ -18,7 +18,7 @@ Start the Dotfiles wizard with:
 make
 ```
 
-`Guided setup` installs pinned global skills after prerequisite preparation. It runs this phase before application cleanup and Stow package application.
+`Guided setup` installs pinned global skills after prerequisite preparation. It runs this phase before application cleanup, optional application installation, and Stow package application.
 
 The standalone menu actions are:
 

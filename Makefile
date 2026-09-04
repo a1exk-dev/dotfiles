@@ -1,8 +1,11 @@
 .DEFAULT_GOAL := wizard
 
-.PHONY: wizard skills skills-update wallpapers screensaver-effects test
+.PHONY: wizard applications skills skills-update wallpapers screensaver-effects test
 wizard:
 	@./bin/dotfiles
+
+applications:
+	@./bin/dotfiles --action applications
 
 skills:
 	@./bin/dotfiles --action skills

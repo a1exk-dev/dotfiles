@@ -140,8 +140,11 @@ check() {
 	done
 	[[ $missing == false ]] || return 1
 
-	inspect_environment
+	validate_catalog || return 1
+	validate_application_catalog || return 1
+	inspect_omarchy stdout
 	printf 'Package catalog: valid (%s packages)\n' "$(jq '.packages | length' "$PACKAGE_CATALOG")"
+	printf 'Optional application catalog: valid (%s applications)\n' "$(jq '.applications | length' "$APPLICATION_CATALOG")"
 	validate_cleanup_manifest
 	printf 'Cleanup manifest: valid (%s defaults)\n' "$(jq '[.packages[], .web_apps[], .tuis[]] | length' "$CLEANUP_MANIFEST")"
 	validate_skill_manifest
