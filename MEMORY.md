@@ -36,9 +36,9 @@ Reason: Omarchy's generic clone routing does not cover consumers that read the s
 
 Applies when: Planning, implementing, or diagnosing built-in touchpad suppression during typing on the supported Omarchy target.
 
-Guidance: On Hyprland 0.56.2 with libinput 1.31.3, first inspect the effective `input:touchpad:disable_while_typing` value instead of assuming the switch is missing. Native DWT uses a 200 ms first-key window and a 500 ms continued-typing timeout, keeps physical click buttons active, and exposes its 100-5000 ms timeout API only to the compositor; Hyprland 0.56.2 does not expose that timeout. Use dynamic internal-device classification rather than tracked device names, and establish a privacy-safe red-capable physical loop before selecting a custom mechanism. Revalidate these constraints when the supported Hyprland or libinput version changes.
+Guidance: On Hyprland 0.56.2 with libinput 1.31.3, first inspect the effective `input:touchpad:disable_while_typing` value instead of assuming the switch is missing. Native DWT uses a 200 ms first-key window and a 500 ms continued-typing timeout, keeps physical click buttons active, and exposes its 100-5000 ms timeout API only to the compositor; Hyprland 0.56.2 does not expose that timeout. A source-aware Hyprland plugin cannot guarantee complete event suppression or restoration through the available exact-stack APIs. No current mechanism meets the complete portable contract without relaxing its behavior or system boundaries, so retain native DWT unchanged and do not package a custom suppressor. Reconsider this decision only when the supported Hyprland or libinput version changes or the human explicitly changes those boundaries.
 
-Reason: Setting the existing Boolean cannot provide a configurable delay or complete suppression, and static classification alone cannot establish the cause of intermittent cursor movement.
+Reason: Setting the existing Boolean cannot provide a configurable delay or complete suppression, config-only key events lack source identity, and the plugin's event-ordering and state-ownership gaps prevent reliable failure restoration.
 
 ## Carry screensaver overrides through Hyprland dispatch
 
