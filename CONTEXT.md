@@ -12,6 +12,10 @@ A lowercase-named deployment unit under `config/<name>/` for one application or 
 
 The intended human interface for repository setup and operations. Guided setup runs eight phases in order: prerequisite preparation; pinned global agent-skill installation; application cleanup; optional application installation; Stow package application; Wallpaper library deployment; optional Shared Brave configuration application as phase seven; and optional Laptop power policy application as phase eight. Standalone actions provide each operation separately, including `Manage laptop power policy`. Public routes provide the same operations to Make targets, agents, scripts, and tests.
 
+## Portable input language setup
+
+The repository-owned desktop Hyprland/XKB behavior for default US English followed by default Russian. Physical keyboards share one active language, new physical keyboards join it, and the stock keyboard-layout indicator represents it on a healthy visible bar. A bare Left Ctrl+Left Shift chord switches on the first modifier release, while a third non-modifier key cancels the switch. The application boundary matches stock Hyprland/XKB switching and excludes console input, input-method-owned or captured guest keymaps, and applications that bypass compositor key handling.
+
 ## Shared Brave configuration
 
 One repository-owned managed-policy intent for Brave Browser and Brave Origin. Both products consume the same system policy, while browser profiles, Omarchy-owned launch flags and color policy, theme state, and font settings remain outside this boundary. Product differences belong to installed-consumer detection and manual guidance rather than duplicated policy sources.
