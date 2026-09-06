@@ -44,9 +44,17 @@ Reason: Setting the existing Boolean cannot provide a configurable delay or comp
 
 Applies when: Planning, implementing, or validating the Portable input language setup's bare Left Ctrl+Left Shift shortcut or physical-keyboard synchronization.
 
-Guidance: Keep XKB free of group-toggle options and use a repository-owned Hyprland plugin built against the supported stack's installed headers. Require the plugin's complete build compatibility hash to match the running compositor and the compiler family and major version to match the compositor build; warn on compiler point-release differences. Rebuild and retest manually through Input Languages after a Hyprland-stack update rather than installing an update hook. Observe source-bearing, non-consuming keyboard signals; accept only non-virtual libinput devices with `ID_INPUT_KEYBOARD=1`; maintain one canonical physical-keyboard group; synchronize stock-widget requests without retaining excluded devices in that group; and let Input Languages Apply request a US reset only after a real mutation.
+Guidance: Keep XKB free of group-toggle options and use a repository-owned Hyprland plugin built against the supported stack's installed headers. Support this integration on Omarchy `4.0.2` through `4.x` only while automatic checks prove its Hyprland, menu, stock-widget, bar, refresh, and full-replacement seams. Require the plugin's complete build compatibility hash to match the running compositor and the compiler family and major version to match the compositor build; warn on compiler point-release differences. Rebuild and retest manually through Input Languages after a Hyprland-stack update rather than installing an update hook. Observe source-bearing, non-consuming keyboard signals; accept only non-virtual libinput devices with `ID_INPUT_KEYBOARD=1`; maintain one canonical physical-keyboard group; synchronize stock-widget requests without retaining excluded devices in that group; and let Input Languages Apply request a US reset only after a real mutation.
 
 Reason: Native XKB switches on the second modifier press, while Hyprland binds and submaps lack cancellable chord history and Lua and IPC lack raw source-device provenance. The exact-stack plugin seam alone exposes the event history, device identity, layout control, and stock indicator events needed to preserve three-key shortcuts and synchronize physical keyboards.
+
+## Verify portable input languages in layers
+
+Applies when: Implementing, validating, or changing the supported stack for the Portable input language setup.
+
+Guidance: Require static plugin and configuration checks, isolated command tests across real lifecycle phase boundaries, and active checks with one real physical keyboard and the healthy stock indicator. Prove two-physical-keyboard synchronization, hotplug, and unplug in automated plugin tests; record a two-real-keyboard run when hardware is available without making it a release gate. Run focused checks, the complete repository suite, and active checks before first release and after a Hyprland-stack change; after an Omarchy-only update, require the automatic integration-seam and full-replacement checks. Record exact versions, compatibility hashes, commands, and observations, and exclude failures unreachable through production inputs, dependencies, filesystem operations, reloads, or transaction phases.
+
+Reason: The unstable Hyprland plugin boundary and shared Omarchy seams need exact-stack and live-session evidence, while normal laptop use cannot guarantee second-keyboard hardware and exhaustive test-only fault states do not improve production confidence.
 
 ## Keep the input-language lifecycle transactional
 
