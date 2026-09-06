@@ -12,6 +12,6 @@
 
 ## System design
 
-- Let evidence-led KISS and YAGNI govern system design above all other principles. Choose the simplest design justified by current requirements and evidence.
+- Treat evidence-led KISS and YAGNI as equal primary system design heuristics. Choose the simplest path to the required result, and implement only what current requirements need.
 - Consider SOLID for every system design decision, and prefer composition over inheritance.
 - Design functionality and tests around standard usage and feasible failures reachable through production inputs, dependencies, or execution paths. Failures possible only through test-only construction are outside scope.
