@@ -40,6 +40,22 @@ Guidance: On Hyprland 0.56.2 with libinput 1.31.3, first inspect the effective `
 
 Reason: Setting the existing Boolean cannot provide a configurable delay or complete suppression, config-only key events lack source identity, and the plugin's event-ordering and state-ownership gaps prevent reliable failure restoration.
 
+## Keep cancellable input switching in an exact-stack plugin
+
+Applies when: Planning, implementing, or validating the Portable input language setup's bare Left Ctrl+Left Shift shortcut or physical-keyboard synchronization.
+
+Guidance: Keep XKB free of group-toggle options and use a repository-owned Hyprland plugin built against the supported stack's installed headers. Require the plugin's complete build compatibility hash to match the running compositor and the compiler family and major version to match the compositor build; warn on compiler point-release differences. Rebuild and retest manually through Input Languages after a Hyprland-stack update rather than installing an update hook. Observe source-bearing, non-consuming keyboard signals; accept only non-virtual libinput devices with `ID_INPUT_KEYBOARD=1`; maintain one canonical physical-keyboard group; synchronize stock-widget requests without retaining excluded devices in that group; and let Input Languages Apply request a US reset only after a real mutation.
+
+Reason: Native XKB switches on the second modifier press, while Hyprland binds and submaps lack cancellable chord history and Lua and IPC lack raw source-device provenance. The exact-stack plugin seam alone exposes the event history, device identity, layout control, and stock indicator events needed to preserve three-key shortcuts and synchronize physical keyboards.
+
+## Keep the input-language lifecycle transactional
+
+Applies when: Implementing, applying, removing, or maintaining the Portable input language setup.
+
+Guidance: Own the complete reviewed Hyprland user tree in one `hyprland` Stow package and canonical plugin source under `plugins/input-languages/`. Build immutable artifacts into XDG data and keep receipts, full-tree backups, pending recovery evidence, and diagnostics in XDG state. Use one confirmed full-tree migration, validate a new artifact before the live transition, and reload through its changed immutable path. Preserve exact no-ops. Automatically restore the complete pre-Apply state on failure, and block mutation behind `recovery-required` when restoration cannot be proved. Keep Omarchy Shell state unowned except for a recorded missing stock-widget insertion. Remove by restoring the verified pre-Apply tree; retain repository sources, Arch packages, backups, and lifecycle evidence. Route the package, Input Languages menu, Guided setup Stow selection, and Make entry through one backend. Warn that Omarchy refresh commands can write through Stow links, leaving review of resulting repository changes to the user.
+
+Reason: The full replacement must preserve personal Hyprland configuration, while Hyprland's unstable C++ ABI, path-based plugin reconciliation, shared Shell state, and refresh writers require one recoverable boundary without automatic update hooks or Git policy.
+
 ## Carry screensaver overrides through Hyprland dispatch
 
 Applies when: A user-owned Omarchy screensaver launcher must pass a private command or environment into terminals started through Hyprland's Lua dispatcher.
