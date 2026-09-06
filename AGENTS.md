@@ -12,6 +12,6 @@
 
 ## System design
 
-- Let evidence-led KISS govern system design. Choose the simplest design that meets current requirements.
+- Let evidence-led KISS and YAGNI govern system design above all other principles. Choose the simplest design justified by current requirements and evidence.
 - Consider SOLID for every system design decision, and prefer composition over inheritance.
 - Design functionality and tests around standard usage and feasible failures reachable through production inputs, dependencies, or execution paths. Failures possible only through test-only construction are outside scope.
