@@ -215,6 +215,19 @@ contract_changes_preserve_direct_source_identity() (
 	[[ $before == "$after" ]]
 )
 
+follower_changes_preserve_selectable_plugin_source_identity() (
+	set -e
+	new_structural_fixture
+	trap 'rm -rf -- "$STRUCTURAL_FIXTURE"' EXIT
+	local before after follower=$STRUCTURAL_FIXTURE/plugins/input-languages/src/fcitx-follower.cpp
+	before=$(bash -c 'source "$1"; input_languages_source_identity_from "$2/plugins/input-languages" "$2/config/hyprland/.config/hypr"' \
+		_ "$REPOSITORY_ROOT/lib/dotfiles/input-languages.sh" "$STRUCTURAL_FIXTURE")
+	printf '\n// changed follower\n' >>"$follower"
+	after=$(bash -c 'source "$1"; input_languages_source_identity_from "$2/plugins/input-languages" "$2/config/hyprland/.config/hypr"' \
+		_ "$REPOSITORY_ROOT/lib/dotfiles/input-languages.sh" "$STRUCTURAL_FIXTURE")
+	[[ $before == "$after" ]]
+)
+
 controller_adapter_source_contract_is_enforced() (
 	set -e
 	new_structural_fixture
@@ -254,6 +267,18 @@ helper_source_and_unit_contract_is_enforced() (
 	fixture_validator_reports 'helper service unit contract changed'
 )
 
+follower_source_contract_is_enforced() (
+	set -e
+	new_structural_fixture
+	trap 'rm -rf -- "$STRUCTURAL_FIXTURE"' EXIT
+	local plugin=$STRUCTURAL_FIXTURE/plugins/input-languages
+	rm "$plugin/include/fcitx-follower.hpp"
+	fixture_validator_reports 'plugin source is missing or unsafe' || return 1
+	cp "$REPOSITORY_ROOT/plugins/input-languages/include/fcitx-follower.hpp" "$plugin/include/fcitx-follower.hpp"
+	sed -i 's/SO_PEERCRED/SO_TYPE/' "$plugin/src/fcitx-follower.cpp"
+	fixture_validator_reports 'Fcitx follower mailbox, wake, IPC, or plugin coordination contract changed'
+)
+
 run_test healthy_sources_validate 'complete Input Languages sources validate'
 run_test group_toggle_is_rejected 'XKB group-toggle options are rejected'
 run_test invalid_lua_is_rejected 'invalid Hyprland Lua syntax is rejected'
@@ -267,7 +292,9 @@ run_test contract_inventory_and_syntax_drift_are_rejected 'contract inventory an
 run_test contract_shape_and_identity_drift_are_rejected 'contract shape and shared identity drift are rejected'
 run_test contract_constants_and_compatibility_drift_are_rejected 'contract constants and compatibility drift are rejected'
 run_test contract_changes_preserve_direct_source_identity 'contract-only changes preserve direct-XKB source identity'
+run_test follower_changes_preserve_selectable_plugin_source_identity 'follower changes stay outside selectable plugin source identity'
 run_test controller_adapter_source_contract_is_enforced 'Controller adapter source and transport contract are enforced'
 run_test helper_source_and_unit_contract_is_enforced 'helper protocol, source, and systemd unit contracts are enforced'
+run_test follower_source_contract_is_enforced 'follower mailbox, wake, IPC, and plugin coordination are enforced'
 
 finish_tests

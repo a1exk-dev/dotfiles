@@ -10,6 +10,9 @@ namespace {
 using InputLanguages::KeyState;
 using InputLanguages::Model;
 using InputLanguages::Coordinator;
+using InputLanguages::Language;
+using InputLanguages::LanguageTarget;
+using InputLanguages::TargetSink;
 
 constexpr uint32_t LEFT_CTRL = 29;
 constexpr uint32_t LEFT_SHIFT = 42;
@@ -20,6 +23,19 @@ void require(bool condition, const std::string& message) {
 		std::exit(1);
 	}
 }
+
+class RecordingTargetSink final : public TargetSink {
+  public:
+	explicit RecordingTargetSink(std::vector<std::string>& events) : m_events(events) {}
+
+	void offer(LanguageTarget target) noexcept override {
+		m_events.push_back(target.language == Language::Us ? "offer-us-" : "offer-ru-");
+		m_events.back() += std::to_string(target.generation);
+	}
+
+  private:
+	std::vector<std::string>& m_events;
+};
 }
 
 int main() {
@@ -210,4 +226,48 @@ int main() {
 		require(updates == std::vector<std::pair<InputLanguages::DeviceId, uint32_t>>({{1, 1}, {9, 0}}), "the first explicit excluded-device change is bridged");
 	}
 	std::cout << "ok - hotplug setup and the first later excluded request remain distinct\n";
+
+	{
+		std::vector<std::string> events;
+		RecordingTargetSink sink(events);
+		Coordinator coordinator([&events](InputLanguages::DeviceId id, uint32_t group) {
+			events.push_back("keyboard-" + std::to_string(id) + '-' + std::to_string(group));
+		}, &sink);
+		coordinator.addPhysical(1, 0);
+		coordinator.addPhysical(2, 0);
+		coordinator.key(1, LEFT_CTRL, KeyState::Pressed, true);
+		coordinator.key(1, LEFT_SHIFT, KeyState::Pressed, true);
+		coordinator.key(1, LEFT_CTRL, KeyState::Released, true);
+		require(events.size() == 3, "a canonical change updates two keyboards and offers one target");
+		auto physicalUpdates = std::vector(events.begin(), events.begin() + 2);
+		std::ranges::sort(physicalUpdates);
+		require(events.back() == "offer-ru-2" &&
+			physicalUpdates == std::vector<std::string>{"keyboard-1-1", "keyboard-2-1"},
+			"a canonical change is offered once after physical fan-out");
+
+		events.clear();
+		coordinator.layout(1, 1);
+		coordinator.addPhysical(3, 0);
+		require(events == std::vector<std::string>{"keyboard-3-1"},
+			"same-target observations and hotplug convergence do not offer a target");
+		require(coordinator.target() == LanguageTarget{.language = Language::Russian, .generation = 2},
+			"the coordinator retains one generation-tagged canonical target");
+
+		events.clear();
+		coordinator.addExcluded(9, 1, true);
+		coordinator.layout(9, 1);
+		require(events.empty(), "a same-target flag observation creates no offer");
+		coordinator.layout(9, 0);
+		require(events.size() == 5 && events.back() == "offer-us-3",
+			"an explicit flag request publishes once after restoring the flag source and physical fan-out");
+
+		events.clear();
+		coordinator.clear(0);
+		coordinator.addPhysical(1, 0);
+		coordinator.addPhysical(2, 0);
+		coordinator.keymapChanged();
+		require(events == std::vector<std::string>{"offer-us-4"},
+			"an effective keymap change publishes one explicit US target after rescan");
+	}
+	std::cout << "ok - canonical targets publish once after physical fan-out\n";
 }

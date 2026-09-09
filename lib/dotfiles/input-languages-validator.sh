@@ -80,7 +80,9 @@ done
 grep -Fq 'active-artifact.lua' "$package_root/hyprland.lua"
 grep -Fq 'hl.plugin.load(artifact)' "$package_root/hyprland.lua"
 
-for source in Makefile migration-baseline.json include/input-language-model.hpp src/input-language-model.cpp src/plugin.cpp tests/input-language-model-test.cpp \
+for source in Makefile migration-baseline.json include/input-language-model.hpp include/fcitx-follower.hpp src/input-language-model.cpp src/fcitx-follower.cpp \
+		src/plugin.cpp tests/input-language-model-test.cpp tests/fcitx-follower-test.cpp \
+		tests/input-language-integration-test.cpp \
 	tests/keyboard-layout-model-test.cjs widget/dotfiles.keyboard-layout/manifest.json widget/dotfiles.keyboard-layout/KeyboardLayout.qml \
 	widget/dotfiles.keyboard-layout/KeyboardLayoutModel.js; do
 	[[ -f $plugin_root/$source && ! -L $plugin_root/$source ]] || { printf 'Error: plugin source is missing or unsafe: %s\n' "$source" >&2; exit 1; }
@@ -125,6 +127,15 @@ grep -Fq 'pkg-config --cflags --libs libsystemd libcrypto' "$plugin_root/Makefil
 	! grep -Eq 'Fcitx5(Core|Utils)|-lfcitx' "$plugin_root/Makefile" "$plugin_root/src/fcitx-sd-bus-transport.cpp" \
 		"$plugin_root/src/fcitx-helper.cpp" "$plugin_root/src/fcitx-helper-main.cpp" || {
 	printf 'Error: Controller adapter must use libsystemd without Fcitx ABI linkage.\n' >&2
+	exit 1
+}
+grep -Fq 'SOCK_SEQPACKET | SOCK_NONBLOCK | SOCK_CLOEXEC' "$plugin_root/src/fcitx-follower.cpp" &&
+	grep -Fq 'MSG_DONTWAIT | MSG_TRUNC' "$plugin_root/src/fcitx-follower.cpp" &&
+	grep -Fq 'SO_PEERCRED' "$plugin_root/src/fcitx-follower.cpp" &&
+	grep -Fq -- '-DINPUT_LANGUAGES_FCITX_COORDINATION' "$plugin_root/Makefile" &&
+	! grep -Eq '(^|[^[:alnum:]_])(fork|exec[lvpe]*|system|posix_spawn|sd_bus)[[:space:]_(]' \
+		"$plugin_root/include/fcitx-follower.hpp" "$plugin_root/src/fcitx-follower.cpp" || {
+	printf 'Error: Fcitx follower mailbox, wake, IPC, or plugin coordination contract changed.\n' >&2
 	exit 1
 }
 socket_unit=$plugin_root/systemd/dotfiles-input-languages-fcitx.socket

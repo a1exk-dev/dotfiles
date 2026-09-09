@@ -1,4 +1,7 @@
 #include "input-language-model.hpp"
+#ifdef INPUT_LANGUAGES_FCITX_COORDINATION
+#include "fcitx-follower.hpp"
+#endif
 
 #include <aquamarine/input/Input.hpp>
 #include <hyprland/src/event/EventBus.hpp>
@@ -63,6 +66,134 @@ std::string jsonString(std::string_view value) {
 	return result;
 }
 
+#ifdef INPUT_LANGUAGES_FCITX_COORDINATION
+class FcitxCoordination final : public InputLanguages::TargetSink {
+  public:
+	void initialize(InputLanguages::LanguageTarget target) noexcept {
+		try {
+			m_follower = std::make_unique<InputLanguages::Fcitx::FcitxFollower>(InputLanguages::Fcitx::FollowerOptions{
+				.buildId = INPUT_LANGUAGES_BUILD_ID,
+				.sourceId = INPUT_LANGUAGES_SOURCE_ID,
+				.socketPath = InputLanguages::Fcitx::FcitxFollower::defaultSocketPath(),
+			}, target);
+		} catch (...) {
+			m_initializationFailed = true;
+		}
+	}
+
+	void offer(InputLanguages::LanguageTarget target) noexcept override {
+		if (m_follower)
+			m_follower->offer(target);
+	}
+
+	[[nodiscard]] bool enabled() const { return true; }
+
+	void appendHealth(std::ostringstream& output, InputLanguages::LanguageTarget target) const {
+		using InputLanguages::Fcitx::FollowerConnection;
+		auto follower = m_follower ? m_follower->snapshot() : InputLanguages::Fcitx::FollowerSnapshot{};
+		if (m_initializationFailed) {
+			follower.target = target;
+			follower.connection = FollowerConnection::Failed;
+			follower.outcome = InputLanguages::Fcitx::Protocol::Outcome::HelperFailed;
+			follower.diagnostic = "follower initialization failed";
+		}
+		output << ",\"authority_session\":" << jsonString(InputLanguages::Fcitx::FcitxFollower::authoritySessionHex(follower.authoritySession))
+			   << ",\"helper_connection\":" << jsonString(connectionName(follower.connection))
+			   << ",\"helper_build_id\":" << (follower.connection == FollowerConnection::Connected ? jsonString(INPUT_LANGUAGES_BUILD_ID) : "null")
+			   << ",\"protocol_identity\":" << jsonString(InputLanguages::Fcitx::Protocol::IDENTITY)
+			   << ",\"offered_generation\":" << follower.target.generation
+			   << ",\"accepted_generation\":";
+		appendOptional(output, follower.acceptedGeneration);
+		output << ",\"acknowledged_generation\":";
+		appendOptional(output, follower.acknowledgedGeneration);
+		output << ",\"report_sequence\":";
+		appendOptional(output, follower.reportSequence);
+		output << ",\"report_age_milliseconds\":";
+		if (follower.reportAge)
+			output << follower.reportAge->count();
+		else
+			output << "null";
+		output << ",\"coalesced_targets\":" << follower.coalescedTargets
+			   << ",\"fcitx_owner_epoch\":" << follower.ownerEpoch
+			   << ",\"managed_group_state\":" << jsonString(managedGroupName(follower.managedGroupState))
+			   << ",\"observed_method\":" << jsonString(follower.observedMethod)
+			   << ",\"retry_phase\":" << jsonString(retryPhaseName(follower.retryPhase))
+			   << ",\"outcome\":" << jsonString(outcomeName(follower.outcome))
+			   << ",\"diagnostic\":" << jsonString(follower.diagnostic)
+			   << ",\"report_stale\":" << (follower.stale ? "true" : "false");
+	}
+
+  private:
+	static void appendOptional(std::ostringstream& output, std::optional<uint64_t> value) {
+		if (value)
+			output << *value;
+		else
+			output << "null";
+	}
+
+	static std::string_view connectionName(InputLanguages::Fcitx::FollowerConnection connection) {
+		switch (connection) {
+			case InputLanguages::Fcitx::FollowerConnection::Connected: return "connected";
+			case InputLanguages::Fcitx::FollowerConnection::Disconnected: return "disconnected";
+			case InputLanguages::Fcitx::FollowerConnection::Failed: return "failed";
+			case InputLanguages::Fcitx::FollowerConnection::Incompatible: return "incompatible";
+		}
+		return "failed";
+	}
+
+	static std::string_view managedGroupName(InputLanguages::Fcitx::Protocol::ManagedGroupState state) {
+		switch (state) {
+			case InputLanguages::Fcitx::Protocol::ManagedGroupState::Unknown: return "unknown";
+			case InputLanguages::Fcitx::Protocol::ManagedGroupState::Exact: return "exact";
+			case InputLanguages::Fcitx::Protocol::ManagedGroupState::Missing: return "missing";
+			case InputLanguages::Fcitx::Protocol::ManagedGroupState::Foreign: return "foreign";
+		}
+		return "unknown";
+	}
+
+	static std::string_view outcomeName(InputLanguages::Fcitx::Protocol::Outcome outcome) {
+		switch (outcome) {
+			case InputLanguages::Fcitx::Protocol::Outcome::Pending: return "pending";
+			case InputLanguages::Fcitx::Protocol::Outcome::Converged: return "converged";
+			case InputLanguages::Fcitx::Protocol::Outcome::IdleNoContext: return "idle-no-context";
+			case InputLanguages::Fcitx::Protocol::Outcome::Drift: return "drift";
+			case InputLanguages::Fcitx::Protocol::Outcome::Unavailable: return "unavailable";
+			case InputLanguages::Fcitx::Protocol::Outcome::Disconnected: return "disconnected";
+			case InputLanguages::Fcitx::Protocol::Outcome::TimeoutIndeterminate: return "timeout-indeterminate";
+			case InputLanguages::Fcitx::Protocol::Outcome::MethodError: return "method-error";
+			case InputLanguages::Fcitx::Protocol::Outcome::ConfigurationConflict: return "configuration-conflict";
+			case InputLanguages::Fcitx::Protocol::Outcome::UnsupportedInterface: return "unsupported-interface";
+			case InputLanguages::Fcitx::Protocol::Outcome::ProtocolError: return "protocol-error";
+			case InputLanguages::Fcitx::Protocol::Outcome::HelperFailed: return "helper-failed";
+		}
+		return "helper-failed";
+	}
+
+	static std::string_view retryPhaseName(InputLanguages::Fcitx::Protocol::RetryPhase phase) {
+		switch (phase) {
+			case InputLanguages::Fcitx::Protocol::RetryPhase::None: return "none";
+			case InputLanguages::Fcitx::Protocol::RetryPhase::Poll: return "poll";
+			case InputLanguages::Fcitx::Protocol::RetryPhase::Read: return "read";
+			case InputLanguages::Fcitx::Protocol::RetryPhase::Write: return "write";
+			case InputLanguages::Fcitx::Protocol::RetryPhase::ReadBeforeRetry: return "read-before-retry";
+			case InputLanguages::Fcitx::Protocol::RetryPhase::Backoff: return "backoff";
+		}
+		return "none";
+	}
+
+	std::unique_ptr<InputLanguages::Fcitx::FcitxFollower> m_follower;
+	bool m_initializationFailed = false;
+};
+#else
+class FcitxCoordination final : public InputLanguages::TargetSink {
+  public:
+	void initialize(InputLanguages::LanguageTarget) noexcept {}
+	void offer(InputLanguages::LanguageTarget) noexcept override {}
+	[[nodiscard]] bool enabled() const { return false; }
+	void appendHealth(std::ostringstream&, InputLanguages::LanguageTarget) const {}
+};
+#endif
+
 bool isPhysicalTypingKeyboard(const SP<IKeyboard>& keyboard) {
 	if (!keyboard || !keyboard->aq())
 		return false;
@@ -89,6 +220,8 @@ class InputLanguagePlugin {
   public:
 	explicit InputLanguagePlugin(HANDLE handle) : m_handle(handle), m_coordinator([this](InputLanguages::DeviceId id, uint32_t group) { applyGroup(id, group); }) {
 		scanKeyboards(true, currentPhysicalGroup());
+		m_fcitx.initialize(m_coordinator.target());
+		m_coordinator.setTargetSink(&m_fcitx);
 		// Hyprland emits layout while setupKeyboard applies a hotplugged device's keymap.
 		m_layoutListener = Event::bus()->m_events.input.keyboard.layout.listen(
 			[this](SP<IKeyboard> keyboard, const std::string&) { onKeyboardLayout(std::move(keyboard)); });
@@ -227,7 +360,10 @@ class InputLanguagePlugin {
 
 	void onPropsRefreshed() {
 		const auto currentIdentity = currentKeymapIdentity();
+		const bool keymapChanged = m_keymapBeforeReload != currentIdentity;
 		scanKeyboards(true, InputLanguages::groupAfterKeymapReload(m_keymapBeforeReload, currentIdentity, m_groupBeforeReload));
+		if (keymapChanged)
+			m_coordinator.keymapChanged();
 		m_reloading = false;
 	}
 
@@ -276,7 +412,26 @@ class InputLanguagePlugin {
 			first = false;
 			output << jsonString(device.keyboard->m_hlName);
 		}
-		output << "]}";
+		output << ']';
+		if (m_fcitx.enabled()) {
+			const auto target = m_coordinator.target();
+			output << ",\"direct_xkb_health\":" << jsonString(m_coordinator.synchronized() ? "healthy" : "unhealthy")
+				   << ",\"canonical_language\":" << jsonString(target.language == InputLanguages::Language::Us ? "US" : "Russian")
+				   << ",\"canonical_generation\":" << target.generation
+				   << ",\"physical_synchronized\":" << (m_coordinator.synchronized() ? "true" : "false")
+				   << ",\"physical_groups\":[";
+			first = true;
+			for (const auto& [_, device] : m_physical) {
+				if (!first)
+					output << ',';
+				first = false;
+				output << "{\"name\":" << jsonString(device->keyboard->m_hlName)
+					   << ",\"group\":" << device->keyboard->getActiveLayoutIndex().value_or(0) % 2 << '}';
+			}
+			output << ']';
+			m_fcitx.appendHealth(output, target);
+		}
+		output << '}';
 		return output.str();
 	}
 
@@ -286,6 +441,7 @@ class InputLanguagePlugin {
 	bool m_reloading = false;
 	std::string m_keymapBeforeReload;
 	InputLanguages::Coordinator m_coordinator;
+	FcitxCoordination m_fcitx;
 	std::unordered_map<IKeyboard*, std::unique_ptr<PhysicalDevice>> m_physical;
 	std::unordered_map<IKeyboard*, ExcludedDevice> m_excluded;
 	CHyprSignalListener m_layoutListener;

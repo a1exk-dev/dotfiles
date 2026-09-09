@@ -102,7 +102,12 @@ Coordinator::PhysicalDevice::PhysicalDevice(Coordinator& owner, DeviceId id, uin
 	chord.adoptGroup(initialGroup);
 }
 
-Coordinator::Coordinator(std::function<void(DeviceId, uint32_t)> updateGroup) : m_updateGroup(std::move(updateGroup)) {}
+Coordinator::Coordinator(std::function<void(DeviceId, uint32_t)> updateGroup, TargetSink* targetSink) :
+	m_updateGroup(std::move(updateGroup)), m_targetSink(targetSink) {}
+
+void Coordinator::setTargetSink(TargetSink* targetSink) {
+	m_targetSink = targetSink;
+}
 
 void Coordinator::clear(uint32_t canonicalGroup) {
 	m_physical.clear();
@@ -166,8 +171,16 @@ void Coordinator::reset(uint32_t group) {
 	setCanonical(group);
 }
 
+void Coordinator::keymapChanged() {
+	publishTarget();
+}
+
 uint32_t Coordinator::group() const {
 	return m_group;
+}
+
+LanguageTarget Coordinator::target() const {
+	return {.language = m_group == 0 ? Language::Us : Language::Russian, .generation = m_generation};
 }
 
 bool Coordinator::synchronized() const {
@@ -197,7 +210,10 @@ std::vector<DeviceId> Coordinator::excludedDevices() const {
 }
 
 void Coordinator::setCanonical(uint32_t nextGroup) {
-	m_group = nextGroup % 2;
+	nextGroup %= 2;
+	if (nextGroup == m_group)
+		return;
+	m_group = nextGroup;
 	for (auto& [id, device] : m_physical) {
 		device->chord.adoptGroup(m_group);
 		if (device->group == m_group)
@@ -205,6 +221,13 @@ void Coordinator::setCanonical(uint32_t nextGroup) {
 		device->group = m_group;
 		m_updateGroup(id, m_group);
 	}
+	publishTarget();
+}
+
+void Coordinator::publishTarget() {
+	++m_generation;
+	if (m_targetSink)
+		m_targetSink->offer(target());
 }
 
 }

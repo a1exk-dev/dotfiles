@@ -12,6 +12,19 @@
 namespace InputLanguages {
 
 enum class KeyState { Pressed, Released };
+enum class Language { Us, Russian };
+
+struct LanguageTarget {
+	Language language = Language::Us;
+	uint64_t generation = 1;
+	bool operator==(const LanguageTarget&) const = default;
+};
+
+class TargetSink {
+  public:
+	virtual ~TargetSink() = default;
+	virtual void offer(LanguageTarget target) noexcept = 0;
+};
 
 class Model {
   public:
@@ -44,7 +57,8 @@ using DeviceId = uintptr_t;
 
 class Coordinator {
   public:
-	explicit Coordinator(std::function<void(DeviceId, uint32_t)> updateGroup);
+	explicit Coordinator(std::function<void(DeviceId, uint32_t)> updateGroup, TargetSink* targetSink = nullptr);
+	void setTargetSink(TargetSink* targetSink);
 
 	void clear(uint32_t canonicalGroup);
 	void addPhysical(DeviceId id, uint32_t currentGroup);
@@ -53,8 +67,10 @@ class Coordinator {
 	void key(DeviceId id, uint32_t keycode, KeyState state, bool isModifier);
 	void layout(DeviceId id, uint32_t group);
 	void reset(uint32_t group = 0);
+	void keymapChanged();
 
 	[[nodiscard]] uint32_t group() const;
+	[[nodiscard]] LanguageTarget target() const;
 	[[nodiscard]] bool synchronized() const;
 	[[nodiscard]] std::vector<DeviceId> physicalDevices() const;
 	[[nodiscard]] std::vector<DeviceId> excludedDevices() const;
@@ -73,11 +89,14 @@ class Coordinator {
 	};
 
 	void setCanonical(uint32_t group);
+	void publishTarget();
 
 	std::function<void(DeviceId, uint32_t)> m_updateGroup;
+	TargetSink* m_targetSink = nullptr;
 	std::unordered_map<DeviceId, std::unique_ptr<PhysicalDevice>> m_physical;
 	std::unordered_map<DeviceId, ExcludedDevice> m_excluded;
 	uint32_t m_group = 0;
+	uint64_t m_generation = 1;
 };
 
 }
