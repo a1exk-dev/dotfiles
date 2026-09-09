@@ -1,0 +1,23 @@
+{
+	"version": 1,
+	"integration": "dotfiles-input-languages-fcitx-v1",
+	"files": [
+		"active-fixtures.json",
+		"authority.json",
+		"evidence-v3.json",
+		"fcitx.json",
+		"health.json",
+		"manifest.json",
+		"protocol.json",
+		"systemd.json"
+	],
+	"contracts": {
+		"authority": "dotfiles-input-languages-authority-v1",
+		"evidence": "dotfiles-input-languages-evidence-v3",
+		"fcitx": "dotfiles-input-languages-fcitx-controller-v1",
+		"fixtures": "dotfiles-input-languages-active-fixtures-v1",
+		"health": "dotfiles-input-languages-health-v1",
+		"protocol": "dotfiles-input-languages-fcitx-seqpacket-v1",
+		"systemd": "dotfiles-input-languages-fcitx-systemd-v1"
+	}
+}

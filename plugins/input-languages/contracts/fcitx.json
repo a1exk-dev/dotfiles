@@ -1,0 +1,108 @@
+{
+	"version": 1,
+	"integration": "dotfiles-input-languages-fcitx-v1",
+	"identity": "dotfiles-input-languages-fcitx-controller-v1",
+	"compatibility": {
+		"upstream_version": "5.1.21",
+		"upstream_tag_commit": "1319952f284eae17a36cba9e800843ca61a163c1",
+		"arch_release_suffix_is_semantic": false,
+		"transport_library": "libsystemd",
+		"bus_api": "sd-bus",
+		"event_api": "sd-event",
+		"fcitx_cpp_abi_linkage": false
+	},
+	"controller": {
+		"well_known_name": "org.fcitx.Fcitx5",
+		"object_path": "/controller",
+		"interface": "org.fcitx.Fcitx.Controller1",
+		"activation": "no-auto-start",
+		"addressing": "unique-owner",
+		"members": {
+			"AddInputMethodGroup": {"type": "method", "input": "s", "output": ""},
+			"AvailableInputMethods": {"type": "method", "input": "", "output": "a(ssssssb)"},
+			"CurrentInputMethod": {"type": "method", "input": "", "output": "s"},
+			"CurrentInputMethodGroup": {"type": "method", "input": "", "output": "s"},
+			"DebugInfo": {"type": "method", "input": "", "output": "s"},
+			"FullInputMethodGroupInfo": {"type": "method", "input": "s", "output": "sssa{sv}a(sssssssbsa{sv})"},
+			"GetAddonsV2": {"type": "method", "input": "", "output": "a(sssibbbasas)"},
+			"InputMethodGroupInfo": {"type": "method", "input": "s", "output": "sa(ss)"},
+			"InputMethodGroups": {"type": "method", "input": "", "output": "as"},
+			"InputMethodGroupsChanged": {"type": "signal", "input": "", "output": ""},
+			"RemoveInputMethodGroup": {"type": "method", "input": "s", "output": ""},
+			"Save": {"type": "method", "input": "", "output": ""},
+			"SetCurrentIM": {"type": "method", "input": "s", "output": ""},
+			"SetInputMethodGroupInfo": {"type": "method", "input": "ssa(ss)", "output": ""},
+			"SwitchInputMethodGroup": {"type": "method", "input": "s", "output": ""}
+		}
+	},
+	"compatibility_gates": {
+		"changed_apply_members": [
+			"AddInputMethodGroup",
+			"AvailableInputMethods",
+			"CurrentInputMethod",
+			"CurrentInputMethodGroup",
+			"DebugInfo",
+			"FullInputMethodGroupInfo",
+			"GetAddonsV2",
+			"InputMethodGroupInfo",
+			"InputMethodGroups",
+			"InputMethodGroupsChanged",
+			"RemoveInputMethodGroup",
+			"Save",
+			"SetCurrentIM",
+			"SetInputMethodGroupInfo",
+			"SwitchInputMethodGroup"
+		],
+		"narrow_restoration_members": [
+			"AddInputMethodGroup",
+			"CurrentInputMethod",
+			"CurrentInputMethodGroup",
+			"FullInputMethodGroupInfo",
+			"InputMethodGroups",
+			"RemoveInputMethodGroup",
+			"Save",
+			"SetCurrentIM",
+			"SetInputMethodGroupInfo",
+			"SwitchInputMethodGroup"
+		],
+		"narrow_restoration_requires": [
+			"exact-listed-signatures",
+			"supported-group-semantics",
+			"supervised-unique-owner",
+			"safe-profile-and-owned-paths",
+			"valid-version-3-receipt-and-restoration-anchors"
+		]
+	},
+	"managed_group": {
+		"name": "Dotfiles Input Languages",
+		"default_layout": "us",
+		"default_im_allowed": ["", "keyboard-us", "keyboard-ru"],
+		"items": [
+			{"method": "keyboard-us", "layout_override": ""},
+			{"method": "keyboard-ru", "layout_override": ""}
+		],
+		"existing_name_policy": "collision",
+		"mutation_seam": "Controller1-followed-by-Save"
+	},
+	"required_addons": ["keyboard", "dbus", "dbusfrontend"],
+	"delivery": {
+		"maximum_in_flight_operations": 1,
+		"poll_seconds": 1,
+		"call_deadline_seconds": 1,
+		"repair_retry_seconds": [1, 2, 4, 8],
+		"repair_retry_cap_seconds": 8,
+		"timed_out_write_next_operation": "read",
+		"backoff_reset_on": ["new-target", "new-owner"]
+	},
+	"unowned": [
+		"profile-bytes",
+		"unrelated-groups",
+		"addons",
+		"cached-layouts",
+		"xcompose",
+		"environment",
+		"launcher-policy",
+		"autostart-policy",
+		"omarchy-fcitx5.service"
+	]
+}

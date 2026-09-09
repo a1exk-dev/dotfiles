@@ -1,6 +1,6 @@
 # Dotfiles
 
-Portable dotfiles for Omarchy version 4. GNU Stow links tracked configuration into the user's home directory. The Dotfiles wizard manages prerequisites, pinned global agent skills, application cleanup, optional application installation, Stow packages, repository wallpapers, the optional shared Brave configuration, optional laptop power policy, Telegram Desktop's optional Omarchy theme integration, and selective active-theme Omarchy screensaver effects.
+Portable dotfiles for Omarchy version 4. GNU Stow links tracked configuration into the user's home directory. The Dotfiles wizard manages prerequisites, pinned global agent skills, application cleanup, optional application installation, Stow packages, repository wallpapers, Portable input languages, the optional shared Brave configuration, optional laptop power policy, Telegram Desktop's optional Omarchy theme integration, and selective active-theme Omarchy screensaver effects.
 
 ## Requirements
 
@@ -19,6 +19,8 @@ Optional application installation requires `omarchy`. The wizard installs offici
 USB modem recovery requires `sudo`, `nmcli`, `readlink`, Linux sysfs, and an xHCI controller with bind and unbind controls.
 
 Stow package application, migration, and removal require GNU Stow. The wizard can install it through Omarchy after confirmation. Migration also requires a writable absolute `XDG_STATE_HOME`, or the default `~/.local/state`, for backups.
+
+The `hyprland` Stow package provides Portable input languages for Omarchy `4.0.2` or newer within version 4. Apply requires a running Hyprland session whose ABI matches the installed headers, plus GCC, Make, pkgconf, binutils, Lua, GNU Stow, `xkbcli`, `jq`, `flock`, and the stock Omarchy Shell commands and keyboard-layout widget. The package plan installs `hyprland`, `gcc`, `make`, `pkgconf`, `binutils`, and `lua` through Omarchy after confirmation. Apply, Remove, and recovery require writable absolute XDG data and state directories, or their defaults below `~/.local/`. Input Languages requires `XDG_CONFIG_HOME` to be unset or exactly `$HOME/.config`. The `HOME`, XDG, repository source, and lifecycle paths must not contain symbolic-link components. Existing lifecycle-owned data, artifact, and state directories must be owned by the invoking user with mode `0700`.
 
 The `opencode` Stow package owns complete global OpenCode runtime and TUI settings. It requires OpenCode installed through Omarchy 4's Mise flow, but it does not install or update OpenCode.
 
@@ -73,6 +75,8 @@ Choose `Manage Telegram theme` to inspect status, run the approved bootstrap ref
 
 Choose `Manage laptop power policy` for `Status`, `Apply`, `Remove`, and recovery of an interrupted policy transaction.
 
+Choose `Settings`, then `Input Languages`, to inspect, apply, or remove the fixed US and Russian Hyprland setup. Its stock-derived bar widget shows a text-free monochrome US or Russian flag in the current theme color immediately after the system tray and before the other right-side controls. You can also run `make input-languages`. Input methods such as Fcitx keep their own language state and are outside this setup.
+
 Choose `Apply Stow packages` and select `screensaver-effects` to link and activate the selective screensaver integration. After activation, run `make screensaver-effects` to change the tracked allowlist or preview an installed mapped effect. The manager requires terminal input and output.
 
 Place candidate images in `wallpapers/inbox/`, then choose `Manage wallpapers` or run `make wallpapers`. The manager validates each Intake image, adds its Theme assignments under `wallpapers/library/`, and creates one Git commit for new assignment paths. The commit subject is `Add managed wallpaper <digest-prefix>`. If every assignment is already in Git, Add removes the duplicate Intake image without creating an empty commit. Choose `Apply wallpapers` to deploy the library as regular Omarchy background files. Choose `Remove deployed wallpapers` to remove unchanged receipt-owned copies.
@@ -87,6 +91,8 @@ Place candidate images in `wallpapers/inbox/`, then choose `Manage wallpapers` o
 - `config/opencode/`: complete global OpenCode runtime and TUI settings
 - `config/telegram-theme/`: Telegram Desktop theme generator and Omarchy integration assets
 - `config/screensaver-effects/`: tracked allowlist, Omarchy plugin clones, launcher, runtime shim, and selector
+- `config/hyprland/`: complete Portable input language Hyprland configuration
+- `plugins/input-languages/`: exact-stack Hyprland plugin source and behavior tests
 - `wallpapers/inbox/`: ignored Intake images awaiting review
 - `wallpapers/library/`: tracked Managed wallpapers grouped by Theme assignment
 - `packages.json`: package catalog
@@ -120,6 +126,7 @@ bash tests/opencode_test.sh
 - [OpenCode](docs/opencode.md)
 - [Telegram Desktop theme integration](docs/telegram-theme.md)
 - [Selective screensaver effects](docs/screensaver-effects.md)
+- [Portable input languages](docs/input-languages.md)
 - [ZTE USB modem recovery](docs/usb-modem.md)
 - [Application cleanup](docs/cleanup.md)
 - [Agent setup](docs/agent-setup.md)

@@ -1,0 +1,23 @@
+{
+	"schemaVersion": 1,
+	"id": "dotfiles.keyboard-layout",
+	"name": "Flag keyboard layout",
+	"version": "1.0.0",
+	"author": "Dotfiles",
+	"description": "Current US or Russian keyboard layout as a flag, click cycles",
+	"kinds": [
+		"bar-widget"
+	],
+	"entryPoints": {
+		"barWidget": "KeyboardLayout.qml"
+	},
+	"barWidget": {
+		"displayName": "Flag keyboard layout",
+		"description": "Current US or Russian keyboard layout as a flag, click cycles",
+		"category": "Compositor",
+		"allowMultiple": false
+	},
+	"omarchy": {
+		"clonedFrom": "omarchy.keyboard-layout"
+	}
+}

@@ -27,6 +27,9 @@ readonly SUITES=(
 	wallpaper_validator_test.sh
 	wallpaper_curation_test.sh
 	wallpaper_lifecycle_test.sh
+	input_languages_structural_test.sh
+	input_languages_plugin_test.sh
+	input_languages_lifecycle_test.sh
 	wizard_test.sh
 )
 

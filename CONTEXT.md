@@ -14,7 +14,11 @@ The intended human interface for repository setup and operations. Guided setup r
 
 ## Portable input language setup
 
-The repository-owned desktop Hyprland/XKB behavior for default US English followed by default Russian. Physical keyboards share one active language, new physical keyboards join it, and the stock keyboard-layout indicator represents it on a healthy visible bar. A bare Left Ctrl+Left Shift chord switches on the first modifier release, while a third non-modifier key cancels the switch. The application boundary matches stock Hyprland/XKB switching and excludes console input, input-method-owned or captured guest keymaps, and applications that bypass compositor key handling.
+The repository-owned desktop Hyprland/XKB behavior for default US English followed by default Russian. Physical keyboards share one active language, new physical keyboards join it, and a lifecycle-owned `dotfiles.keyboard-layout` clone preserves stock device and click behavior while rendering a text-free monochrome US or Russian flag in the current bar foreground at `right[0]`. Omarchy pins `omarchy.tray` ahead of it, so the flag appears immediately after the system tray and before the other right-side controls. A bare Left Ctrl+Left Shift chord switches on the first modifier release, while a third non-modifier key cancels the switch. The application boundary matches stock Hyprland/XKB switching and excludes console input, input-method-owned or captured guest keymaps, and applications that bypass compositor key handling.
+
+## Covered desktop input surface
+
+The unit of application coverage for the planned Fcitx expansion of Portable input languages: a focused editable surface whose effective route is either direct compositor or XWayland XKB, or a supported and verified Fcitx protocol or toolkit path. Coverage follows the surface and route rather than the executable, and excludes console input, captured guest input, raw or custom keymap handling, and unverified or disabled input-method routes.
 
 ## Shared Brave configuration
 

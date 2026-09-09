@@ -1370,11 +1370,11 @@ if [[ \$identify == true ]]; then printf '%s|4|3\n' "\$format"; fi
 	printf 'outside packaged Omarchy\n' >"$OUTSIDE_ROOT/packaged-omarchy/sentinel"
 	OUTSIDE_SNAPSHOT=$(snapshot_outside_canaries)
 	: >"$CALL_LOG"
-	printf '%s\n' thefuck tmux fzf less starship btop telegram-desktop zip ttfx jq socat >"$ARCH_PACKAGE_STATE"
+	printf '%s\n' thefuck tmux fzf less starship btop telegram-desktop zip ttfx jq socat hyprland gcc make pkgconf binutils lua >"$ARCH_PACKAGE_STATE"
 	cp "$SOURCE_REPO/bin/dotfiles" "$FIXTURE_REPO/bin/dotfiles"
 	if [[ ${DOTFILES_TEST_MINIMAL_WALLPAPER_FIXTURE:-false} == true ]]; then
 		cp "$SOURCE_REPO/lib/dotfiles/core.sh" "$SOURCE_REPO/lib/dotfiles/wallpapers.sh" \
-			"$SOURCE_REPO/lib/dotfiles/wizard.sh" "$FIXTURE_REPO/lib/dotfiles/"
+			"$SOURCE_REPO/lib/dotfiles/input-languages.sh" "$SOURCE_REPO/lib/dotfiles/wizard.sh" "$FIXTURE_REPO/lib/dotfiles/"
 	else
 		cp "$SOURCE_REPO/lib/dotfiles/"*.sh "$FIXTURE_REPO/lib/dotfiles/"
 	fi
@@ -1398,10 +1398,15 @@ if [[ \$identify == true ]]; then printf '%s|4|3\n' "\$format"; fi
 		if [[ -d $SOURCE_REPO/config ]]; then
 			cp -a "$SOURCE_REPO/config" "$FIXTURE_REPO/config"
 		fi
+		if [[ -d $SOURCE_REPO/plugins ]]; then
+			cp -a "$SOURCE_REPO/plugins" "$FIXTURE_REPO/plugins"
+		fi
 		if [[ -d $SOURCE_REPO/docs ]]; then
 			cp -a "$SOURCE_REPO/docs" "$FIXTURE_REPO/docs"
 		fi
 	fi
+	mkdir -p "$FIXTURE_OMARCHY/config"
+	cp -a /usr/share/omarchy/config/hypr "$FIXTURE_OMARCHY/config/hypr"
 	mkdir -p "$FIXTURE_REPO/wallpapers/inbox" "$FIXTURE_REPO/wallpapers/library"
 	cp "$SOURCE_REPO/wallpapers/inbox/.gitkeep" "$FIXTURE_REPO/wallpapers/inbox/.gitkeep"
 	if [[ ${DOTFILES_TEST_MINIMAL_WALLPAPER_FIXTURE:-false} != true ]]; then
@@ -2025,6 +2030,9 @@ run_operation() {
 			source "$repository/lib/dotfiles/applications.sh"
 			if [[ -f $repository/lib/dotfiles/screensaver-effects.sh ]]; then
 				source "$repository/lib/dotfiles/screensaver-effects.sh"
+			fi
+			if [[ -f $repository/lib/dotfiles/input-languages.sh ]]; then
+				source "$repository/lib/dotfiles/input-languages.sh"
 			fi
 			source "$repository/lib/dotfiles/packages.sh"
 			source "$repository/lib/dotfiles/skills.sh"

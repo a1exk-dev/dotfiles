@@ -19,6 +19,31 @@ wizard_choose() {
 	printf '%s\n' "${!selection}"
 }
 
+wizard_choose_repeating() {
+	local prompt=$1
+	shift
+	if wizard_uses_gum; then
+		gum choose --header "$prompt" "$@"
+		return
+	fi
+	local index option selection
+	while :; do
+		printf '%s\n' "$prompt" >&2
+		index=1
+		for option in "$@"; do
+			printf '  %d. %s\n' "$index" "$option" >&2
+			index=$((index + 1))
+		done
+		printf 'Choice: ' >&2
+		read -r selection || return 1
+		if [[ $selection =~ ^[0-9]+$ && $selection -ge 1 && $selection -le $# ]]; then
+			printf '%s\n' "${!selection}"
+			return 0
+		fi
+		printf 'Invalid choice: enter a number from 1 to %d.\n' "$#" >&2
+	done
+}
+
 wizard_input() {
 	local prompt=$1
 	if wizard_uses_gum; then
@@ -119,9 +144,22 @@ wizard_run_action() {
 		wallpapers-remove) remove_wallpapers ;;
 		screensaver-effects) manage_screensaver_effects ;;
 		screensaver-effects-migrate) migrate_screensaver_effects --interactive ;;
+		settings) manage_settings ;;
+		input-languages) manage_input_languages ;;
 		exit) printf 'No action selected.\n' ;;
 		*) printf 'Error: unknown wizard action: %s\n' "$action" >&2; return 2 ;;
 	esac
+}
+
+manage_settings() {
+	local choice
+	while :; do
+		choice=$(wizard_choose_repeating 'Settings' 'Input Languages' Back) || choice=Back
+		case $choice in
+			'Input Languages') manage_input_languages ;;
+			Back) return 0 ;;
+		esac
+	done
 }
 
 guided_setup() {
@@ -255,18 +293,23 @@ wizard() {
 		labels+=('Migrate competing screensaver clones')
 		actions+=(screensaver-effects-migrate)
 	fi
-	labels+=('Manage screensaver effects' 'Manage laptop power policy' 'Exit')
-	actions+=(screensaver-effects power-policy exit)
-	if ! choice=$(wizard_choose 'Choose an action (none selected by default)' "${labels[@]}"); then
-		printf 'No action selected.\n'
-		return 0
-	fi
-	local index
-	for index in "${!labels[@]}"; do
-		if [[ ${labels[$index]} == "$choice" ]]; then
-			wizard_run_action "${actions[$index]}"
-			return
+	labels+=('Manage screensaver effects' 'Manage laptop power policy' 'Settings' 'Exit')
+	actions+=(screensaver-effects power-policy settings exit)
+	while :; do
+		if ! choice=$(wizard_choose 'Choose an action (none selected by default)' "${labels[@]}"); then
+			printf 'No action selected.\n'
+			return 0
 		fi
+		local index
+		for index in "${!labels[@]}"; do
+			if [[ ${labels[$index]} == "$choice" ]]; then
+				wizard_run_action "${actions[$index]}"
+				if [[ ${actions[$index]} == settings ]]; then
+					break
+				fi
+				return 0
+			fi
+		done
+		[[ $choice == Settings ]] || { printf 'No action selected.\n'; return 0; }
 	done
-	printf 'No action selected.\n'
 }

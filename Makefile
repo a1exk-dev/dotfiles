@@ -1,6 +1,6 @@
 .DEFAULT_GOAL := wizard
 
-.PHONY: wizard applications skills skills-update wallpapers screensaver-effects test
+.PHONY: wizard applications skills skills-update wallpapers screensaver-effects input-languages test
 wizard:
 	@./bin/dotfiles
 
@@ -18,6 +18,9 @@ wallpapers:
 
 screensaver-effects:
 	@./bin/dotfiles --action screensaver-effects
+
+input-languages:
+	@./bin/dotfiles --action input-languages
 
 test:
 	@./tests/run.sh

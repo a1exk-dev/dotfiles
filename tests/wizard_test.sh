@@ -70,6 +70,12 @@ manage_screensaver_effects() { printf 'Stub screensaver effects manager\n'; }
 EOF
 }
 
+stub_input_languages_backend() {
+	cat >>"$FIXTURE_REPO/lib/dotfiles/wizard.sh" <<'EOF'
+apply_input_languages() { printf 'Stub Input Languages Apply: %s\n' "$*"; }
+EOF
+}
+
 stub_guided_phases_after_prerequisites() {
 	cat >>"$FIXTURE_REPO/lib/dotfiles/wizard.sh" <<'EOF'
 install_skills() { printf 'Stub guided skills\n'; }
@@ -87,9 +93,62 @@ test_top_level_menu_starts_with_guided_setup() {
 	run_dotfiles "$FIXTURE_ROOT"
 
 	assert_eq 0 "$COMMAND_STATUS" 'an empty menu choice should safely exit' || return 1
-	assert_contains "$COMMAND_OUTPUT" $'  1. Guided setup\n  2. Package status\n  3. Run structural checks\n  4. Apply Stow packages\n  5. Migrate existing target\n  6. Remove Stow package\n  7. Prepare prerequisites\n  8. Clean up Omarchy applications\n  9. Install optional applications\n  10. Install pinned global skills\n  11. Update pinned global skills\n  12. Recover ZTE USB modem\n  13. Manage Brave policy\n  14. Manage Telegram theme\n  15. Manage wallpapers\n  16. Apply wallpapers\n  17. Remove deployed wallpapers\n  18. Manage screensaver effects\n  19. Manage laptop power policy\n  20. Exit' \
+	assert_contains "$COMMAND_OUTPUT" $'  1. Guided setup\n  2. Package status\n  3. Run structural checks\n  4. Apply Stow packages\n  5. Migrate existing target\n  6. Remove Stow package\n  7. Prepare prerequisites\n  8. Clean up Omarchy applications\n  9. Install optional applications\n  10. Install pinned global skills\n  11. Update pinned global skills\n  12. Recover ZTE USB modem\n  13. Manage Brave policy\n  14. Manage Telegram theme\n  15. Manage wallpapers\n  16. Apply wallpapers\n  17. Remove deployed wallpapers\n  18. Manage screensaver effects\n  19. Manage laptop power policy\n  20. Settings\n  21. Exit' \
 		'optional applications should follow cleanup and later actions should remain available' || return 1
 	assert_contains "$COMMAND_OUTPUT" 'No action selected.' 'no action should be selected by default'
+}
+
+test_input_languages_menu_hierarchy_and_make_route() {
+	new_fixture
+	DOTFILES_TEST_INPUT='20\n1\n4\n2\n21\n' run_dotfiles "$FIXTURE_ROOT"
+	assert_eq 0 "$COMMAND_STATUS" 'Settings and Input Languages Back should each return one level' || return 1
+	assert_contains "$COMMAND_OUTPUT" $'Settings\n  1. Input Languages\n  2. Back' 'Settings should contain only Input Languages and Back' || return 1
+	assert_contains "$COMMAND_OUTPUT" $'Input Languages\n  1. Status\n  2. Apply\n  3. Remove\n  4. Back' 'Input Languages should expose the settled operation order' || return 1
+	assert_eq 2 "$(grep -c 'Choose an action (none selected by default)' <<<"$COMMAND_OUTPUT")" 'Settings Back should return to the main menu' || return 1
+
+	DOTFILES_TEST_INPUT='4\n' run_in_sandbox "$FIXTURE_ROOT" "$FIXTURE_BIN:/usr/bin:/bin" make --no-print-directory -C "$FIXTURE_REPO" input-languages
+	assert_eq 0 "$COMMAND_STATUS" 'make input-languages should open the shared manager' || return 1
+	assert_contains "$COMMAND_OUTPUT" $'Input Languages\n  1. Status\n  2. Apply\n  3. Remove\n  4. Back' 'Make should dispatch directly to the same manager'
+}
+
+test_input_languages_bash_invalid_choice_repeats_and_eof_backs() {
+	new_fixture
+	DOTFILES_TEST_INPUT='invalid\n4\n' run_dotfiles "$FIXTURE_ROOT" --action input-languages
+	assert_eq 0 "$COMMAND_STATUS" 'invalid input followed by Back should leave safely' || return 1
+	assert_contains "$COMMAND_OUTPUT" 'Invalid choice: enter a number from 1 to 4.' 'invalid Bash input should explain the accepted range' || return 1
+	assert_eq 2 "$(grep -c '^Input Languages$' <<<"$COMMAND_OUTPUT")" 'invalid input should repeat the current menu' || return 1
+
+	run_dotfiles "$FIXTURE_ROOT" --action input-languages
+	assert_eq 0 "$COMMAND_STATUS" 'end-of-file should act as Back'
+}
+
+test_input_languages_gum_navigation_matches_bash() {
+	new_fixture
+	local responses=$FIXTURE_ROOT/gum-responses
+	printf 'Settings\nInput Languages\nBack\nBack\nExit\n' >"$responses"
+	make_gum_responder
+	DOTFILES_UI=gum DOTFILES_TEST_GUM_RESPONSES=$responses run_dotfiles "$FIXTURE_ROOT"
+	assert_eq 0 "$COMMAND_STATUS" 'Gum Back should return through Input Languages, Settings, and Main Menu' || return 1
+	assert_contains "$(<"$CALL_LOG")" 'gum choose --header Input Languages Status Apply Remove Back' 'Gum should expose the same operation order' || return 1
+	assert_contains "$(<"$CALL_LOG")" 'gum choose --header Settings Input Languages Back' 'Gum should expose the same Settings hierarchy'
+}
+
+test_input_languages_results_wait_for_explicit_navigation() {
+	new_fixture
+	stub_input_languages_backend
+	DOTFILES_TEST_INPUT='2\n1\n4\n' run_dotfiles "$FIXTURE_ROOT" --action input-languages
+	assert_eq 0 "$COMMAND_STATUS" 'Apply result navigation should return to Input Languages before leaving' || return 1
+	assert_contains "$COMMAND_OUTPUT" 'Stub Input Languages Apply:' 'Apply should invoke the shared backend' || return 1
+	assert_contains "$COMMAND_OUTPUT" $'Input Languages result\n  1. Return to Input Languages\n  2. Status' \
+		'Bash should retain the result with explicit return and Status destinations' || return 1
+
+	local responses=$FIXTURE_ROOT/gum-responses
+	printf 'Apply\nReturn to Input Languages\nBack\n' >"$responses"
+	make_gum_responder
+	DOTFILES_UI=gum DOTFILES_TEST_GUM_RESPONSES=$responses run_dotfiles "$FIXTURE_ROOT" --action input-languages
+	assert_eq 0 "$COMMAND_STATUS" 'Gum should expose the same explicit result navigation' || return 1
+	assert_contains "$(<"$CALL_LOG")" 'gum choose --header Input Languages result Return to Input Languages Status' \
+		'Gum should retain the result with equivalent destinations'
 }
 
 test_entrypoint_sources_brave_before_wizard() {
@@ -155,8 +214,8 @@ test_legacy_and_invalid_entry_forms_are_rejected() {
 	run_dotfiles "$FIXTURE_ROOT" status
 	assert_eq 2 "$COMMAND_STATUS" 'a removed public route should be rejected' || return 1
 	assert_contains "$COMMAND_OUTPUT" 'Usage: bin/dotfiles [--action' 'invalid entry use should explain the supported interface' || return 1
-	assert_contains "$COMMAND_OUTPUT" 'applications|skills|skills-update|modem|brave|telegram-theme|wallpapers|wallpapers-apply|wallpapers-remove|screensaver-effects|screensaver-effects-migrate|power-policy>]' \
-		'usage should advertise every wallpaper, screensaver, and laptop-power-policy public action' || return 1
+	assert_contains "$COMMAND_OUTPUT" 'applications|skills|skills-update|modem|brave|telegram-theme|wallpapers|wallpapers-apply|wallpapers-remove|screensaver-effects|screensaver-effects-migrate|power-policy|settings|input-languages>]' \
+		'usage should advertise every existing action and the Input Languages routes' || return 1
 	assert_contains "$COMMAND_OUTPUT" 'wallpapers-apply: deploy the Wallpaper library' \
 		'usage should distinguish deployment Apply from curation' || return 1
 	assert_contains "$COMMAND_OUTPUT" 'wallpapers-remove: remove receipt-owned deployed wallpapers' \
@@ -475,11 +534,30 @@ test_guided_setup_orders_and_skips_nonessential_phases() {
 	assert_contains "$COMMAND_OUTPUT" 'No cleanup items selected' 'empty cleanup should continue' || return 1
 	assert_contains "$COMMAND_OUTPUT" 'No optional applications selected' 'empty optional application selection should continue' || return 1
 	assert_contains "$COMMAND_OUTPUT" 'No Stow packages selected' 'empty Stow selection should continue' || return 1
+	assert_contains "$COMMAND_OUTPUT" '[ ] hyprland' 'Guided setup should offer hyprland unselected in the existing Stow phase' || return 1
 	assert_contains "$COMMAND_OUTPUT" 'Stub wallpaper Apply outcome: 0' \
 		'Guided setup should use the public wallpaper Apply operation' || return 1
 	assert_contains "$COMMAND_OUTPUT" 'Guided phase 7 skipped: no supported Brave browser is installed.' \
 		'an unavailable browser should skip the new optional phase' || return 1
 	assert_contains "$COMMAND_OUTPUT" 'Guided setup complete.' 'all skipped nonessential phases should complete the guide'
+}
+
+test_guided_setup_reuses_input_languages_backend_in_stow_phase() {
+	new_fixture
+	configure_cleanup_fakes
+	configure_skill_fakes
+	seed_current_global_skills
+	stub_guided_brave_apply 11
+	stub_input_languages_backend
+	DOTFILES_TEST_INPUT='0\n\n9\n' run_operation "$FIXTURE_ROOT" guided_setup
+
+	assert_eq 0 "$COMMAND_STATUS" 'Guided setup should apply a selected hyprland package through its existing Stow phase' || return 1
+	assert_eq 1 "$(grep -c '^Stub Input Languages Apply:' <<<"$COMMAND_OUTPUT")" 'Guided setup should invoke the shared backend exactly once' || return 1
+	assert_contains "$COMMAND_OUTPUT" 'Guided phase 5: Stow application' 'Input Languages should remain in the existing Stow phase' || return 1
+	if [[ $COMMAND_OUTPUT == *'Guided phase 6: Input Languages'* ]]; then
+		printf '  Input Languages must not add a Guided setup phase\n' >&2
+		return 1
+	fi
 }
 
 test_guided_wallpaper_ordinary_success_continues_to_brave() {
@@ -894,6 +972,10 @@ test_make_wallpapers_launches_curation_manager() {
 
 set -e
 run_test test_top_level_menu_starts_with_guided_setup 'top-level menu starts with guided setup'
+run_test test_input_languages_menu_hierarchy_and_make_route 'Input Languages menu hierarchy and Make route'
+run_test test_input_languages_bash_invalid_choice_repeats_and_eof_backs 'Input Languages Bash invalid choice and EOF behavior'
+run_test test_input_languages_gum_navigation_matches_bash 'Input Languages Gum navigation matches Bash'
+run_test test_input_languages_results_wait_for_explicit_navigation 'Input Languages results wait for explicit navigation'
 run_test test_entrypoint_sources_brave_before_wizard 'entrypoint sources Brave before wizard orchestration'
 run_test test_entrypoint_sources_optional_applications_after_core_before_wizard 'entrypoint sources optional applications after core before wizard orchestration'
 run_test test_entrypoint_sources_power_policy_after_brave_before_wizard 'entrypoint sources laptop power policy after Brave before wizard orchestration'
@@ -919,6 +1001,7 @@ run_test test_prerequisites_upgrade_old_node 'prerequisites upgrade an old Node.
 run_test test_prerequisites_reject_missing_core_tool 'prerequisites reject a missing core tool with wizard recovery'
 run_test test_cleanup_skills_and_update_standalone_actions 'cleanup and skill operations remain standalone actions'
 run_test test_guided_setup_orders_and_skips_nonessential_phases 'guided setup orders and skips nonessential phases'
+run_test test_guided_setup_reuses_input_languages_backend_in_stow_phase 'Guided setup reuses Input Languages backend in the Stow phase'
 run_test test_guided_wallpaper_ordinary_success_continues_to_brave 'guided ordinary wallpaper success continues to Brave'
 run_test test_guided_wallpaper_ordinary_skips_continue_to_brave 'guided ordinary wallpaper skips continue to Brave'
 run_test test_guided_wallpaper_recovery_completed_stops_before_brave 'guided completed wallpaper recovery stops before Brave'
