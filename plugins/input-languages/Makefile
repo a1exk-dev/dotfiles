@@ -8,11 +8,12 @@ PLUGIN_FLAGS := -shared -fPIC -fno-gnu-unique
 WIDGET_ID := dotfiles.keyboard-layout
 WIDGET_SOURCE := widget/$(WIDGET_ID)
 
-.PHONY: test check artifact clean
+.PHONY: test check helper artifact clean
 
-test: $(BUILD_DIR)/input-language-model-test $(BUILD_DIR)/fcitx-controller-test
+test: $(BUILD_DIR)/input-language-model-test $(BUILD_DIR)/fcitx-controller-test $(BUILD_DIR)/fcitx-helper-test
 	@$(BUILD_DIR)/input-language-model-test
 	@$(BUILD_DIR)/fcitx-controller-test
+	@$(BUILD_DIR)/fcitx-helper-test
 
 $(BUILD_DIR)/input-language-model-test: tests/input-language-model-test.cpp src/input-language-model.cpp include/input-language-model.hpp
 	@mkdir -p "$(BUILD_DIR)"
@@ -23,11 +24,20 @@ $(BUILD_DIR)/fcitx-controller-test: tests/fcitx-controller-test.cpp src/fcitx-co
 	$(CXX) $(CPPFLAGS) $(CXXFLAGS) tests/fcitx-controller-test.cpp src/fcitx-controller.cpp src/fcitx-sd-bus-transport.cpp -o "$@" \
 		$$(pkg-config --cflags --libs libsystemd libcrypto)
 
+$(BUILD_DIR)/fcitx-helper-test: tests/fcitx-helper-test.cpp src/fcitx-helper.cpp src/fcitx-protocol.cpp src/fcitx-controller.cpp include/fcitx-helper.hpp include/fcitx-protocol.hpp include/fcitx-controller.hpp
+	@mkdir -p "$(BUILD_DIR)"
+	$(CXX) $(CPPFLAGS) $(CXXFLAGS) tests/fcitx-helper-test.cpp src/fcitx-helper.cpp src/fcitx-protocol.cpp src/fcitx-controller.cpp -o "$@" -pthread
+
 check:
 	@tmp=$$(mktemp -d "$${TMPDIR:-/tmp}/input-languages-check.XXXXXX"); \
 	trap 'rm -rf -- "$$tmp"' EXIT; \
 	$(MAKE) --no-print-directory artifact OUTPUT_DIR="$$tmp" BUILD_ID=static-check SOURCE_ID=static-check COMPILER_ID="$(COMPILER_ID)"; \
+	$(MAKE) --no-print-directory helper OUTPUT_FILE="$$tmp/input-languages-fcitx-helper" \
+		BUILD_ID=0000000000000000000000000000000000000000000000000000000000000000 \
+		SOURCE_ID=1111111111111111111111111111111111111111111111111111111111111111; \
 	file "$$tmp/input-languages.so" | grep -F 'shared object' >/dev/null; \
+	file "$$tmp/input-languages-fcitx-helper" | grep -F 'ELF' | grep -F 'executable' >/dev/null; \
+	test -x "$$tmp/input-languages-fcitx-helper"; \
 	for symbol in pluginAPIVersion pluginInit pluginExit; do \
 		nm -D --defined-only "$$tmp/input-languages.so" | grep -Eq "[[:space:]]$$symbol$$" || exit 1; \
 	done; \
@@ -38,7 +48,21 @@ check:
 	printf '%s\n' "$$identity" | grep -F 'build_id=static-check' >/dev/null; \
 	printf '%s\n' "$$identity" | grep -F 'source_id=static-check' >/dev/null; \
 	printf '%s\n' "$$identity" | grep -F 'compiler=$(COMPILER_ID)' >/dev/null; \
-	test "$$(find "$$tmp/$(WIDGET_ID)" -mindepth 1 -maxdepth 1 -printf '%f\n' | LC_ALL=C sort)" = "$$(printf '%s\n' KeyboardLayout.qml KeyboardLayoutModel.js manifest.json | LC_ALL=C sort)"
+	test "$$(find "$$tmp/$(WIDGET_ID)" -mindepth 1 -maxdepth 1 -printf '%f\n' | LC_ALL=C sort)" = "$$(printf '%s\n' KeyboardLayout.qml KeyboardLayoutModel.js manifest.json | LC_ALL=C sort)"; \
+	cp systemd/dotfiles-input-languages-fcitx.socket "$$tmp/dotfiles-input-languages-fcitx.socket"; \
+	sed "s|@ARTIFACT_DIR@|$$tmp|" systemd/dotfiles-input-languages-fcitx.service >"$$tmp/dotfiles-input-languages-fcitx.service"; \
+	systemd-analyze verify "$$tmp/dotfiles-input-languages-fcitx.socket" "$$tmp/dotfiles-input-languages-fcitx.service"
+
+helper:
+	@test -n "$(OUTPUT_FILE)" || { printf 'OUTPUT_FILE is required\n' >&2; exit 2; }
+	@printf '%s\n' "$(BUILD_ID)" | grep -Eq '^[0-9a-f]{64}$$' || { printf 'BUILD_ID must be a lowercase SHA-256 digest\n' >&2; exit 2; }
+	@printf '%s\n' "$(SOURCE_ID)" | grep -Eq '^[0-9a-f]{64}$$' || { printf 'SOURCE_ID must be a lowercase SHA-256 digest\n' >&2; exit 2; }
+	@mkdir -p "$$(dirname -- "$(OUTPUT_FILE)")"
+	$(CXX) $(CPPFLAGS) $(CXXFLAGS) \
+		-DINPUT_LANGUAGES_BUILD_ID='"$(BUILD_ID)"' \
+		-DINPUT_LANGUAGES_SOURCE_ID='"$(SOURCE_ID)"' \
+		src/fcitx-helper-main.cpp src/fcitx-helper.cpp src/fcitx-protocol.cpp src/fcitx-controller.cpp src/fcitx-sd-bus-transport.cpp \
+		-o "$(OUTPUT_FILE)" -pthread $$(pkg-config --cflags --libs libsystemd libcrypto)
 
 artifact:
 	@test -n "$(OUTPUT_DIR)" || { printf 'OUTPUT_DIR is required\n' >&2; exit 2; }

@@ -1,0 +1,10 @@
+[Unit]
+Description=Dotfiles input languages Fcitx helper
+StartLimitIntervalSec=30s
+StartLimitBurst=5
+
+[Service]
+Type=simple
+ExecStart=@ARTIFACT_DIR@/input-languages-fcitx-helper
+Restart=on-failure
+RestartSec=2s

@@ -169,7 +169,10 @@ class ControllerAdapter {
 	explicit ControllerAdapter(ControllerTransport& transport);
 	[[nodiscard]] AdapterResult inspect() noexcept;
 	[[nodiscard]] AdapterResult installManagedGroup(std::string desiredMethod) noexcept;
-	[[nodiscard]] AdapterResult convergeMethod(std::string desiredMethod) noexcept;
+	[[nodiscard]] AdapterResult convergeMethod(
+		std::string desiredMethod,
+		uint64_t deliveryGeneration = 0,
+		const std::function<bool()>& stillCurrent = {}) noexcept;
 	[[nodiscard]] AdapterResult restore(const Snapshot& prior) noexcept;
 
   private:
@@ -181,18 +184,20 @@ class ControllerAdapter {
 	};
 
 	[[nodiscard]] unsigned nextRetry() noexcept;
-	void resetRetry(std::string_view desiredMethod, uint64_t ownerEpoch) noexcept;
-	[[nodiscard]] AdapterResult saveSnapshot(Snapshot snapshot) noexcept;
+	void resetRetry(std::string_view desiredMethod, uint64_t ownerEpoch, uint64_t deliveryGeneration = 0) noexcept;
+	[[nodiscard]] AdapterResult saveSnapshot(Snapshot snapshot, const std::function<bool()>& stillCurrent = {}) noexcept;
 	[[nodiscard]] std::optional<AdapterResult> runVerifiedMutation(
 		Snapshot& last,
 		const Command& command,
-		const std::function<bool(const Snapshot&, const Snapshot&)>& verify) noexcept;
+		const std::function<bool(const Snapshot&, const Snapshot&)>& verify,
+		const std::function<bool()>& stillCurrent = {}) noexcept;
 
 	ControllerTransport& m_transport;
 	std::optional<PendingSave> m_pendingSave;
 	SavePurpose m_savePurpose = SavePurpose::None;
 	std::string m_retryTarget;
 	uint64_t m_retryOwnerEpoch = 0;
+	uint64_t m_retryGeneration = 0;
 	unsigned m_retryIndex = 0;
 };
 

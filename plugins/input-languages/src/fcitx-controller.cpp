@@ -160,7 +160,8 @@ AdapterResult ControllerAdapter::inspect() noexcept {
 std::optional<AdapterResult> ControllerAdapter::runVerifiedMutation(
 	Snapshot& last,
 	const Command& command,
-	const std::function<bool(const Snapshot&, const Snapshot&)>& verify) noexcept {
+	const std::function<bool(const Snapshot&, const Snapshot&)>& verify,
+	const std::function<bool()>& stillCurrent) noexcept {
 	auto preflight = m_transport.inspect();
 	if (preflight.status != TransportStatus::Ok || !runtimeSupported(preflight.snapshot))
 		return inspectionFailure(std::move(preflight));
@@ -168,6 +169,8 @@ std::optional<AdapterResult> ControllerAdapter::runVerifiedMutation(
 		return AdapterResult{.outcome = Outcome::Unavailable, .snapshot = std::move(preflight.snapshot), .retryAfterSeconds = 0, .diagnostic = "Controller owner changed"};
 	if (preflight.snapshot != last)
 		return AdapterResult{.outcome = Outcome::ConfigurationConflict, .snapshot = std::move(preflight.snapshot), .retryAfterSeconds = 0, .diagnostic = "Controller state changed before mutation"};
+	if (stillCurrent && !stillCurrent())
+		return AdapterResult{.outcome = Outcome::Pending, .snapshot = std::move(preflight.snapshot), .retryAfterSeconds = 0, .diagnostic = "target superseded"};
 
 	const Snapshot before = std::move(preflight.snapshot);
 	auto commandResult = m_transport.execute(before, command);
@@ -280,19 +283,21 @@ unsigned ControllerAdapter::nextRetry() noexcept {
 	return DELAYS[index];
 }
 
-void ControllerAdapter::resetRetry(std::string_view desiredMethod, uint64_t ownerEpoch) noexcept {
-	if (m_retryTarget == desiredMethod && m_retryOwnerEpoch == ownerEpoch)
+void ControllerAdapter::resetRetry(std::string_view desiredMethod, uint64_t ownerEpoch, uint64_t deliveryGeneration) noexcept {
+	if (m_retryTarget == desiredMethod && m_retryOwnerEpoch == ownerEpoch && m_retryGeneration == deliveryGeneration)
 		return;
 	m_retryTarget = desiredMethod;
 	m_retryOwnerEpoch = ownerEpoch;
+	m_retryGeneration = deliveryGeneration;
 	m_retryIndex = 0;
 }
 
-AdapterResult ControllerAdapter::saveSnapshot(Snapshot snapshot) noexcept {
+AdapterResult ControllerAdapter::saveSnapshot(Snapshot snapshot, const std::function<bool()>& stillCurrent) noexcept {
 	if (auto failure = runVerifiedMutation(
 			snapshot,
 			SaveCommand{},
-			[](const Snapshot& before, const Snapshot& after) { return semanticsEqual(before, after); }))
+			[](const Snapshot& before, const Snapshot& after) { return semanticsEqual(before, after); },
+			stillCurrent))
 		return std::move(*failure);
 	m_pendingSave.reset();
 	m_retryIndex = 0;
@@ -304,7 +309,10 @@ AdapterResult ControllerAdapter::saveSnapshot(Snapshot snapshot) noexcept {
 	};
 }
 
-AdapterResult ControllerAdapter::convergeMethod(std::string desiredMethod) noexcept {
+AdapterResult ControllerAdapter::convergeMethod(
+	std::string desiredMethod,
+	uint64_t deliveryGeneration,
+	const std::function<bool()>& stillCurrent) noexcept {
 	if (desiredMethod != US_METHOD && desiredMethod != RUSSIAN_METHOD)
 		return {.outcome = Outcome::ConfigurationConflict, .snapshot = {}, .retryAfterSeconds = 0, .diagnostic = "unsupported desired method"};
 
@@ -312,18 +320,20 @@ AdapterResult ControllerAdapter::convergeMethod(std::string desiredMethod) noexc
 	if (beforeInspection.status != TransportStatus::Ok || !runtimeSupported(beforeInspection.snapshot))
 		return inspectionFailure(std::move(beforeInspection));
 	Snapshot before = std::move(beforeInspection.snapshot);
-	resetRetry(desiredMethod, before.identity.ownerEpoch);
+	resetRetry(desiredMethod, before.identity.ownerEpoch, deliveryGeneration);
 	m_savePurpose = SavePurpose::Converge;
 	if (m_pendingSave) {
 		if (m_pendingSave->purpose != SavePurpose::Converge)
 			return {.outcome = Outcome::ConfigurationConflict, .snapshot = std::move(before), .retryAfterSeconds = 0, .diagnostic = "indeterminate Save belongs to another operation"};
 		if (m_pendingSave->target == desiredMethod && before.currentMethod == desiredMethod && before == m_pendingSave->snapshot)
-			return saveSnapshot(std::move(before));
+			return saveSnapshot(std::move(before), stillCurrent);
 		m_pendingSave.reset();
 	}
 	const auto* managed = findGroup(before, MANAGED_GROUP_NAME);
 	if (!managed || !exactManagedGroup(*managed))
 		return {.outcome = Outcome::ConfigurationConflict, .snapshot = std::move(before), .retryAfterSeconds = 0, .diagnostic = "managed group is absent or foreign"};
+	if (stillCurrent && !stillCurrent())
+		return {.outcome = Outcome::Pending, .snapshot = std::move(before), .retryAfterSeconds = 0, .diagnostic = "target superseded"};
 	bool groupChanged = false;
 	if (before.currentGroup != MANAGED_GROUP_NAME) {
 		auto switchResult = m_transport.execute(
@@ -335,7 +345,7 @@ AdapterResult ControllerAdapter::convergeMethod(std::string desiredMethod) noexc
 		if (switchReadback.status != TransportStatus::Ok || !runtimeSupported(switchReadback.snapshot))
 			return inspectionFailure(std::move(switchReadback));
 		if (switchReadback.snapshot.identity != before.identity) {
-			resetRetry(desiredMethod, switchReadback.snapshot.identity.ownerEpoch);
+			resetRetry(desiredMethod, switchReadback.snapshot.identity.ownerEpoch, deliveryGeneration);
 			return {.outcome = Outcome::Unavailable, .snapshot = std::move(switchReadback.snapshot), .retryAfterSeconds = 0, .diagnostic = "Controller owner changed"};
 		}
 		if (switchReadback.snapshot.profile != before.profile)
@@ -353,15 +363,17 @@ AdapterResult ControllerAdapter::convergeMethod(std::string desiredMethod) noexc
 		groupChanged = true;
 	}
 	if (before.currentMethod.empty())
-		return groupChanged ? saveSnapshot(std::move(before)) : AdapterResult{.outcome = Outcome::IdleNoContext, .snapshot = std::move(before), .retryAfterSeconds = 0, .diagnostic = {}};
+		return groupChanged ? saveSnapshot(std::move(before), stillCurrent) : AdapterResult{.outcome = Outcome::IdleNoContext, .snapshot = std::move(before), .retryAfterSeconds = 0, .diagnostic = {}};
 	if (before.currentMethod == desiredMethod) {
 		m_retryIndex = 0;
-		return groupChanged ? saveSnapshot(std::move(before)) : AdapterResult{.outcome = Outcome::Converged, .snapshot = std::move(before), .retryAfterSeconds = 0, .diagnostic = {}};
+		return groupChanged ? saveSnapshot(std::move(before), stillCurrent) : AdapterResult{.outcome = Outcome::Converged, .snapshot = std::move(before), .retryAfterSeconds = 0, .diagnostic = {}};
 	}
 	if (before.currentMethod != US_METHOD && before.currentMethod != RUSSIAN_METHOD)
 		return {.outcome = Outcome::ConfigurationConflict, .snapshot = std::move(before), .retryAfterSeconds = 0, .diagnostic = "current method is outside the managed group"};
 
 	const Command setMethod = SetCurrentMethodCommand{desiredMethod};
+	if (stillCurrent && !stillCurrent())
+		return {.outcome = Outcome::Pending, .snapshot = std::move(before), .retryAfterSeconds = 0, .diagnostic = "target superseded"};
 	auto setResult = m_transport.execute(before, setMethod);
 	if (setResult.status != TransportStatus::Ok && setResult.status != TransportStatus::Timeout) {
 		const auto retry = repairable(setResult.status) ? nextRetry() : 0;
@@ -379,7 +391,7 @@ AdapterResult ControllerAdapter::convergeMethod(std::string desiredMethod) noexc
 		return inspectionFailure(std::move(afterInspection));
 	Snapshot after = std::move(afterInspection.snapshot);
 	if (after.identity != before.identity) {
-		resetRetry(desiredMethod, after.identity.ownerEpoch);
+		resetRetry(desiredMethod, after.identity.ownerEpoch, deliveryGeneration);
 		return {.outcome = Outcome::Unavailable, .snapshot = std::move(after), .retryAfterSeconds = 0, .diagnostic = "Controller owner changed"};
 	}
 	if (after.profile != before.profile)
@@ -396,7 +408,7 @@ AdapterResult ControllerAdapter::convergeMethod(std::string desiredMethod) noexc
 		return {.outcome = outcome, .snapshot = std::move(after), .retryAfterSeconds = nextRetry(), .diagnostic = std::move(setResult.diagnostic)};
 	}
 
-	return saveSnapshot(std::move(after));
+	return saveSnapshot(std::move(after), stillCurrent);
 }
 
 AdapterResult ControllerAdapter::restore(const Snapshot& prior) noexcept {

@@ -91,6 +91,13 @@ for source in include/fcitx-controller.hpp src/fcitx-controller.cpp src/fcitx-sd
 		exit 1
 	}
 done
+for source in include/fcitx-protocol.hpp include/fcitx-helper.hpp src/fcitx-protocol.cpp src/fcitx-helper.cpp src/fcitx-helper-main.cpp \
+	tests/fcitx-helper-test.cpp systemd/dotfiles-input-languages-fcitx.socket systemd/dotfiles-input-languages-fcitx.service; do
+	[[ -f $plugin_root/$source && ! -L $plugin_root/$source ]] || {
+		printf 'Error: Fcitx helper source is missing or unsafe: %s\n' "$source" >&2
+		exit 1
+	}
+done
 grep -Fq "CALL_TIMEOUT_USEC = 1'000'000" "$plugin_root/src/fcitx-sd-bus-transport.cpp" &&
 	grep -Fq 'sd_bus_call_async' "$plugin_root/src/fcitx-sd-bus-transport.cpp" &&
 	grep -Fq 'sd_bus_attach_event' "$plugin_root/src/fcitx-sd-bus-transport.cpp" &&
@@ -103,9 +110,41 @@ grep -Fq "CALL_TIMEOUT_USEC = 1'000'000" "$plugin_root/src/fcitx-sd-bus-transpor
 	printf 'Error: Controller adapter fixed transport contract changed.\n' >&2
 	exit 1
 }
+grep -Fq 'm_impl->evidence.uniqueOwner = owner' "$plugin_root/src/fcitx-sd-bus-transport.cpp" &&
+	grep -Fq 'MAX_PACKET_BYTES = 1024' "$plugin_root/include/fcitx-protocol.hpp" &&
+	grep -Fq 'HEADER_BYTES = 12' "$plugin_root/include/fcitx-protocol.hpp" &&
+	grep -Fq 'SO_PEERCRED' "$plugin_root/src/fcitx-helper.cpp" &&
+	grep -Fq 'SOCK_NONBLOCK | SOCK_CLOEXEC' "$plugin_root/src/fcitx-helper.cpp" &&
+	grep -Fq 'MSG_TRUNC' "$plugin_root/src/fcitx-helper.cpp" &&
+	grep -Fq 'installedFcitxUpstreamVersion()' "$plugin_root/src/fcitx-helper-main.cpp" &&
+	grep -Fq 'ControllerWorker' "$plugin_root/src/fcitx-helper.cpp" || {
+	printf 'Error: Fcitx helper fixed protocol, authentication, or worker contract changed.\n' >&2
+	exit 1
+}
 grep -Fq 'pkg-config --cflags --libs libsystemd libcrypto' "$plugin_root/Makefile" &&
-	! grep -Eq 'Fcitx5(Core|Utils)|-lfcitx' "$plugin_root/Makefile" "$plugin_root/src/fcitx-sd-bus-transport.cpp" || {
+	! grep -Eq 'Fcitx5(Core|Utils)|-lfcitx' "$plugin_root/Makefile" "$plugin_root/src/fcitx-sd-bus-transport.cpp" \
+		"$plugin_root/src/fcitx-helper.cpp" "$plugin_root/src/fcitx-helper-main.cpp" || {
 	printf 'Error: Controller adapter must use libsystemd without Fcitx ABI linkage.\n' >&2
+	exit 1
+}
+socket_unit=$plugin_root/systemd/dotfiles-input-languages-fcitx.socket
+service_unit=$plugin_root/systemd/dotfiles-input-languages-fcitx.service
+for setting in \
+	'ListenSequentialPacket=%t/dotfiles-input-languages/fcitx.sock' 'DirectoryMode=0700' 'SocketMode=0600' \
+	'RemoveOnStop=yes' 'WantedBy=graphical-session.target'; do
+	[[ $(grep -Fxc "$setting" "$socket_unit") == 1 ]] || { printf 'Error: Fcitx helper socket unit contract changed: %s\n' "$setting" >&2; exit 1; }
+done
+for setting in 'StartLimitIntervalSec=30s' 'StartLimitBurst=5' 'Type=simple' \
+	'ExecStart=@ARTIFACT_DIR@/input-languages-fcitx-helper' 'Restart=on-failure' 'RestartSec=2s'; do
+	[[ $(grep -Fxc "$setting" "$service_unit") == 1 ]] || { printf 'Error: Fcitx helper service unit contract changed: %s\n' "$setting" >&2; exit 1; }
+done
+! grep -Eq '(^|/)(fcitx5|systemctl|omarchy)([[:space:]]|$)' "$service_unit" || {
+	printf 'Error: Fcitx helper unit must not control Fcitx or another service.\n' >&2
+	exit 1
+}
+! grep -Eq '(^|[^[:alnum:]_])(fork|exec[lvpe]*|system|posix_spawn)[[:space:]]*[(]' \
+	"$plugin_root/src/fcitx-helper.cpp" "$plugin_root/src/fcitx-helper-main.cpp" || {
+	printf 'Error: Fcitx helper must not fork, execute, or control another process.\n' >&2
 	exit 1
 }
 ! grep -R -Fq '.config/fcitx5/profile' "$plugin_root/include/fcitx-controller.hpp" "$plugin_root/src/fcitx-controller.cpp" \

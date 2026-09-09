@@ -638,6 +638,8 @@ Inspection SdBusControllerTransport::inspect() noexcept {
 	if (result < 0)
 		return {.status = statusFromError(result), .snapshot = std::move(snapshot), .diagnostic = "current Controller state inspection failed"};
 
+	// A complete inspection is the evidence boundary used by the immediately following mutation.
+	m_impl->evidence.uniqueOwner = owner;
 	return {.status = TransportStatus::Ok, .snapshot = std::move(snapshot), .diagnostic = {}};
 }
 

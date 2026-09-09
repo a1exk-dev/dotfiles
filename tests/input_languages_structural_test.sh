@@ -233,6 +233,27 @@ controller_adapter_source_contract_is_enforced() (
 	fixture_validator_reports 'Controller adapter must use libsystemd without Fcitx ABI linkage'
 )
 
+helper_source_and_unit_contract_is_enforced() (
+	set -e
+	new_structural_fixture
+	trap 'rm -rf -- "$STRUCTURAL_FIXTURE"' EXIT
+	local plugin=$STRUCTURAL_FIXTURE/plugins/input-languages
+	rm "$plugin/include/fcitx-protocol.hpp"
+	fixture_validator_reports 'Fcitx helper source is missing or unsafe' || return 1
+	cp "$REPOSITORY_ROOT/plugins/input-languages/include/fcitx-protocol.hpp" "$plugin/include/fcitx-protocol.hpp"
+	sed -i 's/MAX_PACKET_BYTES = 1024/MAX_PACKET_BYTES = 2048/' "$plugin/include/fcitx-protocol.hpp"
+	fixture_validator_reports 'helper fixed protocol, authentication, or worker contract changed' || return 1
+	cp "$REPOSITORY_ROOT/plugins/input-languages/include/fcitx-protocol.hpp" "$plugin/include/fcitx-protocol.hpp"
+	sed -i 's/installedFcitxUpstreamVersion()/SUPPORTED_UPSTREAM_VERSION/' "$plugin/src/fcitx-helper-main.cpp"
+	fixture_validator_reports 'helper fixed protocol, authentication, or worker contract changed' || return 1
+	cp "$REPOSITORY_ROOT/plugins/input-languages/src/fcitx-helper-main.cpp" "$plugin/src/fcitx-helper-main.cpp"
+	sed -i 's/SocketMode=0600/SocketMode=0660/' "$plugin/systemd/dotfiles-input-languages-fcitx.socket"
+	fixture_validator_reports 'helper socket unit contract changed' || return 1
+	cp "$REPOSITORY_ROOT/plugins/input-languages/systemd/dotfiles-input-languages-fcitx.socket" "$plugin/systemd/dotfiles-input-languages-fcitx.socket"
+	sed -i 's/RestartSec=2s/RestartSec=3s/' "$plugin/systemd/dotfiles-input-languages-fcitx.service"
+	fixture_validator_reports 'helper service unit contract changed'
+)
+
 run_test healthy_sources_validate 'complete Input Languages sources validate'
 run_test group_toggle_is_rejected 'XKB group-toggle options are rejected'
 run_test invalid_lua_is_rejected 'invalid Hyprland Lua syntax is rejected'
@@ -247,5 +268,6 @@ run_test contract_shape_and_identity_drift_are_rejected 'contract shape and shar
 run_test contract_constants_and_compatibility_drift_are_rejected 'contract constants and compatibility drift are rejected'
 run_test contract_changes_preserve_direct_source_identity 'contract-only changes preserve direct-XKB source identity'
 run_test controller_adapter_source_contract_is_enforced 'Controller adapter source and transport contract are enforced'
+run_test helper_source_and_unit_contract_is_enforced 'helper protocol, source, and systemd unit contracts are enforced'
 
 finish_tests

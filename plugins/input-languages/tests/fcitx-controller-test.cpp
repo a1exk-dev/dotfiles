@@ -318,6 +318,9 @@ int main(int argc, char** argv) {
 		const auto wrongOperation = adapter.restore(prior);
 		require(wrongOperation.outcome == Outcome::ConfigurationConflict && transport.commands.size() == 2,
 			"an indeterminate convergence Save cannot be resumed as restoration");
+		const auto cancelled = adapter.convergeMethod(RUSSIAN_METHOD, 1, [] { return false; });
+		require(cancelled.outcome == Outcome::Pending && transport.commands.size() == 2,
+			"a superseded or disconnected authority cannot retry an indeterminate Save");
 		const auto retried = adapter.convergeMethod(RUSSIAN_METHOD);
 		require(retried.outcome == Outcome::Converged && transport.commands.size() == 3 &&
 			commandKind(transport.commands[2]) == CommandKind::Save, "matching state retries an indeterminate Save before convergence");
@@ -418,6 +421,19 @@ int main(int argc, char** argv) {
 		require(retry.retryAfterSeconds == 1, "a new owner resets repair backoff");
 	}
 	std::cout << "ok - owner epochs invalidate stale work and reset backoff\n";
+
+	{
+		ScriptedTransport transport;
+		transport.snapshot.currentMethod = US_METHOD;
+		ControllerAdapter adapter(transport);
+		transport.commandStatuses = {TransportStatus::Timeout};
+		require(adapter.convergeMethod(RUSSIAN_METHOD, 1).retryAfterSeconds == 1,
+			"the first delivery generation starts at one-second retry");
+		transport.commandStatuses = {TransportStatus::Timeout};
+		require(adapter.convergeMethod(RUSSIAN_METHOD, 2).retryAfterSeconds == 1,
+			"a newer same-language generation resets repair backoff");
+	}
+	std::cout << "ok - every new delivery generation resets repair backoff\n";
 
 	{
 		ScriptedTransport transport;

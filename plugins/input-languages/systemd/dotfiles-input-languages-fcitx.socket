@@ -1,0 +1,11 @@
+[Unit]
+Description=Dotfiles input languages Fcitx authority socket
+
+[Socket]
+ListenSequentialPacket=%t/dotfiles-input-languages/fcitx.sock
+DirectoryMode=0700
+SocketMode=0600
+RemoveOnStop=yes
+
+[Install]
+WantedBy=graphical-session.target
