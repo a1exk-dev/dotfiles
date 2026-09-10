@@ -90,7 +90,7 @@ for source in Makefile integration.mk migration-baseline.json include/input-lang
 	widget/dotfiles.keyboard-layout/KeyboardLayoutModel.js; do
 	[[ -f $plugin_root/$source && ! -L $plugin_root/$source ]] || { printf 'Error: plugin source is missing or unsafe: %s\n' "$source" >&2; exit 1; }
 done
-for source in include/fcitx-controller.hpp src/fcitx-controller.cpp src/fcitx-sd-bus-transport.cpp tests/fcitx-controller-test.cpp; do
+for source in include/fcitx-controller-cli.hpp include/fcitx-controller.hpp src/fcitx-controller-cli.cpp src/fcitx-controller.cpp src/fcitx-sd-bus-transport.cpp tests/fcitx-controller-test.cpp; do
 	[[ -f $plugin_root/$source && ! -L $plugin_root/$source ]] || {
 		printf 'Error: Controller adapter source is missing or unsafe: %s\n' "$source" >&2
 		exit 1
@@ -103,10 +103,10 @@ for source in include/fcitx-protocol.hpp include/fcitx-helper.hpp src/fcitx-prot
 		exit 1
 	}
 done
-expected_integration_identity_sources=(
+	expected_integration_identity_sources=(
 	integration.mk migration-baseline.json
-	include/fcitx-controller.hpp include/fcitx-follower.hpp include/fcitx-helper.hpp include/fcitx-protocol.hpp include/input-language-model.hpp
-	src/fcitx-controller.cpp src/fcitx-follower.cpp src/fcitx-helper-main.cpp src/fcitx-helper.cpp src/fcitx-protocol.cpp
+	include/fcitx-controller-cli.hpp include/fcitx-controller.hpp include/fcitx-follower.hpp include/fcitx-helper.hpp include/fcitx-protocol.hpp include/input-language-model.hpp
+	src/fcitx-controller-cli.cpp src/fcitx-controller.cpp src/fcitx-follower.cpp src/fcitx-helper-main.cpp src/fcitx-helper.cpp src/fcitx-protocol.cpp
 	src/fcitx-sd-bus-transport.cpp src/input-language-model.cpp src/integration-artifact-identity.cpp src/plugin.cpp
 )
 [[ $(printf '%s\n' "${INPUT_LANGUAGES_INTEGRATION_SOURCE_FILES[@]}") == "$(printf '%s\n' "${expected_integration_identity_sources[@]}")" ]] || {

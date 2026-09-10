@@ -44,6 +44,13 @@ struct RuntimeIdentity {
 struct GroupItem {
 	std::string method;
 	std::string layoutOverride;
+	std::string displayName{};
+	std::string nativeName{};
+	std::string languageCode{};
+	std::string addon{};
+	bool configurable = false;
+	std::optional<std::string> variant{};
+	std::string propertiesJson = "{}";
 
 	bool operator==(const GroupItem&) const = default;
 };
@@ -53,11 +60,13 @@ struct Group {
 	std::string defaultMethod;
 	std::string defaultLayout;
 	std::vector<GroupItem> items;
+	std::string propertiesJson = "{}";
 
 	bool operator==(const Group&) const = default;
 };
 
 struct ProfileIdentity {
+	std::string path{};
 	bool safe = false;
 	uint64_t device = 0;
 	uint64_t inode = 0;
@@ -68,12 +77,21 @@ struct ProfileIdentity {
 	bool operator==(const ProfileIdentity&) const = default;
 };
 
+struct AddonState {
+	std::string name;
+	bool enabled = false;
+	bool available = false;
+
+	bool operator==(const AddonState&) const = default;
+};
+
 struct Snapshot {
 	RuntimeIdentity identity;
 	ProfileIdentity profile;
 	std::vector<Group> groups;
 	std::vector<std::string> availableMethods;
 	std::vector<std::string> enabledAddons;
+	std::vector<AddonState> addons{};
 	std::string currentGroup;
 	std::string currentMethod;
 
@@ -130,6 +148,7 @@ struct CommandResult {
 class ControllerTransport {
   public:
 	virtual ~ControllerTransport() = default;
+	virtual void setRestorationMode(bool) noexcept {}
 	virtual Inspection inspect() noexcept = 0;
 	virtual CommandResult execute(const Snapshot& expected, const Command& command) noexcept = 0;
 };
@@ -149,6 +168,7 @@ class SdBusControllerTransport final : public ControllerTransport {
 	SdBusControllerTransport& operator=(const SdBusControllerTransport&) = delete;
 
 	void updateEvidence(RuntimeEvidence evidence) noexcept;
+	void setRestorationMode(bool enabled) noexcept override;
 	Inspection inspect() noexcept override;
 	CommandResult execute(const Snapshot& expected, const Command& command) noexcept override;
 
@@ -166,8 +186,9 @@ struct AdapterResult {
 
 class ControllerAdapter {
   public:
-	explicit ControllerAdapter(ControllerTransport& transport);
+	explicit ControllerAdapter(ControllerTransport& transport, bool restorationMode = false);
 	[[nodiscard]] AdapterResult inspect() noexcept;
+	[[nodiscard]] AdapterResult executeOne(const Snapshot& expected, const Command& command) noexcept;
 	[[nodiscard]] AdapterResult installManagedGroup(std::string desiredMethod) noexcept;
 	[[nodiscard]] AdapterResult convergeMethod(
 		std::string desiredMethod,
@@ -193,6 +214,7 @@ class ControllerAdapter {
 		const std::function<bool()>& stillCurrent = {}) noexcept;
 
 	ControllerTransport& m_transport;
+	bool m_restorationMode = false;
 	std::optional<PendingSave> m_pendingSave;
 	SavePurpose m_savePurpose = SavePurpose::None;
 	std::string m_retryTarget;
@@ -200,5 +222,8 @@ class ControllerAdapter {
 	uint64_t m_retryGeneration = 0;
 	unsigned m_retryIndex = 0;
 };
+
+[[nodiscard]] std::string snapshotJson(const Snapshot& snapshot);
+[[nodiscard]] std::string snapshotDigest(const Snapshot& snapshot) noexcept;
 
 }

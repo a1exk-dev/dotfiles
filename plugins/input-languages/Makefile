@@ -23,14 +23,15 @@ $(BUILD_DIR)/input-language-model-test: tests/input-language-model-test.cpp src/
 	@mkdir -p "$(BUILD_DIR)"
 	$(CXX) $(CPPFLAGS) $(CXXFLAGS) tests/input-language-model-test.cpp src/input-language-model.cpp -o "$@"
 
-$(BUILD_DIR)/fcitx-controller-test: tests/fcitx-controller-test.cpp src/fcitx-controller.cpp src/fcitx-sd-bus-transport.cpp include/fcitx-controller.hpp
+$(BUILD_DIR)/fcitx-controller-test: tests/fcitx-controller-test.cpp src/fcitx-controller.cpp src/fcitx-controller-cli.cpp src/fcitx-sd-bus-transport.cpp include/fcitx-controller.hpp include/fcitx-controller-cli.hpp
 	@mkdir -p "$(BUILD_DIR)"
-	$(CXX) $(CPPFLAGS) $(CXXFLAGS) tests/fcitx-controller-test.cpp src/fcitx-controller.cpp src/fcitx-sd-bus-transport.cpp -o "$@" \
+	$(CXX) $(CPPFLAGS) $(CXXFLAGS) tests/fcitx-controller-test.cpp src/fcitx-controller.cpp src/fcitx-controller-cli.cpp src/fcitx-sd-bus-transport.cpp -o "$@" \
 		$$(pkg-config --cflags --libs libsystemd libcrypto)
 
 $(BUILD_DIR)/fcitx-helper-test: tests/fcitx-helper-test.cpp src/fcitx-helper.cpp src/fcitx-protocol.cpp src/fcitx-controller.cpp include/fcitx-helper.hpp include/fcitx-protocol.hpp include/fcitx-controller.hpp
 	@mkdir -p "$(BUILD_DIR)"
-	$(CXX) $(CPPFLAGS) $(CXXFLAGS) tests/fcitx-helper-test.cpp src/fcitx-helper.cpp src/fcitx-protocol.cpp src/fcitx-controller.cpp -o "$@" -pthread
+	$(CXX) $(CPPFLAGS) $(CXXFLAGS) tests/fcitx-helper-test.cpp src/fcitx-helper.cpp src/fcitx-protocol.cpp src/fcitx-controller.cpp -o "$@" -pthread \
+		$$(pkg-config --cflags --libs libcrypto)
 
 $(BUILD_DIR)/fcitx-follower-test: tests/fcitx-follower-test.cpp src/fcitx-follower.cpp src/fcitx-protocol.cpp src/input-language-model.cpp include/fcitx-follower.hpp include/fcitx-protocol.hpp include/input-language-model.hpp
 	@mkdir -p "$(BUILD_DIR)"
@@ -38,7 +39,8 @@ $(BUILD_DIR)/fcitx-follower-test: tests/fcitx-follower-test.cpp src/fcitx-follow
 
 $(BUILD_DIR)/input-language-integration-test: tests/input-language-integration-test.cpp src/input-language-model.cpp src/fcitx-follower.cpp src/fcitx-helper.cpp src/fcitx-protocol.cpp src/fcitx-controller.cpp include/input-language-model.hpp include/fcitx-follower.hpp include/fcitx-helper.hpp include/fcitx-protocol.hpp include/fcitx-controller.hpp
 	@mkdir -p "$(BUILD_DIR)"
-	$(CXX) $(CPPFLAGS) $(CXXFLAGS) tests/input-language-integration-test.cpp src/input-language-model.cpp src/fcitx-follower.cpp src/fcitx-helper.cpp src/fcitx-protocol.cpp src/fcitx-controller.cpp -o "$@" -pthread
+	$(CXX) $(CPPFLAGS) $(CXXFLAGS) tests/input-language-integration-test.cpp src/input-language-model.cpp src/fcitx-follower.cpp src/fcitx-helper.cpp src/fcitx-protocol.cpp src/fcitx-controller.cpp -o "$@" -pthread \
+		$$(pkg-config --cflags --libs libcrypto)
 
 check:
 	@tmp=$$(mktemp -d "$${TMPDIR:-/tmp}/input-languages-check.XXXXXX"); \
@@ -96,7 +98,7 @@ helper:
 	$(CXX) $(CPPFLAGS) $(CXXFLAGS) \
 		-DINPUT_LANGUAGES_BUILD_ID='"$(BUILD_ID)"' \
 		-DINPUT_LANGUAGES_SOURCE_ID='"$(SOURCE_ID)"' \
-		src/fcitx-helper-main.cpp src/fcitx-helper.cpp src/fcitx-protocol.cpp src/fcitx-controller.cpp src/fcitx-sd-bus-transport.cpp \
+		src/fcitx-helper-main.cpp src/fcitx-helper.cpp src/fcitx-protocol.cpp src/fcitx-controller.cpp src/fcitx-controller-cli.cpp src/fcitx-sd-bus-transport.cpp \
 		-o "$(OUTPUT_FILE)" -pthread $$(pkg-config --cflags --libs libsystemd libcrypto)
 
 artifact:

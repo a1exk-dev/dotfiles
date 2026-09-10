@@ -43,7 +43,7 @@ integration-artifact:
 		-DINPUT_LANGUAGES_HEALTH_ID='"$(HEALTH_ID)"' \
 		-DINPUT_LANGUAGES_UNIT_ID='"$(UNIT_ID)"' \
 		-DINPUT_LANGUAGES_ARTIFACT_ROLE='"helper"' \
-		src/fcitx-helper-main.cpp src/fcitx-helper.cpp src/fcitx-protocol.cpp src/fcitx-controller.cpp src/fcitx-sd-bus-transport.cpp \
+		src/fcitx-helper-main.cpp src/fcitx-helper.cpp src/fcitx-protocol.cpp src/fcitx-controller.cpp src/fcitx-controller-cli.cpp src/fcitx-sd-bus-transport.cpp \
 		src/integration-artifact-identity.cpp -o "$(OUTPUT_DIR)/input-languages-fcitx-helper" $(HELPER_FLAGS) \
 		$$(pkg-config --cflags --libs $(HELPER_PACKAGES))
 	@cp -a -- widget/dotfiles.keyboard-layout "$(OUTPUT_DIR)/dotfiles.keyboard-layout"

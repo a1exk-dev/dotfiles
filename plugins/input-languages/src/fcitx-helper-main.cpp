@@ -1,4 +1,5 @@
 #include "fcitx-controller.hpp"
+#include "fcitx-controller-cli.hpp"
 #include "fcitx-helper.hpp"
 
 #include <atomic>
@@ -26,17 +27,25 @@ void terminate(int) {
 }
 }
 
-int main() {
-	if (sd_listen_fds(0) != 1) {
-		std::cerr << "socket activation requires exactly one listener\n";
-		return 0;
-	}
+int main(int argc, char** argv) {
 	const char* home = std::getenv("HOME");
 	if (!home || home[0] != '/') {
 		std::cerr << "HOME must be absolute\n";
 		return 0;
 	}
-
+	if (argc > 1) {
+		InputLanguages::Fcitx::SdBusControllerTransport transport({
+			.uniqueOwner = {},
+			.upstreamVersion = InputLanguages::Fcitx::installedFcitxUpstreamVersion(),
+			.supervised = true,
+			.profilePath = std::string(home) + "/.config/fcitx5/profile",
+		});
+		return InputLanguages::Fcitx::runControllerCommand(argc, argv, transport, std::cout, std::cerr);
+	}
+	if (sd_listen_fds(0) != 1) {
+		std::cerr << "socket activation requires exactly one listener\n";
+		return 0;
+	}
 	std::signal(SIGTERM, terminate);
 	std::signal(SIGINT, terminate);
 	InputLanguages::Fcitx::SdBusControllerTransport transport({

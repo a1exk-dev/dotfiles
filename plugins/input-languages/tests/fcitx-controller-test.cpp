@@ -1,10 +1,12 @@
 #include "fcitx-controller.hpp"
+#include "fcitx-controller-cli.hpp"
 
 #include <algorithm>
 #include <cstdlib>
 #include <deque>
 #include <iostream>
 #include <functional>
+#include <sstream>
 #include <string>
 #include <string_view>
 #include <utility>
@@ -195,6 +197,43 @@ int main(int argc, char** argv) {
 	std::cout << "ok - exact Controller state is inspected without mutation\n";
 
 	{
+		ScriptedTransport transport;
+		transport.snapshot.groups = {{.name = "Default", .defaultMethod = US_METHOD, .defaultLayout = "us", .items = {{US_METHOD, ""}}}};
+		transport.snapshot.currentGroup = "Default";
+		ControllerAdapter adapter(transport);
+		const auto expected = transport.snapshot;
+		const auto result = adapter.executeOne(expected, AddGroupCommand{MANAGED_GROUP_NAME});
+		require(result.outcome == Outcome::Pending && result.snapshot.groups.back().name == MANAGED_GROUP_NAME,
+			"one lifecycle command returns its verified semantic readback");
+		require(transport.commands.size() == 1 && commandKind(transport.commands.front()) == CommandKind::AddGroup,
+			"one lifecycle command performs exactly one Controller write");
+		transport.snapshot.currentMethod = RUSSIAN_METHOD;
+		const auto stale = adapter.executeOne(expected, AddGroupCommand{MANAGED_GROUP_NAME});
+		require(stale.outcome == Outcome::ConfigurationConflict && transport.commands.size() == 1,
+			"stale lifecycle expectations fail before another Controller write");
+	}
+	std::cout << "ok - lifecycle commands verify one semantic delta\n";
+
+	{
+		ScriptedTransport transport;
+		transport.snapshot.groups = {{.name = "Default", .defaultMethod = US_METHOD, .defaultLayout = "us", .items = {{US_METHOD, ""}}}};
+		transport.snapshot.currentGroup = "Default";
+		std::ostringstream output;
+		std::ostringstream error;
+		std::string digest = snapshotDigest(transport.snapshot);
+		std::vector<std::string> arguments{"helper", "controller", "execute", digest, "add-managed"};
+		std::vector<char*> argv;
+		for (auto& argument : arguments)
+			argv.push_back(argument.data());
+		require(runControllerCommand(static_cast<int>(argv.size()), argv.data(), transport, output, error) == 0,
+			"the lifecycle CLI accepts a matching expected snapshot digest");
+		require(output.str().find("\"snapshot_digest\":\"") != std::string::npos && output.str().find("\"Default\"") != std::string::npos,
+			"the lifecycle CLI returns canonical JSON and its digest");
+		require(error.str().empty() && transport.commands.size() == 1, "the lifecycle CLI exposes one typed write without diagnostics");
+	}
+	std::cout << "ok - lifecycle Controller CLI is digest-guarded and machine-readable\n";
+
+	{
 		for (const auto& mutate : std::vector<std::function<void(Snapshot&)>>{
 				[](Snapshot& snapshot) { snapshot.identity.supervised = false; },
 				[](Snapshot& snapshot) { snapshot.identity.upstreamVersion = "5.1.22"; },
@@ -212,6 +251,18 @@ int main(int argc, char** argv) {
 		}
 	}
 	std::cout << "ok - unsupported Controller prerequisites fail closed\n";
+
+	{
+		ScriptedTransport transport;
+		transport.snapshot.identity.upstreamVersion = "5.1.22";
+		transport.snapshot.availableMethods.clear();
+		transport.snapshot.enabledAddons.clear();
+		ControllerAdapter adapter(transport, true);
+		require(adapter.inspect().outcome == Outcome::Converged, "restoration accepts coherent receipt-backed semantics after Apply compatibility changes");
+		require(adapter.executeOne(transport.snapshot, SaveCommand{}).outcome == Outcome::Pending,
+			"restoration retains digest-guarded mutation and readback");
+	}
+	std::cout << "ok - receipt-backed restoration uses the narrow Controller seam\n";
 
 	{
 		ScriptedTransport transport;

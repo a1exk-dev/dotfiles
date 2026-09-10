@@ -24,8 +24,8 @@ readonly INPUT_LANGUAGES_INTEGRATION_CONTRACT_FILES=(
 )
 readonly INPUT_LANGUAGES_INTEGRATION_SOURCE_FILES=(
 	integration.mk migration-baseline.json
-	include/fcitx-controller.hpp include/fcitx-follower.hpp include/fcitx-helper.hpp include/fcitx-protocol.hpp include/input-language-model.hpp
-	src/fcitx-controller.cpp src/fcitx-follower.cpp src/fcitx-helper-main.cpp src/fcitx-helper.cpp src/fcitx-protocol.cpp
+	include/fcitx-controller-cli.hpp include/fcitx-controller.hpp include/fcitx-follower.hpp include/fcitx-helper.hpp include/fcitx-protocol.hpp include/input-language-model.hpp
+	src/fcitx-controller-cli.cpp src/fcitx-controller.cpp src/fcitx-follower.cpp src/fcitx-helper-main.cpp src/fcitx-helper.cpp src/fcitx-protocol.cpp
 	src/fcitx-sd-bus-transport.cpp src/input-language-model.cpp src/integration-artifact-identity.cpp src/plugin.cpp
 )
 readonly INPUT_LANGUAGES_INTEGRATION_PLUGIN_FLAGS='-std=c++23,-Wall,-Wextra,-Wpedantic,-Werror,-shared,-fPIC,-fno-gnu-unique,-pthread'
@@ -572,7 +572,7 @@ input_languages_validate_integration_artifact_self() {
 	input_languages_validate_integration_artifact_values "$1" "$1" true
 }
 
-input_languages_validate_active_evidence_file() {
+input_languages_validate_active_evidence_file_v2() {
 	local file=$1 transaction backup_transaction backup backup_digest backup_existed artifact build source artifact_sha compatibility compiler dependencies widget_source
 	input_languages_file_metadata_safe "$file" 600 || return 1
 	jq -e '
@@ -603,9 +603,9 @@ input_languages_validate_active_evidence_file() {
 		[[ $source =~ ^[0-9a-f]{64}$ && $widget_source == "${artifact%/*}/$INPUT_LANGUAGES_WIDGET" ]] && input_languages_artifact_path_valid "$artifact" "$build" "$artifact_sha"
 }
 
-input_languages_validate_active_file() {
+input_languages_validate_active_file_v2() {
 	local file=$1 artifact build source artifact_sha compatibility compiler dependencies widget_sha
-	input_languages_validate_active_evidence_file "$file" || return 1
+	input_languages_validate_active_evidence_file_v2 "$file" || return 1
 	artifact=$(jq -r .artifact "$file")
 	build=$(jq -r .build_id "$file")
 	source=$(jq -r .source_id "$file")
@@ -617,7 +617,7 @@ input_languages_validate_active_file() {
 	input_languages_validate_artifact_values "$artifact" "$build" "$source" "$artifact_sha" "$compatibility" "$compiler" "$dependencies" "$widget_sha"
 }
 
-input_languages_validate_pending_file() {
+input_languages_validate_pending_file_v2() {
 	local file=$1 transaction backup_transaction backup backup_digest backup_existed artifact prior_active prior_pointer prior_digest pointer_digest
 	input_languages_file_metadata_safe "$file" 600 || return 1
 	jq -e '
@@ -659,7 +659,7 @@ input_languages_validate_pending_file() {
 	pointer_digest=$(jq -r '.prior_pointer_digest // empty' "$file")
 	if [[ -n $prior_active ]]; then
 		[[ $prior_active == "$INPUT_LANGUAGES_STATE/backups/$transaction/prior-active.json" ]] || return 1
-		input_languages_validate_active_evidence_file "$prior_active" || return 1
+		input_languages_validate_active_evidence_file_v2 "$prior_active" || return 1
 		[[ $(sha256sum -- "$prior_active" | cut -d' ' -f1) == "$prior_digest" ]] || return 1
 		[[ $prior_pointer == "$INPUT_LANGUAGES_STATE/backups/$transaction/prior-pointer.lua" ]] || return 1
 		input_languages_file_metadata_safe "$prior_pointer" 600 || return 1
@@ -672,7 +672,7 @@ input_languages_validate_pending_file() {
 	fi
 }
 
-input_languages_validate_recovery_file() {
+input_languages_validate_recovery_file_v2() {
 	local file=$1 transaction pending
 	input_languages_file_metadata_safe "$file" 600 || return 1
 	jq -e '
@@ -683,7 +683,7 @@ input_languages_validate_recovery_file() {
 	transaction=$(jq -r .transaction_id "$file")
 	pending=$(jq -r .pending "$file")
 	input_languages_transaction_valid "$transaction" && [[ $pending == "$INPUT_LANGUAGES_PENDING" ]] && \
-		input_languages_validate_pending_file "$pending" && [[ $(jq -r .transaction_id "$pending") == "$transaction" ]]
+		input_languages_validate_pending_file_v2 "$pending" && [[ $(jq -r .transaction_id "$pending") == "$transaction" ]]
 }
 
 input_languages_staged_artifact_safe() {
@@ -718,7 +718,7 @@ input_languages_staged_artifact_safe() {
 	fi
 }
 
-input_languages_validate_cleanup_file() {
+input_languages_validate_cleanup_file_v2() {
 	local file=$1 transaction archive active_digest pending_digest artifact build artifact_sha stage actual
 	input_languages_file_metadata_safe "$file" 600 || return 1
 	jq -e '
@@ -814,7 +814,7 @@ input_languages_inspect_widget() {
 	if [[ -L $INPUT_LANGUAGES_WIDGET_LIVE ]]; then
 		INPUT_LANGUAGES_WIDGET_LINK_TARGET=$(readlink -- "$INPUT_LANGUAGES_WIDGET_LIVE" 2>/dev/null || true)
 		if [[ $INPUT_LANGUAGES_ACTIVE_STATE == valid ]]; then
-			expected=$(jq -r .widget_source "$INPUT_LANGUAGES_ACTIVE")
+			expected=$(input_languages_receipt_widget_source "$INPUT_LANGUAGES_ACTIVE")
 			[[ $INPUT_LANGUAGES_WIDGET_LINK_TARGET != "$expected" ]] || INPUT_LANGUAGES_WIDGET_LINK_STATE=exact
 		fi
 		[[ $INPUT_LANGUAGES_WIDGET_LINK_STATE == exact ]] || INPUT_LANGUAGES_WIDGET_LINK_STATE=conflict
@@ -2145,7 +2145,7 @@ input_languages_recovery_preflight() {
 	}
 }
 
-input_languages_reconcile_pending() {
+input_languages_reconcile_pending_v2() {
 	local approved=${1-false} snapshot recovery_snapshot='' cleanup_snapshot='' transaction operation had_recovery=false had_cleanup=false
 	input_languages_set_paths
 	input_languages_paths_are_safe || return 1
@@ -2234,7 +2234,7 @@ input_languages_static_preflight() {
 	bash "$REPOSITORY_ROOT/lib/dotfiles/input-languages-validator.sh" "$REPOSITORY_ROOT" /usr/share/omarchy --static-only >/dev/null
 }
 
-input_languages_prepare_apply() {
+input_languages_prepare_apply_v2() {
 	INPUT_LANGUAGES_PREPARED_RESULT=''
 	input_languages_inspect
 	input_languages_paths_are_safe || return 1
@@ -2349,7 +2349,7 @@ input_languages_publish_active() {
 	input_languages_write_json_atomic "$INPUT_LANGUAGES_ACTIVE" "$content" active
 }
 
-apply_input_languages() {
+apply_input_languages_v2() {
 	local approved=false packages_prepared=false recovery_approved=false expect_noop=false option
 	for option in "$@"; do
 		case $option in
@@ -2360,7 +2360,7 @@ apply_input_languages() {
 			*) printf 'Error: unknown Input Languages Apply option: %s\n' "$option" >&2; return 2 ;;
 		esac
 	done
-	input_languages_prepare_apply || return 1
+	input_languages_prepare_apply_v2 || return 1
 	if [[ $expect_noop == true && $INPUT_LANGUAGES_PREPARED_RESULT != noop ]]; then
 		printf 'Apply blocked: Input Languages changed after its exact no-op was inspected; review a new complete plan.\n' >&2
 		return 1
@@ -2383,7 +2383,7 @@ apply_input_languages() {
 	input_languages_stack_identity || return 1
 	input_languages_prepare_roots || return 1
 	input_languages_acquire_lock Apply || return 1
-	input_languages_prepare_apply || { input_languages_unlock || true; return 1; }
+	input_languages_prepare_apply_v2 || { input_languages_unlock || true; return 1; }
 	if [[ $INPUT_LANGUAGES_PREPARED_RESULT == noop ]]; then input_languages_unlock || return 1; printf 'Exact no-op: Portable input language setup is healthy; active language preserved.\n'; return 0; fi
 	[[ $INPUT_LANGUAGES_PREPARED_RESULT == change ]] || { input_languages_unlock || true; return 1; }
 	input_languages_build_artifact || { printf 'Build preflight failed; live setup is unchanged.\n' >&2; input_languages_unlock || true; return 1; }
@@ -2582,7 +2582,7 @@ input_languages_delete_staged_artifact() {
 	rmdir -- "$stage" || return 1
 }
 
-input_languages_reconcile_cleanup() {
+input_languages_reconcile_cleanup_v2() {
 	local approved=${1-false} snapshot transaction artifact build artifact_sha stage
 	input_languages_set_paths
 	input_languages_paths_are_safe || return 1
@@ -2622,7 +2622,7 @@ input_languages_reconcile_cleanup() {
 	printf 'Interrupted Remove cleanup completed; archived lifecycle evidence remains at %s.\n' "$INPUT_LANGUAGES_STATE/archive/$transaction-remove"
 }
 
-remove_input_languages() {
+remove_input_languages_v2() {
 	local approved=false recovery_approved=false option
 	for option in "$@"; do case $option in --yes) approved=true ;; --recovery-approved) recovery_approved=true ;; *) printf 'Error: unknown Input Languages Remove option: %s\n' "$option" >&2; return 2 ;; esac; done
 	input_languages_inspect
@@ -2806,3 +2806,6 @@ manage_input_languages() {
 		esac
 	done
 }
+
+# shellcheck source=input-languages-v3.sh
+source "$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)/input-languages-v3.sh"

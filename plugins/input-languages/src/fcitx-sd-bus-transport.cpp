@@ -6,12 +6,15 @@
 #include <openssl/evp.h>
 
 #include <algorithm>
-#include <cerrno>
 #include <array>
+#include <cerrno>
+#include <cmath>
 #include <cstdint>
 #include <fcntl.h>
 #include <fstream>
+#include <iomanip>
 #include <optional>
+#include <sstream>
 #include <string>
 #include <string_view>
 #include <sys/stat.h>
@@ -147,6 +150,7 @@ TransportStatus statusFromError(int error) {
 ProfileIdentity inspectProfile(std::string_view path) {
 	ProfileIdentity identity;
 	const std::string profilePath(path);
+	identity.path = profilePath;
 	const int descriptor = open(profilePath.c_str(), O_RDONLY | O_CLOEXEC | O_NOFOLLOW);
 	if (descriptor < 0)
 		return identity;
@@ -192,6 +196,7 @@ ProfileIdentity inspectProfile(std::string_view path) {
 
 	static constexpr char HEX[] = "0123456789abcdef";
 	identity = {
+		.path = profilePath,
 		.safe = true,
 		.device = static_cast<uint64_t>(before.st_dev),
 		.inode = static_cast<uint64_t>(before.st_ino),
@@ -240,6 +245,184 @@ bool readStringArray(sd_bus_message* message, std::vector<std::string>& values) 
 		values.emplace_back(value ? value : "");
 	}
 	return sd_bus_message_exit_container(message) >= 0;
+}
+
+std::string jsonString(std::string_view value) {
+	std::ostringstream output;
+	output << '"';
+	for (const unsigned char character : value) {
+		switch (character) {
+			case '\\': output << "\\\\"; break;
+			case '"': output << "\\\""; break;
+			case '\b': output << "\\b"; break;
+			case '\f': output << "\\f"; break;
+			case '\n': output << "\\n"; break;
+			case '\r': output << "\\r"; break;
+			case '\t': output << "\\t"; break;
+			default:
+				if (character < 0x20)
+					output << "\\u" << std::hex << std::setw(4) << std::setfill('0') << static_cast<unsigned>(character) << std::dec;
+				else
+					output << static_cast<char>(character);
+		}
+	}
+	output << '"';
+	return output.str();
+}
+
+bool readJsonValue(sd_bus_message* message, std::string& json, std::optional<std::string>* stringValue = nullptr);
+
+bool readPropertyDictionary(sd_bus_message* message, std::string& json, std::optional<std::string>* variant = nullptr) {
+	int result = sd_bus_message_enter_container(message, SD_BUS_TYPE_ARRAY, "{sv}");
+	if (result < 0)
+		return false;
+	std::vector<std::pair<std::string, std::string>> properties;
+	while ((result = sd_bus_message_enter_container(message, SD_BUS_TYPE_DICT_ENTRY, "sv")) > 0) {
+		std::string key;
+		std::string value;
+		std::optional<std::string> scalar;
+		if (!readString(message, key) || !readJsonValue(message, value, &scalar) || sd_bus_message_exit_container(message) < 0)
+			return false;
+		if (variant && (key == "variant" || key == "Variant") && scalar)
+			*variant = std::move(scalar);
+		properties.emplace_back(std::move(key), std::move(value));
+	}
+	if (result < 0 || sd_bus_message_exit_container(message) < 0)
+		return false;
+	std::ranges::sort(properties, {}, &std::pair<std::string, std::string>::first);
+	json = "{";
+	for (std::size_t index = 0; index < properties.size(); ++index) {
+		if (index)
+			json += ',';
+		json += jsonString(properties[index].first) + ':' + properties[index].second;
+	}
+	json += '}';
+	return true;
+}
+
+bool readJsonSequence(sd_bus_message* message, char type, const char* contents, std::string& json) {
+	if (sd_bus_message_enter_container(message, type, contents) < 0)
+		return false;
+	json = "[";
+	bool first = true;
+	for (;;) {
+		const int atEnd = sd_bus_message_at_end(message, 0);
+		if (atEnd < 0)
+			return false;
+		if (atEnd > 0)
+			break;
+		std::string value;
+		if (!readJsonValue(message, value))
+			return false;
+		if (!first)
+			json += ',';
+		first = false;
+		json += value;
+	}
+	json += ']';
+	return sd_bus_message_exit_container(message) >= 0;
+}
+
+bool readJsonValue(sd_bus_message* message, std::string& json, std::optional<std::string>* stringValue) {
+	char type = 0;
+	const char* contents = nullptr;
+	if (stringValue)
+		stringValue->reset();
+	if (sd_bus_message_peek_type(message, &type, &contents) <= 0)
+		return false;
+	if (type == SD_BUS_TYPE_VARIANT) {
+		if (!contents || sd_bus_message_enter_container(message, type, contents) < 0 || !readJsonValue(message, json, stringValue))
+			return false;
+		return sd_bus_message_at_end(message, 0) > 0 && sd_bus_message_exit_container(message) >= 0;
+	}
+	if (type == SD_BUS_TYPE_ARRAY) {
+		if (contents && std::string_view(contents) == "{sv}")
+			return readPropertyDictionary(message, json);
+		return contents && readJsonSequence(message, type, contents, json);
+	}
+	if (type == SD_BUS_TYPE_STRUCT)
+		return contents && readJsonSequence(message, type, contents, json);
+
+	switch (type) {
+		case SD_BUS_TYPE_STRING:
+		case SD_BUS_TYPE_OBJECT_PATH:
+		case SD_BUS_TYPE_SIGNATURE: {
+			const char* value = nullptr;
+			if (sd_bus_message_read_basic(message, type, &value) < 0 || !value)
+				return false;
+			if (stringValue)
+				*stringValue = value;
+			json = jsonString(value);
+			return true;
+		}
+		case SD_BUS_TYPE_BOOLEAN: {
+			int value = 0;
+			if (sd_bus_message_read_basic(message, type, &value) < 0)
+				return false;
+			json = value ? "true" : "false";
+			return true;
+		}
+		case SD_BUS_TYPE_BYTE: {
+			uint8_t value = 0;
+			if (sd_bus_message_read_basic(message, type, &value) < 0)
+				return false;
+			json = std::to_string(value);
+			return true;
+		}
+		case SD_BUS_TYPE_INT16: {
+			int16_t value = 0;
+			if (sd_bus_message_read_basic(message, type, &value) < 0)
+				return false;
+			json = std::to_string(value);
+			return true;
+		}
+		case SD_BUS_TYPE_UINT16: {
+			uint16_t value = 0;
+			if (sd_bus_message_read_basic(message, type, &value) < 0)
+				return false;
+			json = std::to_string(value);
+			return true;
+		}
+		case SD_BUS_TYPE_INT32:
+		case SD_BUS_TYPE_UNIX_FD: {
+			int32_t value = 0;
+			if (sd_bus_message_read_basic(message, type, &value) < 0)
+				return false;
+			json = std::to_string(value);
+			return true;
+		}
+		case SD_BUS_TYPE_UINT32: {
+			uint32_t value = 0;
+			if (sd_bus_message_read_basic(message, type, &value) < 0)
+				return false;
+			json = std::to_string(value);
+			return true;
+		}
+		case SD_BUS_TYPE_INT64: {
+			int64_t value = 0;
+			if (sd_bus_message_read_basic(message, type, &value) < 0)
+				return false;
+			json = std::to_string(value);
+			return true;
+		}
+		case SD_BUS_TYPE_UINT64: {
+			uint64_t value = 0;
+			if (sd_bus_message_read_basic(message, type, &value) < 0)
+				return false;
+			json = std::to_string(value);
+			return true;
+		}
+		case SD_BUS_TYPE_DOUBLE: {
+			double value = 0;
+			if (sd_bus_message_read_basic(message, type, &value) < 0 || !std::isfinite(value))
+				return false;
+			std::ostringstream output;
+			output << std::setprecision(17) << value;
+			json = output.str();
+			return true;
+		}
+		default: return false;
+	}
 }
 
 }
@@ -432,8 +615,8 @@ class SdBusControllerTransport::Impl {
 		const char* defaultLayout = nullptr;
 		if (result >= 0)
 			result = sd_bus_message_read(reply, "sss", &name, &defaultMethod, &defaultLayout);
-		if (result >= 0)
-			result = sd_bus_message_skip(reply, "a{sv}");
+		if (result >= 0 && !readPropertyDictionary(reply, group.propertiesJson))
+			result = -EBADMSG;
 		if (result >= 0)
 			result = sd_bus_message_enter_container(reply, SD_BUS_TYPE_ARRAY, "(sssssssbsa{sv})");
 		while (result > 0) {
@@ -452,12 +635,25 @@ class SdBusControllerTransport::Impl {
 			result = sd_bus_message_read(reply, "sssssssb", &method, &display, &nativeName, &icon, &label, &language, &addon, &configurable);
 			if (result >= 0)
 				result = sd_bus_message_read(reply, "s", &layout);
-			if (result >= 0)
-				result = sd_bus_message_skip(reply, "a{sv}");
+			std::string properties;
+			std::optional<std::string> variant;
+			if (result >= 0 && !readPropertyDictionary(reply, properties, &variant))
+				result = -EBADMSG;
 			if (result >= 0)
 				result = sd_bus_message_exit_container(reply);
-			if (result >= 0)
-				group.items.push_back({method ? method : "", layout ? layout : ""});
+			if (result >= 0) {
+				group.items.push_back({
+					.method = method ? method : "",
+					.layoutOverride = layout ? layout : "",
+					.displayName = display ? display : "",
+					.nativeName = nativeName ? nativeName : "",
+					.languageCode = language ? language : "",
+					.addon = addon ? addon : "",
+					.configurable = configurable != 0,
+					.variant = std::move(variant),
+					.propertiesJson = std::move(properties),
+				});
+			}
 		}
 		if (result == 0)
 			result = sd_bus_message_exit_container(reply);
@@ -496,8 +692,14 @@ class SdBusControllerTransport::Impl {
 		if (result == 0)
 			result = sd_bus_message_exit_container(reply);
 		reply = sd_bus_message_unref(reply);
-		if (result >= 0 && (layout != group.defaultLayout || items != group.items))
-			result = -EBADMSG;
+		if (result >= 0) {
+			if (layout != group.defaultLayout || items.size() != group.items.size())
+				result = -EBADMSG;
+			for (std::size_t index = 0; result >= 0 && index < items.size(); ++index) {
+				if (items[index].method != group.items[index].method || items[index].layoutOverride != group.items[index].layoutOverride)
+					result = -EBADMSG;
+			}
+		}
 		return result;
 	}
 
@@ -507,6 +709,7 @@ class SdBusControllerTransport::Impl {
 	std::string owner;
 	uint64_t ownerEpoch = 0;
 	bool inFlight = false;
+	bool restorationMode = false;
 };
 
 SdBusControllerTransport::SdBusControllerTransport(RuntimeEvidence evidence) noexcept : m_impl(std::make_unique<Impl>(std::move(evidence))) {}
@@ -515,6 +718,10 @@ SdBusControllerTransport::~SdBusControllerTransport() = default;
 
 void SdBusControllerTransport::updateEvidence(RuntimeEvidence evidence) noexcept {
 	m_impl->evidence = std::move(evidence);
+}
+
+void SdBusControllerTransport::setRestorationMode(bool enabled) noexcept {
+	m_impl->restorationMode = enabled;
 }
 
 Inspection SdBusControllerTransport::inspect() noexcept {
@@ -617,8 +824,11 @@ Inspection SdBusControllerTransport::inspect() noexcept {
 			result = sd_bus_message_skip(reply, "as");
 		if (result >= 0)
 			result = sd_bus_message_exit_container(reply);
-		if (result >= 0 && enabled)
-			snapshot.enabledAddons.emplace_back(name ? name : "");
+		if (result >= 0) {
+			snapshot.addons.push_back({.name = name ? name : "", .enabled = enabled != 0, .available = true});
+			if (enabled)
+				snapshot.enabledAddons.emplace_back(name ? name : "");
+		}
 	}
 	if (result == 0)
 		result = sd_bus_message_exit_container(reply);
@@ -645,7 +855,7 @@ Inspection SdBusControllerTransport::inspect() noexcept {
 
 CommandResult SdBusControllerTransport::execute(const Snapshot& expected, const Command& command) noexcept {
 	const auto& expectedIdentity = expected.identity;
-	if (!expectedIdentity.supervised || expectedIdentity.upstreamVersion != SUPPORTED_UPSTREAM_VERSION ||
+	if (!expectedIdentity.supervised || (!m_impl->restorationMode && expectedIdentity.upstreamVersion != SUPPORTED_UPSTREAM_VERSION) ||
 		expectedIdentity.controllerShape != ControllerShape::Supported || !m_impl->evidence.supervised ||
 		m_impl->evidence.uniqueOwner != expectedIdentity.uniqueOwner || m_impl->evidence.upstreamVersion != expectedIdentity.upstreamVersion)
 		return {.status = TransportStatus::MethodError, .diagnostic = "Controller runtime evidence is unsupported"};

@@ -31,6 +31,7 @@ readonly SUITES=(
 	input_languages_structural_test.sh
 	input_languages_plugin_test.sh
 	input_languages_lifecycle_test.sh
+	input_languages_v3_lifecycle_test.sh
 	wizard_test.sh
 )
 

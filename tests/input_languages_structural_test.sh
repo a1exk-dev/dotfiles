@@ -27,7 +27,8 @@ new_structural_fixture() {
 		/usr/share/omarchy/shell/plugins/bar/widgets/KeyboardLayoutModel.js "$STRUCTURAL_FIXTURE/omarchy/shell/plugins/bar/widgets/"
 	cp /usr/share/omarchy/shell/services/PluginRegistry.qml "$STRUCTURAL_FIXTURE/omarchy/shell/services/"
 	cp /usr/share/omarchy/shell/shell.qml "$STRUCTURAL_FIXTURE/omarchy/shell/"
-	cp "$REPOSITORY_ROOT/lib/dotfiles/input-languages-validator.sh" "$REPOSITORY_ROOT/lib/dotfiles/input-languages.sh" "$STRUCTURAL_FIXTURE/lib/dotfiles/"
+	cp "$REPOSITORY_ROOT/lib/dotfiles/input-languages-validator.sh" "$REPOSITORY_ROOT/lib/dotfiles/input-languages.sh" \
+		"$REPOSITORY_ROOT/lib/dotfiles/input-languages-v3.sh" "$STRUCTURAL_FIXTURE/lib/dotfiles/"
 }
 
 fixture_validator_fails() {

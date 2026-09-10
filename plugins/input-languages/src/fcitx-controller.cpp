@@ -1,7 +1,12 @@
 #include "fcitx-controller.hpp"
 
+#include <openssl/evp.h>
+
 #include <algorithm>
+#include <array>
+#include <iomanip>
 #include <optional>
+#include <sstream>
 #include <string_view>
 
 namespace InputLanguages::Fcitx {
@@ -56,13 +61,30 @@ bool runtimeSupported(const Snapshot& snapshot) {
 	return true;
 }
 
+bool restorationRuntimeSupported(const Snapshot& snapshot) {
+	if (snapshot.identity.uniqueOwner.empty() || snapshot.identity.ownerEpoch == 0 || !snapshot.identity.supervised || !snapshot.profile.safe ||
+		snapshot.identity.controllerShape != ControllerShape::Supported || snapshot.currentGroup.empty() ||
+		std::ranges::none_of(snapshot.groups, [&snapshot](const Group& group) { return group.name == snapshot.currentGroup; }))
+		return false;
+	for (std::size_t index = 0; index < snapshot.groups.size(); ++index) {
+		if (snapshot.groups[index].name.empty())
+			return false;
+		for (std::size_t other = index + 1; other < snapshot.groups.size(); ++other) {
+			if (snapshot.groups[index].name == snapshot.groups[other].name)
+				return false;
+		}
+	}
+	return true;
+}
+
 bool defaultMethodAllowed(std::string_view method) {
 	return method.empty() || method == US_METHOD || method == RUSSIAN_METHOD;
 }
 
 bool exactManagedGroup(const Group& group) {
 	return group.name == MANAGED_GROUP_NAME && group.defaultLayout == "us" && defaultMethodAllowed(group.defaultMethod) &&
-		group.items.size() == 2 && group.items[0] == GroupItem{US_METHOD, ""} && group.items[1] == GroupItem{RUSSIAN_METHOD, ""};
+		group.items.size() == 2 && group.items[0].method == US_METHOD && group.items[0].layoutOverride.empty() &&
+		group.items[1].method == RUSSIAN_METHOD && group.items[1].layoutOverride.empty();
 }
 
 bool methodBelongsToGroup(const Group& group, std::string_view method) {
@@ -110,17 +132,44 @@ bool unrelatedGroupsPreserved(const Snapshot& before, const Snapshot& after) {
 }
 
 bool inventoriesPreserved(const Snapshot& before, const Snapshot& after) {
-	return before.availableMethods == after.availableMethods && before.enabledAddons == after.enabledAddons;
+	return before.availableMethods == after.availableMethods && before.enabledAddons == after.enabledAddons && before.addons == after.addons;
 }
 
 bool semanticsEqual(const Snapshot& before, const Snapshot& after) {
 	return before.identity == after.identity && before.groups == after.groups && before.availableMethods == after.availableMethods &&
-		before.enabledAddons == after.enabledAddons && before.currentGroup == after.currentGroup && before.currentMethod == after.currentMethod;
+		before.enabledAddons == after.enabledAddons && before.addons == after.addons && before.currentGroup == after.currentGroup && before.currentMethod == after.currentMethod;
+}
+
+std::string jsonString(std::string_view value) {
+	std::string result = "\"";
+	for (const unsigned char character : value) {
+		switch (character) {
+			case '\\': result += "\\\\"; break;
+			case '"': result += "\\\""; break;
+			case '\b': result += "\\b"; break;
+			case '\f': result += "\\f"; break;
+			case '\n': result += "\\n"; break;
+			case '\r': result += "\\r"; break;
+			case '\t': result += "\\t"; break;
+			default:
+				if (character < 0x20) {
+					std::ostringstream escaped;
+					escaped << "\\u" << std::hex << std::setw(4) << std::setfill('0') << static_cast<unsigned>(character);
+					result += escaped.str();
+				} else {
+					result += static_cast<char>(character);
+				}
+		}
+	}
+	return result + '"';
 }
 
 }
 
-ControllerAdapter::ControllerAdapter(ControllerTransport& transport) : m_transport(transport) {}
+ControllerAdapter::ControllerAdapter(ControllerTransport& transport, bool restorationMode)
+	: m_transport(transport), m_restorationMode(restorationMode) {
+	m_transport.setRestorationMode(restorationMode);
+}
 
 CommandKind commandKind(const Command& command) noexcept {
 	if (std::holds_alternative<AddGroupCommand>(command))
@@ -138,7 +187,7 @@ CommandKind commandKind(const Command& command) noexcept {
 
 AdapterResult ControllerAdapter::inspect() noexcept {
 	auto inspection = m_transport.inspect();
-	if (inspection.status != TransportStatus::Ok || !runtimeSupported(inspection.snapshot))
+	if (inspection.status != TransportStatus::Ok || !(m_restorationMode ? restorationRuntimeSupported(inspection.snapshot) : runtimeSupported(inspection.snapshot)))
 		return inspectionFailure(std::move(inspection));
 
 	const auto& snapshot = inspection.snapshot;
@@ -157,13 +206,63 @@ AdapterResult ControllerAdapter::inspect() noexcept {
 	return {.outcome = Outcome::Converged, .snapshot = std::move(inspection.snapshot), .retryAfterSeconds = 0, .diagnostic = {}};
 }
 
+AdapterResult ControllerAdapter::executeOne(const Snapshot& expected, const Command& command) noexcept {
+	auto last = expected;
+	auto verify = [&command](const Snapshot& before, const Snapshot& after) {
+		switch (commandKind(command)) {
+			case CommandKind::AddGroup: {
+				const auto& add = std::get<AddGroupCommand>(command);
+				const auto* managed = findGroup(after, add.groupName);
+				const auto* current = findGroup(before, before.currentGroup);
+				return !findGroup(before, add.groupName) && managed && current && managed->items.empty() &&
+					managed->defaultMethod.empty() && managed->defaultLayout == current->defaultLayout &&
+					after.currentGroup == before.currentGroup && after.currentMethod == before.currentMethod;
+			}
+			case CommandKind::SetGroup: {
+				const auto& set = std::get<SetGroupCommand>(command);
+				const auto* group = findGroup(after, set.groupName);
+				return group && set.groupName == MANAGED_GROUP_NAME && exactManagedGroup(*group) &&
+					after.currentGroup == before.currentGroup && after.currentMethod == before.currentMethod;
+			}
+			case CommandKind::SwitchGroup: {
+				const auto& selected = std::get<SwitchGroupCommand>(command);
+				const auto* group = findGroup(after, selected.groupName);
+				return group && !after.groups.empty() && after.groups.front().name == selected.groupName &&
+					after.currentGroup == selected.groupName && methodBelongsToGroup(*group, after.currentMethod);
+			}
+			case CommandKind::SetCurrentMethod: {
+				const auto& selected = std::get<SetCurrentMethodCommand>(command);
+				const auto* group = findGroup(after, after.currentGroup);
+				return group && methodBelongsToGroup(*group, selected.method) &&
+					(after.currentMethod.empty() || after.currentMethod == selected.method);
+			}
+			case CommandKind::RemoveGroup: {
+				const auto& removed = std::get<RemoveGroupCommand>(command);
+				return !findGroup(after, removed.groupName) && after.currentGroup == before.currentGroup &&
+					after.currentMethod == before.currentMethod;
+			}
+			case CommandKind::Save:
+				return semanticsEqual(before, after);
+		}
+		return false;
+	};
+	if (auto failure = runVerifiedMutation(last, command, verify))
+		return std::move(*failure);
+	return {
+		.outcome = last.currentMethod.empty() ? Outcome::IdleNoContext : Outcome::Pending,
+		.snapshot = std::move(last),
+		.retryAfterSeconds = 0,
+		.diagnostic = {},
+	};
+}
+
 std::optional<AdapterResult> ControllerAdapter::runVerifiedMutation(
 	Snapshot& last,
 	const Command& command,
 	const std::function<bool(const Snapshot&, const Snapshot&)>& verify,
 	const std::function<bool()>& stillCurrent) noexcept {
 	auto preflight = m_transport.inspect();
-	if (preflight.status != TransportStatus::Ok || !runtimeSupported(preflight.snapshot))
+	if (preflight.status != TransportStatus::Ok || !(m_restorationMode ? restorationRuntimeSupported(preflight.snapshot) : runtimeSupported(preflight.snapshot)))
 		return inspectionFailure(std::move(preflight));
 	if (preflight.snapshot.identity != last.identity)
 		return AdapterResult{.outcome = Outcome::Unavailable, .snapshot = std::move(preflight.snapshot), .retryAfterSeconds = 0, .diagnostic = "Controller owner changed"};
@@ -186,7 +285,7 @@ std::optional<AdapterResult> ControllerAdapter::runVerifiedMutation(
 	}
 
 	auto readback = m_transport.inspect();
-	if (readback.status != TransportStatus::Ok || !runtimeSupported(readback.snapshot))
+	if (readback.status != TransportStatus::Ok || !(m_restorationMode ? restorationRuntimeSupported(readback.snapshot) : runtimeSupported(readback.snapshot)))
 		return inspectionFailure(std::move(readback));
 	if (readback.snapshot.identity != before.identity)
 		return AdapterResult{.outcome = Outcome::Unavailable, .snapshot = std::move(readback.snapshot), .retryAfterSeconds = 0, .diagnostic = "Controller owner changed"};
@@ -476,6 +575,84 @@ AdapterResult ControllerAdapter::restore(const Snapshot& prior) noexcept {
 		.retryAfterSeconds = 0,
 		.diagnostic = {},
 	};
+}
+
+std::string snapshotJson(const Snapshot& snapshot) {
+	std::ostringstream output;
+	output << "{\"identity\":{\"unique_owner\":" << jsonString(snapshot.identity.uniqueOwner)
+		   << ",\"owner_epoch\":" << snapshot.identity.ownerEpoch
+		   << ",\"supervised\":" << (snapshot.identity.supervised ? "true" : "false")
+		   << ",\"upstream_version\":" << jsonString(snapshot.identity.upstreamVersion)
+		   << ",\"controller_shape\":" << jsonString(snapshot.identity.controllerShape == ControllerShape::Supported ? "supported" : "unsupported")
+		   << "},\"profile\":{\"path\":" << jsonString(snapshot.profile.path)
+		   << ",\"safe\":" << (snapshot.profile.safe ? "true" : "false")
+		   << ",\"device\":" << snapshot.profile.device << ",\"inode\":" << snapshot.profile.inode
+		   << ",\"mode\":" << snapshot.profile.mode << ",\"uid\":" << snapshot.profile.ownerUid
+		   << ",\"digest\":" << jsonString(snapshot.profile.sha256) << "},\"groups\":[";
+	for (std::size_t groupIndex = 0; groupIndex < snapshot.groups.size(); ++groupIndex) {
+		if (groupIndex)
+			output << ',';
+		const auto& group = snapshot.groups[groupIndex];
+		output << "{\"name\":" << jsonString(group.name) << ",\"default_layout\":" << jsonString(group.defaultLayout)
+			   << ",\"default_im\":" << jsonString(group.defaultMethod) << ",\"properties\":" << group.propertiesJson << ",\"items\":[";
+		for (std::size_t itemIndex = 0; itemIndex < group.items.size(); ++itemIndex) {
+			if (itemIndex)
+				output << ',';
+			const auto& item = group.items[itemIndex];
+			output << "{\"method\":" << jsonString(item.method) << ",\"layout_override\":" << jsonString(item.layoutOverride)
+				   << ",\"display_name\":" << jsonString(item.displayName) << ",\"native_name\":" << jsonString(item.nativeName)
+				   << ",\"language_code\":" << jsonString(item.languageCode) << ",\"addon\":" << jsonString(item.addon)
+				   << ",\"configurable\":" << (item.configurable ? "true" : "false") << ",\"variant\":";
+			if (item.variant)
+				output << jsonString(*item.variant);
+			else
+				output << "null";
+			output << ",\"properties\":" << item.propertiesJson << '}';
+		}
+		output << "]}";
+	}
+	output << "],\"available_methods\":[";
+	for (std::size_t index = 0; index < snapshot.availableMethods.size(); ++index) {
+		if (index)
+			output << ',';
+		output << jsonString(snapshot.availableMethods[index]);
+	}
+	output << "],\"addons\":[";
+	for (std::size_t index = 0; index < snapshot.addons.size(); ++index) {
+		if (index)
+			output << ',';
+		const auto& addon = snapshot.addons[index];
+		output << "{\"name\":" << jsonString(addon.name) << ",\"enabled\":" << (addon.enabled ? "true" : "false")
+			   << ",\"available\":" << (addon.available ? "true" : "false") << '}';
+	}
+	output << "],\"current_group\":" << jsonString(snapshot.currentGroup)
+		   << ",\"observed_method\":" << jsonString(snapshot.currentMethod) << '}';
+	return output.str();
+}
+
+std::string snapshotDigest(const Snapshot& snapshot) noexcept {
+	try {
+		const auto serialized = snapshotJson(snapshot);
+		std::array<unsigned char, EVP_MAX_MD_SIZE> digest{};
+		unsigned length = 0;
+		EVP_MD_CTX* context = EVP_MD_CTX_new();
+		const bool valid = context && EVP_DigestInit_ex(context, EVP_sha256(), nullptr) == 1 &&
+			EVP_DigestUpdate(context, serialized.data(), serialized.size()) == 1 &&
+			EVP_DigestFinal_ex(context, digest.data(), &length) == 1 && length == 32;
+		EVP_MD_CTX_free(context);
+		if (!valid)
+			return {};
+		static constexpr char HEX[] = "0123456789abcdef";
+		std::string result;
+		result.reserve(length * 2);
+		for (unsigned index = 0; index < length; ++index) {
+			result += HEX[digest[index] >> 4];
+			result += HEX[digest[index] & 0x0f];
+		}
+		return result;
+	} catch (...) {
+		return {};
+	}
 }
 
 }

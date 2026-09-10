@@ -159,6 +159,10 @@ JSON
 	source "$SOURCE_REPO/lib/dotfiles/input-languages.sh"
 	# shellcheck source=../lib/dotfiles/packages.sh
 	source "$SOURCE_REPO/lib/dotfiles/packages.sh"
+	# Keep this baseline round trip on the immutable version-2 implementation;
+	# public version dispatch and expansion are covered by the version-3 suite.
+	apply_input_languages() { apply_input_languages_v2 "$@"; }
+	remove_input_languages() { remove_input_languages_v2 "$@"; }
 
 	baseline_digest=$(input_languages_tree_digest "$HOME/.config/hypr")
 	apply_input_languages --yes >/dev/null || return 1
@@ -735,7 +739,7 @@ changed_widget_source_uses_shell_restart() (
 	[[ $(<"$root/calls") == 'restart shell' ]]
 )
 
-run_test apply_noop_remove_round_trip 'Apply, exact no-op, and receipt-backed Remove round trip'
+run_test apply_noop_remove_round_trip 'version-2 Apply, exact no-op, and receipt-backed Remove round trip'
 run_test apply_cancellation_is_pre_mutation 'Apply cancellation occurs after read-only preparation and before mutation'
 run_test invalid_paths_and_dangling_evidence_are_nonmutating 'noncanonical paths and dangling lifecycle evidence block without mutation'
 run_test pending_write_failure_precedes_live_mutation 'pending evidence publication failure precedes every live mutation'

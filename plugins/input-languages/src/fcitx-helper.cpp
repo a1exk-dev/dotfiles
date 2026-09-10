@@ -115,7 +115,8 @@ Protocol::Outcome protocolOutcome(Fcitx::Outcome outcome) {
 bool exactManagedGroup(const Group& group) {
 	return group.name == MANAGED_GROUP_NAME && group.defaultLayout == "us" &&
 		(group.defaultMethod.empty() || group.defaultMethod == US_METHOD || group.defaultMethod == RUSSIAN_METHOD) &&
-		group.items.size() == 2 && group.items[0] == GroupItem{US_METHOD, ""} && group.items[1] == GroupItem{RUSSIAN_METHOD, ""};
+		group.items.size() == 2 && group.items[0].method == US_METHOD && group.items[0].layoutOverride.empty() &&
+		group.items[1].method == RUSSIAN_METHOD && group.items[1].layoutOverride.empty();
 }
 
 Protocol::ManagedGroupState groupState(const Snapshot& snapshot) {
