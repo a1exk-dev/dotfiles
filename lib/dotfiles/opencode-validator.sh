@@ -12,8 +12,12 @@ tui_config=$2
 
 if ! jq -e '
 	type == "object" and
-	keys_unsorted == ["$schema", "autoupdate"] and
-	. == {"$schema":"https://opencode.ai/config.json","autoupdate":false}
+	keys_unsorted == ["$schema", "autoupdate", "plugin"] and
+	. == {
+		"$schema":"https://opencode.ai/config.json",
+		"autoupdate":false,
+		"plugin":["@dietrichgebert/ponytail"]
+	}
 ' "$main_config" >/dev/null; then
 	printf 'Error: OpenCode main config does not match the managed object: %s\n' "$main_config" >&2
 	exit 1

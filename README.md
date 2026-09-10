@@ -22,7 +22,7 @@ Stow package application, migration, and removal require GNU Stow. The wizard ca
 
 The `hyprland` Stow package provides Portable input languages for Omarchy `4.0.2` or newer within version 4. Apply requires a running Hyprland session whose ABI matches the installed headers, plus GCC, Make, pkgconf, binutils, Lua, GNU Stow, `xkbcli`, `jq`, `flock`, and the stock Omarchy Shell commands and keyboard-layout widget. The package plan installs `hyprland`, `gcc`, `make`, `pkgconf`, `binutils`, and `lua` through Omarchy after confirmation. Apply, Remove, and recovery require writable absolute XDG data and state directories, or their defaults below `~/.local/`. Input Languages requires `XDG_CONFIG_HOME` to be unset or exactly `$HOME/.config`. The `HOME`, XDG, repository source, and lifecycle paths must not contain symbolic-link components. Existing lifecycle-owned data, artifact, and state directories must be owned by the invoking user with mode `0700`.
 
-The `opencode` Stow package owns complete global OpenCode runtime and TUI settings. It requires OpenCode installed through Omarchy 4's Mise flow, but it does not install or update OpenCode.
+The `opencode` Stow package owns complete global OpenCode runtime and TUI settings, including the Ponytail plugin. It requires OpenCode installed through Omarchy 4's Mise flow, but it does not install or update OpenCode.
 
 The `telegram-theme` Stow package supports exactly Omarchy `4.0.1-1` and Telegram Desktop `7.0.9-4`. It requires Node.js 22.20.0 or newer, `zip`, `flock`, and writable absolute XDG state and runtime directories. The package plan installs `telegram-desktop` and `zip` through Omarchy after confirmation.
 

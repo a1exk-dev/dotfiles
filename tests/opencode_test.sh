@@ -854,8 +854,12 @@ test_opencode_package_matches_the_native_configuration_contract() {
 
 	jq -e '
 		type == "object" and
-		(keys_unsorted == ["$schema", "autoupdate"]) and
-		. == {"$schema":"https://opencode.ai/config.json","autoupdate":false}
+		(keys_unsorted == ["$schema", "autoupdate", "plugin"]) and
+		. == {
+			"$schema":"https://opencode.ai/config.json",
+			"autoupdate":false,
+			"plugin":["@dietrichgebert/ponytail"]
+		}
 	' "$package_root/$OPENCODE_MAIN_RELATIVE" >/dev/null || {
 		printf '  opencode.json should be the exact approved object in key order\n' >&2
 		return 1
@@ -1028,7 +1032,7 @@ test_validator_rejects_nonexact_objects_before_launching_opencode() {
 
 	cp -- "$approved_tui" "$tui" || return 1
 	jq '.plugin = ["external-plugin"]' "$approved_main" >"$main" || return 1
-	assert_validator_rejects_before_launch 'a main external plugin declaration' "$main" "$tui" || return 1
+	assert_validator_rejects_before_launch 'a substituted main plugin declaration' "$main" "$tui" || return 1
 	jq '.lsp = false' "$approved_main" >"$main" || return 1
 	assert_validator_rejects_before_launch 'a global LSP policy' "$main" "$tui" || return 1
 	jq 'del(.autoupdate)' "$approved_main" >"$main" || return 1

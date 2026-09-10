@@ -9,7 +9,7 @@ The `opencode` Stow package owns the complete global OpenCode runtime and TUI se
 
 `~/.config/opencode/` stays an ordinary directory. OpenCode can create excluded sibling files in this directory.
 
-The package uses native OpenCode. It declares no external plugin and no global LSP policy.
+The package uses native OpenCode. It declares Ponytail as its only external plugin and has no global LSP policy.
 
 ## Requirements
 
@@ -41,7 +41,8 @@ The `opencode.json` tracked source contains this complete object:
 ```json
 {
   "$schema": "https://opencode.ai/config.json",
-  "autoupdate": false
+  "autoupdate": false,
+  "plugin": ["@dietrichgebert/ponytail"]
 }
 ```
 
@@ -54,11 +55,13 @@ The `tui.json` tracked source contains this complete object:
 }
 ```
 
-Neither object has a `plugin` field or a global `lsp` field. Built-in language server integrations stay disabled unless another OpenCode configuration layer enables them. This package does not select, install, update, validate, or remove language servers or external plugins. Another OpenCode layer can own them.
+The main object declares Ponytail as its only external plugin. Neither object has a global `lsp` field. Built-in language server integrations stay disabled unless another OpenCode configuration layer enables them. This package does not manage other external plugins or language servers.
 
 ## Native skills
 
 OpenCode uses native Agent Skills. The Dotfiles wizard installs global skills below `~/.agents/skills/` in a separate operation. The `opencode` Stow package does not own or require those files.
+
+Ponytail provides `/ponytail`, `/ponytail-review`, `/ponytail-audit`, `/ponytail-debt`, `/ponytail-gain`, and `/ponytail-help`. OpenCode downloads Ponytail when it loads the config. Restart OpenCode after changing the plugin declaration.
 
 After installing or updating global skills, restart OpenCode. In the TUI:
 
@@ -547,9 +550,9 @@ From the repository root, verify both links and the bytes at each managed target
 )
 ```
 
-Generated siblings that existed before apply must still be present. The package validator requires the two exact JSON objects. This check rejects a `plugin` field, a global `lsp` field, an unknown field, or a changed value. The validator also runs the installed OpenCode parser for `opencode.json` in an isolated environment.
+Generated siblings that existed before apply must still be present. The package validator requires the two exact JSON objects. This check rejects a missing or substituted Ponytail declaration, a global `lsp` field, an unknown field, or a changed value. The validator also runs the installed OpenCode parser for `opencode.json` in an isolated environment.
 
-The package validator does not test runtime precedence, project settings, remote or account configuration, plugin behavior, or language server behavior. OpenCode has no strict native command for `tui.json`. The package validator therefore checks the complete approved TUI object before it starts OpenCode.
+The package validator does not test runtime precedence, project settings, remote or account configuration, Ponytail behavior, other plugin behavior, or language server behavior. OpenCode has no strict native command for `tui.json`. The package validator therefore checks the complete approved TUI object before it starts OpenCode.
 
 Restart OpenCode once. Confirm that OpenCode starts without configuration diagnostics. Confirm that `/skills` lists the separately installed global skills and that `/<skill-name>` invokes one. Project settings can still override global settings where OpenCode permits it.
 
@@ -705,7 +708,7 @@ After recovery, `Package status` must report `opencode` as `conflicting` because
 
 OpenCode, `opencode plugin --global`, the TUI plugin installer, and global config APIs can write through both Stow links. Such a write changes a tracked source. Before you directly edit either tracked source, quit every OpenCode process. Keep OpenCode stopped while you edit, review the Git diff, keep or reject the change, and run the package validator. Restart OpenCode once after you finish the review and the package validator passes.
 
-Do not use `opencode plugin --global` to maintain the Stow package. The command downloads code before it edits settings, and it can edit the two files separately. External plugins are outside this package. Another OpenCode layer can own them.
+Do not use `opencode plugin --global` to maintain the Stow package. The command downloads code before it edits settings, and it can edit the two files separately. The exact `plugin` field owns Ponytail. Another OpenCode layer can own other external plugins.
 
 `omarchy refresh config opencode/opencode.json`, `omarchy reinstall configs`, and `omarchy reinstall` can follow a Stow link and replace a tracked source. Remove the `opencode` Stow package first unless you intend to replace and review the tracked sources. Keep files below `/usr/share/omarchy/` read-only.
 
