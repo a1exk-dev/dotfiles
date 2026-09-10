@@ -27,7 +27,7 @@ new_structural_fixture() {
 		/usr/share/omarchy/shell/plugins/bar/widgets/KeyboardLayoutModel.js "$STRUCTURAL_FIXTURE/omarchy/shell/plugins/bar/widgets/"
 	cp /usr/share/omarchy/shell/services/PluginRegistry.qml "$STRUCTURAL_FIXTURE/omarchy/shell/services/"
 	cp /usr/share/omarchy/shell/shell.qml "$STRUCTURAL_FIXTURE/omarchy/shell/"
-	cp "$REPOSITORY_ROOT/lib/dotfiles/input-languages-validator.sh" "$STRUCTURAL_FIXTURE/lib/dotfiles/"
+	cp "$REPOSITORY_ROOT/lib/dotfiles/input-languages-validator.sh" "$REPOSITORY_ROOT/lib/dotfiles/input-languages.sh" "$STRUCTURAL_FIXTURE/lib/dotfiles/"
 }
 
 fixture_validator_fails() {
@@ -160,6 +160,9 @@ contract_constants_and_compatibility_drift_are_rejected() (
 	new_structural_fixture
 	trap 'rm -rf -- "$STRUCTURAL_FIXTURE"' EXIT
 	local contracts=$STRUCTURAL_FIXTURE/plugins/input-languages/contracts
+	sed -i 's/src\/fcitx-controller.cpp //' "$STRUCTURAL_FIXTURE/lib/dotfiles/input-languages.sh"
+	fixture_validator_reports 'integration source identity inventory is not exact' || return 1
+	cp "$REPOSITORY_ROOT/lib/dotfiles/input-languages.sh" "$STRUCTURAL_FIXTURE/lib/dotfiles/input-languages.sh"
 	jq '.transport.maximum_packet_bytes = 1025' "$contracts/protocol.json" >"$contracts/changed.json"
 	mv "$contracts/changed.json" "$contracts/protocol.json"
 	fixture_validator_reports 'private protocol frame schema or fixed constants changed' || return 1
@@ -228,6 +231,30 @@ follower_changes_preserve_selectable_plugin_source_identity() (
 	[[ $before == "$after" ]]
 )
 
+integration_source_identity_covers_complete_artifact_sources() (
+	set -e
+	new_structural_fixture
+	trap 'rm -rf -- "$STRUCTURAL_FIXTURE"' EXIT
+	local before after source_path fixture_path
+	before=$(bash -c 'source "$1"; input_languages_integration_source_identity_from "$2/plugins/input-languages" "$2/config/hyprland/.config/hypr"' \
+		_ "$REPOSITORY_ROOT/lib/dotfiles/input-languages.sh" "$STRUCTURAL_FIXTURE")
+	while IFS= read -r source_path; do
+		case $source_path in
+			plugin/*) fixture_path=plugins/input-languages/${source_path#plugin/} ;;
+			contracts/*) fixture_path=plugins/input-languages/$source_path ;;
+			systemd/*) fixture_path=plugins/input-languages/$source_path ;;
+			widget/*) fixture_path=plugins/input-languages/widget/dotfiles.keyboard-layout/${source_path#widget/} ;;
+			config/*) fixture_path=config/hyprland/.config/hypr/${source_path#config/} ;;
+			*) return 1 ;;
+		esac
+		printf '\nartifact identity change\n' >>"$STRUCTURAL_FIXTURE/$fixture_path"
+		after=$(bash -c 'source "$1"; input_languages_integration_source_identity_from "$2/plugins/input-languages" "$2/config/hyprland/.config/hypr"' \
+			_ "$REPOSITORY_ROOT/lib/dotfiles/input-languages.sh" "$STRUCTURAL_FIXTURE")
+		[[ $before != "$after" ]] || return 1
+		cp "$REPOSITORY_ROOT/$fixture_path" "$STRUCTURAL_FIXTURE/$fixture_path"
+	done < <(bash -c 'source "$1"; input_languages_integration_expected_source_paths' _ "$REPOSITORY_ROOT/lib/dotfiles/input-languages.sh")
+)
+
 controller_adapter_source_contract_is_enforced() (
 	set -e
 	new_structural_fixture
@@ -241,6 +268,9 @@ controller_adapter_source_contract_is_enforced() (
 	cp "$REPOSITORY_ROOT/plugins/input-languages/src/fcitx-sd-bus-transport.cpp" "$plugin/src/fcitx-sd-bus-transport.cpp"
 	sed -i 's/O_RDONLY | O_CLOEXEC | O_NOFOLLOW/O_RDONLY | O_CLOEXEC/' "$plugin/src/fcitx-sd-bus-transport.cpp"
 	fixture_validator_reports 'Controller adapter fixed transport contract changed' || return 1
+	cp "$REPOSITORY_ROOT/plugins/input-languages/src/fcitx-sd-bus-transport.cpp" "$plugin/src/fcitx-sd-bus-transport.cpp"
+	sed -i 's/ExpectedMember{"SetCurrentIM", "method", "s", ""}/ExpectedMember{"SetCurrentIM", "method", "o", ""}/' "$plugin/src/fcitx-sd-bus-transport.cpp"
+	fixture_validator_reports 'compiled Fcitx Controller members disagree with fcitx.json' || return 1
 	cp "$REPOSITORY_ROOT/plugins/input-languages/src/fcitx-sd-bus-transport.cpp" "$plugin/src/fcitx-sd-bus-transport.cpp"
 	sed -i 's/pkg-config --cflags --libs libsystemd libcrypto/pkg-config --cflags --libs Fcitx5Core/' "$plugin/Makefile"
 	fixture_validator_reports 'Controller adapter must use libsystemd without Fcitx ABI linkage'
@@ -257,6 +287,15 @@ helper_source_and_unit_contract_is_enforced() (
 	sed -i 's/MAX_PACKET_BYTES = 1024/MAX_PACKET_BYTES = 2048/' "$plugin/include/fcitx-protocol.hpp"
 	fixture_validator_reports 'helper fixed protocol, authentication, or worker contract changed' || return 1
 	cp "$REPOSITORY_ROOT/plugins/input-languages/include/fcitx-protocol.hpp" "$plugin/include/fcitx-protocol.hpp"
+	sed -i 's/dotfiles-input-languages-fcitx-seqpacket-v1/foreign-protocol/' "$plugin/include/fcitx-protocol.hpp"
+	fixture_validator_reports 'compiled Fcitx protocol constants disagree with protocol.json' || return 1
+	cp "$REPOSITORY_ROOT/plugins/input-languages/include/fcitx-protocol.hpp" "$plugin/include/fcitx-protocol.hpp"
+	sed -i 's/HelperFailed = 11/HelperFailed = 12/' "$plugin/include/fcitx-protocol.hpp"
+	fixture_validator_reports 'compiled Fcitx protocol constants disagree with protocol.json' || return 1
+	cp "$REPOSITORY_ROOT/plugins/input-languages/include/fcitx-protocol.hpp" "$plugin/include/fcitx-protocol.hpp"
+	sed -i 's/milliseconds(2000)}/milliseconds(2001)}/' "$plugin/include/fcitx-follower.hpp"
+	fixture_validator_reports 'compiled Fcitx protocol constants disagree with protocol.json' || return 1
+	cp "$REPOSITORY_ROOT/plugins/input-languages/include/fcitx-follower.hpp" "$plugin/include/fcitx-follower.hpp"
 	sed -i 's/installedFcitxUpstreamVersion()/SUPPORTED_UPSTREAM_VERSION/' "$plugin/src/fcitx-helper-main.cpp"
 	fixture_validator_reports 'helper fixed protocol, authentication, or worker contract changed' || return 1
 	cp "$REPOSITORY_ROOT/plugins/input-languages/src/fcitx-helper-main.cpp" "$plugin/src/fcitx-helper-main.cpp"
@@ -293,6 +332,7 @@ run_test contract_shape_and_identity_drift_are_rejected 'contract shape and shar
 run_test contract_constants_and_compatibility_drift_are_rejected 'contract constants and compatibility drift are rejected'
 run_test contract_changes_preserve_direct_source_identity 'contract-only changes preserve direct-XKB source identity'
 run_test follower_changes_preserve_selectable_plugin_source_identity 'follower changes stay outside selectable plugin source identity'
+run_test integration_source_identity_covers_complete_artifact_sources 'integration source identity covers the complete artifact sources'
 run_test controller_adapter_source_contract_is_enforced 'Controller adapter source and transport contract are enforced'
 run_test helper_source_and_unit_contract_is_enforced 'helper protocol, source, and systemd unit contracts are enforced'
 run_test follower_source_contract_is_enforced 'follower mailbox, wake, IPC, and plugin coordination are enforced'

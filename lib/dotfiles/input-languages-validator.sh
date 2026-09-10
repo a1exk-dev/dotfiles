@@ -13,6 +13,8 @@ omarchy_root=${2:-/usr/share/omarchy}
 packaged_root=$omarchy_root/config/hypr
 mode=${3:-full}
 [[ $mode == full || $mode == --static-only ]] || { printf 'Error: unknown validator mode: %s\n' "$mode" >&2; exit 2; }
+REPOSITORY_ROOT=$repository_root
+source "$repository_root/lib/dotfiles/input-languages.sh"
 
 expected=(
 	.luarc.json
@@ -80,7 +82,8 @@ done
 grep -Fq 'active-artifact.lua' "$package_root/hyprland.lua"
 grep -Fq 'hl.plugin.load(artifact)' "$package_root/hyprland.lua"
 
-for source in Makefile migration-baseline.json include/input-language-model.hpp include/fcitx-follower.hpp src/input-language-model.cpp src/fcitx-follower.cpp \
+for source in Makefile integration.mk migration-baseline.json include/input-language-model.hpp include/fcitx-follower.hpp src/input-language-model.cpp src/fcitx-follower.cpp \
+		src/integration-artifact-identity.cpp \
 		src/plugin.cpp tests/input-language-model-test.cpp tests/fcitx-follower-test.cpp \
 		tests/input-language-integration-test.cpp \
 	tests/keyboard-layout-model-test.cjs widget/dotfiles.keyboard-layout/manifest.json widget/dotfiles.keyboard-layout/KeyboardLayout.qml \
@@ -94,12 +97,22 @@ for source in include/fcitx-controller.hpp src/fcitx-controller.cpp src/fcitx-sd
 	}
 done
 for source in include/fcitx-protocol.hpp include/fcitx-helper.hpp src/fcitx-protocol.cpp src/fcitx-helper.cpp src/fcitx-helper-main.cpp \
-	tests/fcitx-helper-test.cpp systemd/dotfiles-input-languages-fcitx.socket systemd/dotfiles-input-languages-fcitx.service; do
+		tests/fcitx-helper-test.cpp systemd/dotfiles-input-languages-fcitx.socket systemd/dotfiles-input-languages-fcitx.service; do
 	[[ -f $plugin_root/$source && ! -L $plugin_root/$source ]] || {
 		printf 'Error: Fcitx helper source is missing or unsafe: %s\n' "$source" >&2
 		exit 1
 	}
 done
+expected_integration_identity_sources=(
+	integration.mk migration-baseline.json
+	include/fcitx-controller.hpp include/fcitx-follower.hpp include/fcitx-helper.hpp include/fcitx-protocol.hpp include/input-language-model.hpp
+	src/fcitx-controller.cpp src/fcitx-follower.cpp src/fcitx-helper-main.cpp src/fcitx-helper.cpp src/fcitx-protocol.cpp
+	src/fcitx-sd-bus-transport.cpp src/input-language-model.cpp src/integration-artifact-identity.cpp src/plugin.cpp
+)
+[[ $(printf '%s\n' "${INPUT_LANGUAGES_INTEGRATION_SOURCE_FILES[@]}") == "$(printf '%s\n' "${expected_integration_identity_sources[@]}")" ]] || {
+	printf 'Error: integration source identity inventory is not exact.\n' >&2
+	exit 1
+}
 grep -Fq "CALL_TIMEOUT_USEC = 1'000'000" "$plugin_root/src/fcitx-sd-bus-transport.cpp" &&
 	grep -Fq 'sd_bus_call_async' "$plugin_root/src/fcitx-sd-bus-transport.cpp" &&
 	grep -Fq 'sd_bus_attach_event' "$plugin_root/src/fcitx-sd-bus-transport.cpp" &&
@@ -124,7 +137,8 @@ grep -Fq 'm_impl->evidence.uniqueOwner = owner' "$plugin_root/src/fcitx-sd-bus-t
 	exit 1
 }
 grep -Fq 'pkg-config --cflags --libs libsystemd libcrypto' "$plugin_root/Makefile" &&
-	! grep -Eq 'Fcitx5(Core|Utils)|-lfcitx' "$plugin_root/Makefile" "$plugin_root/src/fcitx-sd-bus-transport.cpp" \
+	grep -Fq 'HELPER_PACKAGES := libsystemd libcrypto' "$plugin_root/integration.mk" &&
+	! grep -Eq 'Fcitx5(Core|Utils)|-lfcitx' "$plugin_root/Makefile" "$plugin_root/integration.mk" "$plugin_root/src/fcitx-sd-bus-transport.cpp" \
 		"$plugin_root/src/fcitx-helper.cpp" "$plugin_root/src/fcitx-helper-main.cpp" || {
 	printf 'Error: Controller adapter must use libsystemd without Fcitx ABI linkage.\n' >&2
 	exit 1
@@ -133,6 +147,7 @@ grep -Fq 'SOCK_SEQPACKET | SOCK_NONBLOCK | SOCK_CLOEXEC' "$plugin_root/src/fcitx
 	grep -Fq 'MSG_DONTWAIT | MSG_TRUNC' "$plugin_root/src/fcitx-follower.cpp" &&
 	grep -Fq 'SO_PEERCRED' "$plugin_root/src/fcitx-follower.cpp" &&
 	grep -Fq -- '-DINPUT_LANGUAGES_FCITX_COORDINATION' "$plugin_root/Makefile" &&
+	grep -Fq -- '-DINPUT_LANGUAGES_FCITX_COORDINATION' "$plugin_root/integration.mk" &&
 	! grep -Eq '(^|[^[:alnum:]_])(fork|exec[lvpe]*|system|posix_spawn|sd_bus)[[:space:]_(]' \
 		"$plugin_root/include/fcitx-follower.hpp" "$plugin_root/src/fcitx-follower.cpp" || {
 	printf 'Error: Fcitx follower mailbox, wake, IPC, or plugin coordination contract changed.\n' >&2
@@ -146,7 +161,7 @@ for setting in \
 	[[ $(grep -Fxc "$setting" "$socket_unit") == 1 ]] || { printf 'Error: Fcitx helper socket unit contract changed: %s\n' "$setting" >&2; exit 1; }
 done
 for setting in 'StartLimitIntervalSec=30s' 'StartLimitBurst=5' 'Type=simple' \
-	'ExecStart=@ARTIFACT_DIR@/input-languages-fcitx-helper' 'Restart=on-failure' 'RestartSec=2s'; do
+	'ExecStart="@ARTIFACT_DIR@/input-languages-fcitx-helper"' 'Restart=on-failure' 'RestartSec=2s'; do
 	[[ $(grep -Fxc "$setting" "$service_unit") == 1 ]] || { printf 'Error: Fcitx helper service unit contract changed: %s\n' "$setting" >&2; exit 1; }
 done
 ! grep -Eq '(^|/)(fcitx5|systemctl|omarchy)([[:space:]]|$)' "$service_unit" || {
@@ -175,16 +190,6 @@ contract_files=(
 	manifest.json
 	protocol.json
 	systemd.json
-)
-declare -A contract_hashes=(
-	[active-fixtures.json]=c8135a04fb250bf523831709f13905a1fbfef513855e4443d906d82c3b64599f
-	[authority.json]=3c7670889f080f5b03c26a51b77a402267c6cb566f7727631717fc33de3f4526
-	[evidence-v3.json]=52ba3d128bc8a2c2f2c90c495508a8a65c7082d245d68e6b88ec1e06cc762810
-	[fcitx.json]=113df77363f2d4d1552eacad65170f11bc6c66f842b7369941dc830336e92315
-	[health.json]=10477d8adc5e186c510928436b31bbdac81fce7083deec5ce5acb7115a4419fe
-	[manifest.json]=84714ebf5bb3d3b2d49c13b72a692da66fea91d896199ea668af384b4eebaaa8
-	[protocol.json]=3bcc3b22a57bfbf2d8a5d77c90242207a2a3fcad0940e4019bb422e9f3b43990
-	[systemd.json]=48a3437efc83ec91293c74f1e043cafab98e35c7b5e4e70f4f268d32863a3296
 )
 mapfile -t contract_entries < <(find "$contract_root" -mindepth 1 -maxdepth 1 -printf '%f\n' | LC_ALL=C sort)
 [[ $(printf '%s\n' "${contract_entries[@]}") == "$(printf '%s\n' "${contract_files[@]}")" ]] || {
@@ -264,7 +269,7 @@ jq -e '
 	.transport.maximum_packet_bytes == 1024 and .connection_retry_milliseconds == [100,200,400,800,1600,2000] and
 	.wire.enums.managed_group_state == {unknown:0,exact:1,missing:2,foreign:3} and
 	.wire.enums.retry_phase == {none:0,poll:1,read:2,write:3,"read-before-retry":4,backoff:5} and
-	(.wire.enums.outcome | keys | sort) == (["pending","converged","idle-no-context","drift","unavailable","disconnected","timeout-indeterminate","method-error","configuration-conflict","unsupported-interface","protocol-error","helper-failed"] | sort) and
+	.wire.enums.outcome == {pending:0,converged:1,"idle-no-context":2,drift:3,unavailable:4,disconnected:5,"timeout-indeterminate":6,"method-error":7,"configuration-conflict":8,"unsupported-interface":9,"protocol-error":10,"helper-failed":11} and
 	[.frames.HELLO.fields[].name] == ["protocol_identity","build_id","source_id","authority_session","language","generation"] and
 	[.frames.READY.fields[].name] == ["protocol_identity","build_id","source_id","authority_session"] and
 	[.frames.TARGET.fields[].name] == ["authority_session","language","generation"] and
@@ -293,10 +298,46 @@ jq -e '
 ' "$contract_root/evidence-v3.json" >/dev/null || { printf 'Error: Fcitx version-3 evidence schema or version-2 ancestry contract changed.\n' >&2; exit 1; }
 jq -e '.service.restart == "on-failure" and .service.restart_seconds == 2 and .service.start_limit_interval_seconds == 30 and .service.start_limit_burst == 5 and .service.starts_or_restarts_fcitx == false' "$contract_root/systemd.json" >/dev/null || { printf 'Error: Fcitx helper systemd contract changed.\n' >&2; exit 1; }
 jq -e '[.fixtures[].id] == ["ghostty-fcitx-wayland","brave-fcitx-wayland","dotfiles-direct-wayland","dotfiles-direct-xwayland"] and [.fixtures[].backend] == ["wayland","wayland","wayland","x11"] and [.fixtures[2:][].route] == ["direct-compositor-xkb","direct-xwayland-xkb"] and [.fixtures[2:][].fcitx_frontend] == [null,null]' "$contract_root/active-fixtures.json" >/dev/null || { printf 'Error: Input Languages active fixture contract changed.\n' >&2; exit 1; }
+protocol_header=$plugin_root/include/fcitx-protocol.hpp
+protocol_outcome_enum=$(sed -n '/^enum class Outcome : uint8_t {$/,/^};$/p' "$protocol_header" | tr -d '[:space:]')
+grep -Fq "MAGIC = $(jq -r '.wire.header[] | select(.name == "magic").value' "$contract_root/protocol.json")" "$protocol_header" &&
+	grep -Fq "VERSION = $(jq -r '.wire.header[] | select(.name == "protocol_version").value' "$contract_root/protocol.json")" "$protocol_header" &&
+	grep -Fq "HEADER_BYTES = $(jq -r .wire.header_bytes "$contract_root/protocol.json")" "$protocol_header" &&
+	grep -Fq "MAX_PACKET_BYTES = $(jq -r .transport.maximum_packet_bytes "$contract_root/protocol.json")" "$protocol_header" &&
+	grep -Fq "MAX_TEXT_BYTES = $(jq -r '.wire.scalars.text | capture("maximum-(?<bytes>[0-9]+)-bytes").bytes' "$contract_root/protocol.json")" "$protocol_header" &&
+	grep -Fq "IDENTITY = \"$protocol_identity\"" "$protocol_header" &&
+	grep -Fq 'enum class FrameType : uint16_t { Hello = 1, Ready = 2, Target = 3, State = 4, Heartbeat = 5 };' "$protocol_header" &&
+	grep -Fq 'enum class Language : uint8_t { Us = 0, Russian = 1 };' "$protocol_header" &&
+	grep -Fq 'enum class ManagedGroupState : uint8_t { Unknown = 0, Exact = 1, Missing = 2, Foreign = 3 };' "$protocol_header" &&
+	grep -Fq 'enum class RetryPhase : uint8_t { None = 0, Poll = 1, Read = 2, Write = 3, ReadBeforeRetry = 4, Backoff = 5 };' "$protocol_header" &&
+	[[ $protocol_outcome_enum == 'enumclassOutcome:uint8_t{Pending=0,Converged=1,IdleNoContext=2,Drift=3,Unavailable=4,Disconnected=5,TimeoutIndeterminate=6,MethodError=7,ConfigurationConflict=8,UnsupportedInterface=9,ProtocolError=10,HelperFailed=11,};' ]] &&
+	grep -Fq 'std::chrono::milliseconds(100), std::chrono::milliseconds(200), std::chrono::milliseconds(400),' "$plugin_root/include/fcitx-follower.hpp" &&
+	grep -Fq 'std::chrono::milliseconds(800), std::chrono::milliseconds(1600), std::chrono::milliseconds(2000)};' "$plugin_root/include/fcitx-follower.hpp" || {
+	printf 'Error: compiled Fcitx protocol constants disagree with protocol.json.\n' >&2
+	exit 1
+}
+controller_header=$plugin_root/include/fcitx-controller.hpp
+controller_source=$plugin_root/src/fcitx-sd-bus-transport.cpp
+grep -Fq "SUPPORTED_UPSTREAM_VERSION = \"$(jq -r .compatibility.upstream_version "$contract_root/fcitx.json")\"" "$controller_header" &&
+	grep -Fq "MANAGED_GROUP_NAME = \"$(jq -r .managed_group.name "$contract_root/fcitx.json")\"" "$controller_header" &&
+	grep -Fq "US_METHOD = \"$(jq -r '.managed_group.items[0].method' "$contract_root/fcitx.json")\"" "$controller_header" &&
+	grep -Fq "RUSSIAN_METHOD = \"$(jq -r '.managed_group.items[1].method' "$contract_root/fcitx.json")\"" "$controller_header" &&
+	grep -Fq "FCITX_NAME = \"$(jq -r .controller.well_known_name "$contract_root/fcitx.json")\"" "$controller_source" &&
+	grep -Fq "CONTROLLER_PATH = \"$(jq -r .controller.object_path "$contract_root/fcitx.json")\"" "$controller_source" &&
+	grep -Fq "CONTROLLER_INTERFACE = \"$(jq -r .controller.interface "$contract_root/fcitx.json")\"" "$controller_source" || {
+	printf 'Error: compiled Fcitx Controller constants disagree with fcitx.json.\n' >&2
+	exit 1
+}
+expected_controller_members=$(jq -r '.controller.members | to_entries[] | [.key,.value.type,.value.input,.value.output] | join("|")' "$contract_root/fcitx.json")
+actual_controller_members=$(sed -nE 's/.*ExpectedMember\{"([^"]*)", "([^"]*)", "([^"]*)", "([^"]*)"\}.*/\1|\2|\3|\4/p' "$controller_source")
+[[ $actual_controller_members == "$expected_controller_members" ]] || {
+	printf 'Error: compiled Fcitx Controller members disagree with fcitx.json.\n' >&2
+	exit 1
+}
 for source in "${contract_files[@]}"; do
 	contract=$contract_root/$source
 	actual_hash=$(sha256sum "$contract")
-	[[ ${actual_hash%% *} == "${contract_hashes[$source]}" ]] || {
+	[[ ${actual_hash%% *} == "$(input_languages_integration_contract_expected_digest "$source")" ]] || {
 		printf 'Error: frozen Fcitx integration contract changed: %s\n' "$source" >&2
 		exit 1
 	}

@@ -5,6 +5,6 @@ StartLimitBurst=5
 
 [Service]
 Type=simple
-ExecStart=@ARTIFACT_DIR@/input-languages-fcitx-helper
+ExecStart="@ARTIFACT_DIR@/input-languages-fcitx-helper"
 Restart=on-failure
 RestartSec=2s

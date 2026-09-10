@@ -12,6 +12,38 @@ readonly INPUT_LANGUAGES_PKGCONFIG_MODULES=(
 readonly INPUT_LANGUAGES_STACK_PACKAGES=(
 	hyprland pixman libdrm aquamarine hyprutils hyprgraphics hyprcursor hyprlang libinput systemd-libs
 )
+readonly INPUT_LANGUAGES_INTEGRATION_STACK_PACKAGES=(
+	hyprland pixman libdrm aquamarine hyprutils hyprgraphics hyprcursor hyprlang libinput systemd-libs openssl fcitx5
+	gcc binutils make pkgconf
+)
+readonly INPUT_LANGUAGES_INTEGRATION_PKGCONFIG_MODULES=(
+	hyprland pixman-1 libdrm aquamarine hyprutils hyprgraphics hyprcursor hyprlang libinput libudev libsystemd libcrypto
+)
+readonly INPUT_LANGUAGES_INTEGRATION_CONTRACT_FILES=(
+	active-fixtures.json authority.json evidence-v3.json fcitx.json health.json manifest.json protocol.json systemd.json
+)
+readonly INPUT_LANGUAGES_INTEGRATION_SOURCE_FILES=(
+	integration.mk migration-baseline.json
+	include/fcitx-controller.hpp include/fcitx-follower.hpp include/fcitx-helper.hpp include/fcitx-protocol.hpp include/input-language-model.hpp
+	src/fcitx-controller.cpp src/fcitx-follower.cpp src/fcitx-helper-main.cpp src/fcitx-helper.cpp src/fcitx-protocol.cpp
+	src/fcitx-sd-bus-transport.cpp src/input-language-model.cpp src/integration-artifact-identity.cpp src/plugin.cpp
+)
+readonly INPUT_LANGUAGES_INTEGRATION_PLUGIN_FLAGS='-std=c++23,-Wall,-Wextra,-Wpedantic,-Werror,-shared,-fPIC,-fno-gnu-unique,-pthread'
+readonly INPUT_LANGUAGES_INTEGRATION_HELPER_FLAGS='-std=c++23,-Wall,-Wextra,-Wpedantic,-Werror,-pthread'
+
+input_languages_integration_contract_expected_digest() {
+	case $1 in
+		active-fixtures.json) printf '%s\n' c8135a04fb250bf523831709f13905a1fbfef513855e4443d906d82c3b64599f ;;
+		authority.json) printf '%s\n' 3c7670889f080f5b03c26a51b77a402267c6cb566f7727631717fc33de3f4526 ;;
+		evidence-v3.json) printf '%s\n' 52ba3d128bc8a2c2f2c90c495508a8a65c7082d245d68e6b88ec1e06cc762810 ;;
+		fcitx.json) printf '%s\n' 113df77363f2d4d1552eacad65170f11bc6c66f842b7369941dc830336e92315 ;;
+		health.json) printf '%s\n' 10477d8adc5e186c510928436b31bbdac81fce7083deec5ce5acb7115a4419fe ;;
+		manifest.json) printf '%s\n' 84714ebf5bb3d3b2d49c13b72a692da66fea91d896199ea668af384b4eebaaa8 ;;
+		protocol.json) printf '%s\n' 3bcc3b22a57bfbf2d8a5d77c90242207a2a3fcad0940e4019bb422e9f3b43990 ;;
+		systemd.json) printf '%s\n' 48a3437efc83ec91293c74f1e043cafab98e35c7b5e4e70f4f268d32863a3296 ;;
+		*) return 1 ;;
+	esac
+}
 
 INPUT_LANGUAGES_TREE_STATE=unknown
 INPUT_LANGUAGES_ACTIVE_STATE=absent
@@ -387,6 +419,157 @@ input_languages_validate_artifact_self() {
 	widget_sha=$(jq -r .widget_sha256 "$metadata") || return 1
 	input_languages_artifact_path_valid "$artifact" "$build" "$artifact_sha" || return 1
 	input_languages_validate_artifact_values "$artifact" "$build" "$source" "$artifact_sha" "$compatibility" "$compiler" "$dependencies" "$widget_sha" "$state"
+}
+
+input_languages_validate_integration_artifact_binaries() {
+	local root=$1 metadata=$1/build.json build source compiler compatibility integration protocol controller health unit
+	local plugin=$root/input-languages.so helper=$root/input-languages-fcitx-helper output identity symbol binary_role binary
+	build=$(jq -r .build_id "$metadata") || return 1
+	source=$(jq -r .source_id "$metadata") || return 1
+	compiler=$(jq -r .compiler "$metadata") || return 1
+	compatibility=$(jq -r .compatibility_hash "$metadata") || return 1
+	integration=$(jq -r .integration "$metadata") || return 1
+	protocol=$(jq -r .protocol_identity "$metadata") || return 1
+	controller=$(jq -r .controller_identity "$metadata") || return 1
+	health=$(jq -r .health_identity "$metadata") || return 1
+	unit=$(jq -r .unit_identity "$metadata") || return 1
+	file "$plugin" | grep -F 'shared object' >/dev/null || return 1
+	file "$helper" | grep -F 'ELF' | grep -F 'executable' >/dev/null || return 1
+	output=$(nm -D --defined-only "$plugin") || return 1
+	for symbol in pluginAPIVersion pluginInit pluginExit; do
+		grep -Eq "[[:space:]]$symbol$" <<<"$output" || return 1
+	done
+	for symbol in g_pInputManager g_pKeybindManager; do
+		grep -Eq "[[:space:]][uV][[:space:]]$symbol$" <<<"$output" || return 1
+	done
+	nm -D -C "$plugin" | grep -F 'InputLanguages::Fcitx::FcitxFollower' >/dev/null || return 1
+	identity=$(readelf -p .input_languages "$plugin" 2>/dev/null) || return 1
+	grep -Fq "build_id=$build" <<<"$identity" && grep -Fq "source_id=$source" <<<"$identity" && grep -Fq "compiler=$compiler" <<<"$identity" || return 1
+	for binary_role in plugin helper; do
+		if [[ $binary_role == plugin ]]; then binary=$plugin; else binary=$helper; fi
+		identity=$(readelf -p .input_languages_integration "$binary" 2>/dev/null) || return 1
+		grep -Fq "role=$binary_role" <<<"$identity" && grep -Fq "integration=$integration" <<<"$identity" &&
+			grep -Fq "build_id=$build" <<<"$identity" && grep -Fq "source_id=$source" <<<"$identity" &&
+			grep -Fq "compiler=$compiler" <<<"$identity" && grep -Fq "compatibility=$compatibility" <<<"$identity" && grep -Fq "protocol=$protocol" <<<"$identity" &&
+			grep -Fq "controller=$controller" <<<"$identity" && grep -Fq "health=$health" <<<"$identity" && grep -Fq "unit=$unit" <<<"$identity" || return 1
+	done
+	output=$(readelf -d "$helper") || return 1
+	grep -Eq 'NEEDED.*libsystemd[.]so' <<<"$output" && grep -Eq 'NEEDED.*libcrypto[.]so' <<<"$output" || return 1
+	! grep -Eq 'NEEDED.*(Fcitx|fcitx)' <<<"$output" || return 1
+	output=$(readelf -d "$plugin") || return 1
+	! grep -Eq 'NEEDED.*(Fcitx|fcitx|libsystemd|libcrypto)' <<<"$output"
+}
+
+input_languages_validate_integration_artifact_values() {
+	local root=$1 expected_artifact_dir=${2:-$1} verify_unit_syntax=${3:-true}
+	local metadata=$root/build.json source build compatibility compiler linker dependencies plugin_sha helper_sha widget_sha contracts_sha units_sha unit_build_identity
+	local integration protocol controller health unit actual expected frozen inventory source_inventory source_paths expected_build expected_publication path source_digest service_template_sha
+	[[ -d $root && ! -L $root ]] || return 1
+	(( (8#$(stat -c %a -- "$root") & 0222) == 0 )) || return 1
+	inventory=$(input_languages_integration_inventory "$root") || return 1
+	input_languages_file_metadata_safe "$metadata" 444 || return 1
+	source=$(jq -r .source_id "$metadata") || return 1
+	build=$(jq -r .build_id "$metadata") || return 1
+	compatibility=$(jq -r .compatibility_hash "$metadata") || return 1
+	compiler=$(jq -r .compiler "$metadata") || return 1
+	linker=$(jq -r .linker "$metadata") || return 1
+	dependencies=$(jq -r .dependencies "$metadata") || return 1
+	plugin_sha=$(jq -r .artifact_sha256 "$metadata") || return 1
+	helper_sha=$(jq -r .helper_sha256 "$metadata") || return 1
+	widget_sha=$(jq -r .widget_sha256 "$metadata") || return 1
+	contracts_sha=$(jq -r .contracts_sha256 "$metadata") || return 1
+	units_sha=$(jq -r .units_sha256 "$metadata") || return 1
+	unit_build_identity=$(jq -r .unit_build_identity "$metadata") || return 1
+	integration=$(jq -r .integration "$metadata") || return 1
+	protocol=$(jq -r .protocol_identity "$metadata") || return 1
+	controller=$(jq -r .controller_identity "$metadata") || return 1
+	health=$(jq -r .health_identity "$metadata") || return 1
+	unit=$(jq -r .unit_identity "$metadata") || return 1
+	[[ $source =~ ^[0-9a-f]{64}$ && $build =~ ^[0-9a-f]{64}$ && $plugin_sha =~ ^[0-9a-f]{64}$ && $helper_sha =~ ^[0-9a-f]{64}$ &&
+		$widget_sha =~ ^[0-9a-f]{64}$ && $contracts_sha =~ ^[0-9a-f]{64}$ && $units_sha =~ ^[0-9a-f]{64}$ &&
+		$unit_build_identity =~ ^[0-9a-f]{64}$ && -n $compatibility && -n $compiler && -n $linker ]] || return 1
+	source_inventory=$(jq -r '.source_inventory[]' "$metadata") || return 1
+	source_paths=$(awk '{ print $2 }' <<<"$source_inventory") || return 1
+	[[ $source_paths == "$(input_languages_integration_expected_source_paths)" ]] || return 1
+	source_digest=$(printf '%s\n' "$source_inventory" | sha256sum | cut -d' ' -f1) || return 1
+	[[ $source_digest == "$source" ]] || return 1
+	expected=$(input_languages_integration_unit_build_identity "$source_inventory") || return 1
+	[[ $expected == "$unit_build_identity" ]] || return 1
+	expected_publication=$(input_languages_integration_build_identity "$source" "$compiler" "$linker" "$compatibility" "$dependencies" "$unit_build_identity") || return 1
+	[[ ${expected_artifact_dir##*/} == "integration-$expected_publication" ]] || return 1
+	expected_build=$(input_languages_integration_build_identity "$source" "$compiler" "$linker" "$compatibility" "$dependencies" "$units_sha") || return 1
+	[[ $expected_build == "$build" ]] || return 1
+	jq -e --arg inventory "$inventory" --arg plugin_flags "$INPUT_LANGUAGES_INTEGRATION_PLUGIN_FLAGS" \
+		--arg helper_flags "$INPUT_LANGUAGES_INTEGRATION_HELPER_FLAGS" '
+		(keys | sort) == (["version","integration","source_id","build_id","compatibility_hash","compiler","linker","dependencies","plugin_flags","helper_flags","artifact_sha256","helper_sha256","widget_sha256","contracts_sha256","units_sha256","unit_build_identity","protocol_identity","controller_identity","health_identity","unit_identity","source_inventory","inventory","exports"] | sort) and
+		.version == 1 and .plugin_flags == $plugin_flags and .helper_flags == $helper_flags and
+		.exports == ["pluginAPIVersion","pluginExit","pluginInit"] and .inventory == ($inventory | split("\n")) and
+		(.source_inventory | type == "array" and length > 0 and all(.[]; test("^[0-9a-f]{64}  (plugin|contracts|systemd|widget|config)/")))
+	' "$metadata" >/dev/null || return 1
+	actual=$(sha256sum -- "$root/input-languages.so") || return 1; [[ ${actual%% *} == "$plugin_sha" ]] || return 1
+	actual=$(sha256sum -- "$root/input-languages-fcitx-helper") || return 1; [[ ${actual%% *} == "$helper_sha" ]] || return 1
+	[[ $(input_languages_widget_digest "$root/$INPUT_LANGUAGES_WIDGET") == "$widget_sha" ]] || return 1
+	[[ $(input_languages_integration_contract_digest "$root/contracts") == "$contracts_sha" ]] || return 1
+	[[ $(input_languages_integration_unit_digest "$root/systemd") == "$units_sha" ]] || return 1
+	for path in "${INPUT_LANGUAGES_INTEGRATION_CONTRACT_FILES[@]}"; do
+		expected=$(awk -v wanted="contracts/$path" '$2 == wanted { print $1 }' <<<"$source_inventory")
+		actual=$(sha256sum -- "$root/contracts/$path") || return 1
+		frozen=$(input_languages_integration_contract_expected_digest "$path") || return 1
+		[[ -n $expected && ${actual%% *} == "$expected" && ${actual%% *} == "$frozen" ]] || return 1
+	done
+	for path in "${INPUT_LANGUAGES_WIDGET_FILES[@]}"; do
+		expected=$(awk -v wanted="widget/$path" '$2 == wanted { print $1 }' <<<"$source_inventory")
+		actual=$(sha256sum -- "$root/$INPUT_LANGUAGES_WIDGET/$path") || return 1
+		[[ -n $expected && ${actual%% *} == "$expected" ]] || return 1
+	done
+	expected=$(awk '$2 == "systemd/dotfiles-input-languages-fcitx.socket" { print $1 }' <<<"$source_inventory")
+	actual=$(sha256sum -- "$root/systemd/dotfiles-input-languages-fcitx.socket") || return 1
+	[[ -n $expected && ${actual%% *} == "$expected" ]] || return 1
+	expected=$(awk '$2 == "systemd/dotfiles-input-languages-fcitx.service" { print $1 }' <<<"$source_inventory")
+	service_template_sha=$(input_languages_integration_service_template_digest "$root/systemd/dotfiles-input-languages-fcitx.service" "$expected_artifact_dir") || return 1
+	[[ -n $expected && $service_template_sha == "$expected" ]] || return 1
+	[[ $(jq -r .integration "$root/contracts/manifest.json") == "$integration" &&
+		$(jq -r .identity "$root/contracts/protocol.json") == "$protocol" &&
+		$(jq -r .identity "$root/contracts/fcitx.json") == "$controller" &&
+		$(jq -r .identity "$root/contracts/health.json") == "$health" &&
+		$(jq -r .identity "$root/contracts/systemd.json") == "$unit" &&
+		$(jq -r .protocol "$root/contracts/health.json") == "$protocol" &&
+		$(jq -r .protocol "$root/contracts/systemd.json") == "$protocol" ]] || return 1
+	jq -e '
+		.compatibility.upstream_version == "5.1.21" and .compatibility.transport_library == "libsystemd" and
+		.compatibility.bus_api == "sd-bus" and .compatibility.event_api == "sd-event" and .compatibility.fcitx_cpp_abi_linkage == false and
+		.controller.well_known_name == "org.fcitx.Fcitx5" and .controller.object_path == "/controller" and
+		.controller.interface == "org.fcitx.Fcitx.Controller1" and .controller.activation == "no-auto-start" and
+		.controller.addressing == "unique-owner" and
+		.controller.members == {
+			AddInputMethodGroup:{type:"method",input:"s",output:""}, AvailableInputMethods:{type:"method",input:"",output:"a(ssssssb)"},
+			CurrentInputMethod:{type:"method",input:"",output:"s"}, CurrentInputMethodGroup:{type:"method",input:"",output:"s"},
+			DebugInfo:{type:"method",input:"",output:"s"}, FullInputMethodGroupInfo:{type:"method",input:"s",output:"sssa{sv}a(sssssssbsa{sv})"},
+			GetAddonsV2:{type:"method",input:"",output:"a(sssibbbasas)"}, InputMethodGroupInfo:{type:"method",input:"s",output:"sa(ss)"},
+			InputMethodGroups:{type:"method",input:"",output:"as"}, InputMethodGroupsChanged:{type:"signal",input:"",output:""},
+			RemoveInputMethodGroup:{type:"method",input:"s",output:""}, Save:{type:"method",input:"",output:""},
+			SetCurrentIM:{type:"method",input:"s",output:""}, SetInputMethodGroupInfo:{type:"method",input:"ssa(ss)",output:""},
+			SwitchInputMethodGroup:{type:"method",input:"s",output:""}
+		} and
+		.managed_group == {name:"Dotfiles Input Languages",default_layout:"us",default_im_allowed:["","keyboard-us","keyboard-ru"],items:[{method:"keyboard-us",layout_override:""},{method:"keyboard-ru",layout_override:""}],existing_name_policy:"collision",mutation_seam:"Controller1-followed-by-Save"}
+	' "$root/contracts/fcitx.json" >/dev/null || return 1
+	jq -e '
+		.socket == {unit:"dotfiles-input-languages-fcitx.socket",listen_sequential_packet:"%t/dotfiles-input-languages/fcitx.sock",directory_mode:"0700",socket_mode:"0600",remove_on_stop:true,wanted_by:"graphical-session.target",enabled:true,started:true} and
+		.service == {unit:"dotfiles-input-languages-fcitx.service",exec_start:"@ARTIFACT_DIR@/input-languages-fcitx-helper",restart:"on-failure",restart_seconds:2,start_limit_interval_seconds:30,start_limit_burst:5,socket_activated:true,starts_or_restarts_fcitx:false}
+	' "$root/contracts/systemd.json" >/dev/null || return 1
+	expected=$(input_languages_systemd_exec_path "$expected_artifact_dir") || return 1
+	grep -Fxc "ExecStart=:\"$expected/input-languages-fcitx-helper\"" "$root/systemd/dotfiles-input-languages-fcitx.service" >/dev/null || return 1
+	! grep -Fq '@ARTIFACT_DIR@' "$root/systemd/dotfiles-input-languages-fcitx.service" || return 1
+	input_languages_validate_integration_artifact_binaries "$root" || return 1
+	if [[ $verify_unit_syntax == true ]]; then
+		input_languages_verify_integration_units "$root" || return 1
+	elif [[ $verify_unit_syntax != false ]]; then
+		return 2
+	fi
+}
+
+input_languages_validate_integration_artifact_self() {
+	input_languages_validate_integration_artifact_values "$1" "$1" true
 }
 
 input_languages_validate_active_evidence_file() {
@@ -771,6 +954,352 @@ input_languages_source_identity_from() {
 
 input_languages_source_identity() {
 	input_languages_source_identity_from "$INPUT_LANGUAGES_PLUGIN_SOURCE" "$INPUT_LANGUAGES_SOURCE"
+}
+
+input_languages_integration_source_inventory_from() {
+	local plugin_source=$1 config_source=$2 path digest
+	for path in "${INPUT_LANGUAGES_INTEGRATION_SOURCE_FILES[@]}"; do
+		[[ -f $plugin_source/$path && ! -L $plugin_source/$path ]] || return 1
+		digest=$(sha256sum -- "$plugin_source/$path") || return 1
+		printf '%s  plugin/%s\n' "${digest%% *}" "$path"
+	done
+	for path in "${INPUT_LANGUAGES_INTEGRATION_CONTRACT_FILES[@]}"; do
+		[[ -f $plugin_source/contracts/$path && ! -L $plugin_source/contracts/$path ]] || return 1
+		digest=$(sha256sum -- "$plugin_source/contracts/$path") || return 1
+		printf '%s  contracts/%s\n' "${digest%% *}" "$path"
+	done
+	for path in dotfiles-input-languages-fcitx.service dotfiles-input-languages-fcitx.socket; do
+		[[ -f $plugin_source/systemd/$path && ! -L $plugin_source/systemd/$path ]] || return 1
+		digest=$(sha256sum -- "$plugin_source/systemd/$path") || return 1
+		printf '%s  systemd/%s\n' "${digest%% *}" "$path"
+	done
+	for path in "${INPUT_LANGUAGES_WIDGET_FILES[@]}"; do
+		[[ -f $plugin_source/widget/$INPUT_LANGUAGES_WIDGET/$path && ! -L $plugin_source/widget/$INPUT_LANGUAGES_WIDGET/$path ]] || return 1
+		digest=$(sha256sum -- "$plugin_source/widget/$INPUT_LANGUAGES_WIDGET/$path") || return 1
+		printf '%s  widget/%s\n' "${digest%% *}" "$path"
+	done
+	for path in "${INPUT_LANGUAGES_FILES[@]}"; do
+		[[ -f $config_source/$path && ! -L $config_source/$path ]] || return 1
+		digest=$(sha256sum -- "$config_source/$path") || return 1
+		printf '%s  config/%s\n' "${digest%% *}" "$path"
+	done
+}
+
+input_languages_integration_expected_source_paths() {
+	local path
+	for path in "${INPUT_LANGUAGES_INTEGRATION_SOURCE_FILES[@]}"; do printf 'plugin/%s\n' "$path"; done
+	for path in "${INPUT_LANGUAGES_INTEGRATION_CONTRACT_FILES[@]}"; do printf 'contracts/%s\n' "$path"; done
+	for path in dotfiles-input-languages-fcitx.service dotfiles-input-languages-fcitx.socket; do printf 'systemd/%s\n' "$path"; done
+	for path in "${INPUT_LANGUAGES_WIDGET_FILES[@]}"; do printf 'widget/%s\n' "$path"; done
+	for path in "${INPUT_LANGUAGES_FILES[@]}"; do printf 'config/%s\n' "$path"; done
+}
+
+input_languages_integration_source_identity_from() {
+	local inventory
+	inventory=$(input_languages_integration_source_inventory_from "$1" "$2") || return 1
+	printf '%s\n' "$inventory" | sha256sum | cut -d' ' -f1
+}
+
+input_languages_integration_source_identity() {
+	input_languages_integration_source_identity_from "$INPUT_LANGUAGES_PLUGIN_SOURCE" "$INPUT_LANGUAGES_SOURCE"
+}
+
+input_languages_integration_expected_inventory_paths() {
+	printf '%s\n' \
+		build.json \
+		contracts \
+		contracts/active-fixtures.json \
+		contracts/authority.json \
+		contracts/evidence-v3.json \
+		contracts/fcitx.json \
+		contracts/health.json \
+		contracts/manifest.json \
+		contracts/protocol.json \
+		contracts/systemd.json \
+		dotfiles.keyboard-layout \
+		dotfiles.keyboard-layout/KeyboardLayout.qml \
+		dotfiles.keyboard-layout/KeyboardLayoutModel.js \
+		dotfiles.keyboard-layout/manifest.json \
+		input-languages-fcitx-helper \
+		input-languages.so \
+		systemd \
+		systemd/dotfiles-input-languages-fcitx.service \
+		systemd/dotfiles-input-languages-fcitx.socket
+}
+
+input_languages_integration_inventory_spec() {
+	local path type mode
+	while IFS= read -r path; do
+		case $path in
+			contracts|dotfiles.keyboard-layout|systemd) type=directory; mode=555 ;;
+			input-languages.so|input-languages-fcitx-helper) type=file; mode=555 ;;
+			*) type=file; mode=444 ;;
+		esac
+		printf '%s|%s|%s\n' "$type" "$mode" "$path"
+	done < <(input_languages_integration_expected_inventory_paths)
+}
+
+input_languages_integration_inventory() {
+	local root=$1 entries expected path type mode digest
+	[[ -d $root && ! -L $root ]] || return 1
+	entries=$(find "$root" -mindepth 1 -printf '%P\n' | LC_ALL=C sort) || return 1
+	expected=$(input_languages_integration_expected_inventory_paths) || return 1
+	[[ $entries == "$expected" ]] || return 1
+	while IFS= read -r path; do
+		[[ ! -L $root/$path ]] || return 1
+		mode=$(stat -c %a -- "$root/$path") || return 1
+		if [[ -d $root/$path ]]; then
+			type=directory
+			digest=-
+			[[ $mode == 555 ]] || return 1
+		elif [[ -f $root/$path ]]; then
+			type=file
+			case $path in
+				input-languages.so|input-languages-fcitx-helper) [[ $mode == 555 ]] || return 1 ;;
+				*) [[ $mode == 444 ]] || return 1 ;;
+			esac
+			if [[ $path == build.json ]]; then
+				digest=self
+			else
+				digest=$(sha256sum -- "$root/$path") || return 1
+				digest=${digest%% *}
+			fi
+		else
+			return 1
+		fi
+		printf '%s|%s|%s|%s\n' "$type" "$mode" "$digest" "$path"
+	done <<<"$entries"
+}
+
+input_languages_integration_contract_digest() {
+	local root=$1 path digest inventory=''
+	for path in "${INPUT_LANGUAGES_INTEGRATION_CONTRACT_FILES[@]}"; do
+		digest=$(sha256sum -- "$root/$path") || return 1
+		inventory+="${digest%% *}  $path"$'\n'
+	done
+	printf '%s' "$inventory" | sha256sum | cut -d' ' -f1
+}
+
+input_languages_integration_unit_digest() {
+	local root=$1 path digest inventory=''
+	for path in dotfiles-input-languages-fcitx.service dotfiles-input-languages-fcitx.socket; do
+		digest=$(sha256sum -- "$root/$path") || return 1
+		inventory+="${digest%% *}  $path"$'\n'
+	done
+	printf '%s' "$inventory" | sha256sum | cut -d' ' -f1
+}
+
+input_languages_integration_unit_build_identity() {
+	local source_inventory=$1 digest path service_digest='' socket_digest=''
+	while read -r digest path; do
+		case $path in
+			systemd/dotfiles-input-languages-fcitx.service) service_digest=$digest ;;
+			systemd/dotfiles-input-languages-fcitx.socket) socket_digest=$digest ;;
+		esac
+	done <<<"$source_inventory"
+	[[ $service_digest =~ ^[0-9a-f]{64}$ && $socket_digest =~ ^[0-9a-f]{64}$ ]] || return 1
+	printf '%s  %s\n%s  %s\n' "$service_digest" dotfiles-input-languages-fcitx.service \
+		"$socket_digest" dotfiles-input-languages-fcitx.socket | sha256sum | cut -d' ' -f1
+}
+
+input_languages_systemd_exec_path() {
+	local path=$1 escaped
+	input_languages_safe_absolute_path "$path" || return 1
+	escaped=${path//\%/%%}
+	printf '%s\n' "$escaped"
+}
+
+input_languages_render_integration_service() {
+	local template=$1 artifact_dir=$2 line escaped count=0
+	escaped=$(input_languages_systemd_exec_path "$artifact_dir") || return 1
+	while IFS= read -r line || [[ -n $line ]]; do
+		if [[ $line == 'ExecStart="@ARTIFACT_DIR@/input-languages-fcitx-helper"' ]]; then
+			printf 'ExecStart=:"%s/input-languages-fcitx-helper"\n' "$escaped"
+			((count += 1))
+		else
+			printf '%s\n' "$line"
+		fi
+	done <"$template"
+	((count == 1))
+}
+
+input_languages_integration_service_template_digest() {
+	local service=$1 artifact_dir=$2 line escaped count=0 normalized=''
+	escaped=$(input_languages_systemd_exec_path "$artifact_dir") || return 1
+	while IFS= read -r line || [[ -n $line ]]; do
+		if [[ $line == "ExecStart=:\"$escaped/input-languages-fcitx-helper\"" ]]; then
+			normalized+='ExecStart="@ARTIFACT_DIR@/input-languages-fcitx-helper"'$'\n'
+			((count += 1))
+		else
+			normalized+="$line"$'\n'
+		fi
+	done <"$service"
+	((count == 1)) || return 1
+	printf '%s' "$normalized" | sha256sum | cut -d' ' -f1
+}
+
+input_languages_verify_integration_units() {
+	local root=$1 temporary status=0
+	temporary=$(TMPDIR=/tmp mktemp -d /tmp/input-languages-units.XXXXXX) || return 1
+	cp -- "$root/systemd/dotfiles-input-languages-fcitx.socket" "$root/systemd/dotfiles-input-languages-fcitx.service" "$temporary/" || status=1
+	if ((status == 0)); then
+		systemd-analyze verify "$temporary/dotfiles-input-languages-fcitx.socket" "$temporary/dotfiles-input-languages-fcitx.service" >/dev/null || status=1
+	fi
+	rm -rf -- "$temporary" || status=1
+	return "$status"
+}
+
+input_languages_linker_identity() {
+	local identity
+	IFS= read -r identity < <(/usr/bin/ld --version) || return 1
+	[[ -n $identity ]] || return 1
+	printf '%s\n' "$identity"
+}
+
+input_languages_integration_dependency_identity() {
+	local package_versions module_versions plugin_flags helper_flags header_source fcitx_upstream supported_fcitx hyprland_compiler
+	package_versions=$(LC_ALL=C /usr/bin/pacman -Q "${INPUT_LANGUAGES_INTEGRATION_STACK_PACKAGES[@]}" | /usr/bin/tr '\n' ',') || return 1
+	module_versions=$(LC_ALL=C /usr/bin/pkg-config --modversion "${INPUT_LANGUAGES_INTEGRATION_PKGCONFIG_MODULES[@]}" | /usr/bin/tr '\n' ',') || return 1
+	plugin_flags=$(LC_ALL=C /usr/bin/pkg-config --cflags --libs "${INPUT_LANGUAGES_PKGCONFIG_MODULES[@]}") || return 1
+	helper_flags=$(LC_ALL=C /usr/bin/pkg-config --cflags --libs libsystemd libcrypto) || return 1
+	header_source=$(input_languages_header_source_identity) || return 1
+	fcitx_upstream=$(LC_ALL=C /usr/bin/fcitx5 --version 2>/dev/null) || return 1
+	supported_fcitx=$(jq -r .compatibility.upstream_version "$INPUT_LANGUAGES_PLUGIN_SOURCE/contracts/fcitx.json") || return 1
+	[[ $fcitx_upstream == "$supported_fcitx" ]] || return 1
+	hyprland_compiler=$(input_languages_hyprland_compiler) || return 1
+	[[ ${hyprland_compiler%%.*} == "${INPUT_LANGUAGES_COMPILER%%.*}" ]] || return 1
+	printf 'arch=%s;pkgconfig=%s;plugin-link=%s;helper-link=%s;hyprland-headers=%s;hyprland-compiler=%s;libsystemd=%s;libcrypto=%s;fcitx-upstream=%s\n' \
+		"$package_versions" "$module_versions" "$plugin_flags" "$helper_flags" "$header_source" \
+		"$hyprland_compiler" "$(/usr/bin/pkg-config --modversion libsystemd)" "$(/usr/bin/pkg-config --modversion libcrypto)" "$fcitx_upstream"
+}
+
+input_languages_integration_build_identity() {
+	local source=$1 compiler=$2 linker=$3 compatibility=$4 dependencies=$5 unit_build_identity=$6 inventory_spec
+	inventory_spec=$(input_languages_integration_inventory_spec) || return 1
+	printf '%s' "$source|$compiler|$linker|$compatibility|$dependencies|$INPUT_LANGUAGES_INTEGRATION_PLUGIN_FLAGS|$INPUT_LANGUAGES_INTEGRATION_HELPER_FLAGS|$unit_build_identity|$inventory_spec" |
+		sha256sum | cut -d' ' -f1
+}
+
+input_languages_build_integration_artifact() {
+	local source_inventory source_id dependencies linker compatibility current_compatibility compiler transaction publication_id final work build_source build_config output preview
+	local protocol controller health unit integration units_sha unit_build_identity build_id snapshot_inventory current_inventory current_dependencies current_linker current_compiler existing_build
+	local artifact_sha helper_sha widget_sha contracts_sha inventory inventory_json source_inventory_json metadata build_log
+	input_languages_set_paths
+	compiler=${INPUT_LANGUAGES_COMPILER-}
+	[[ -n $compiler ]] || compiler=$(/usr/bin/c++ -dumpfullversion -dumpversion) || return 1
+	INPUT_LANGUAGES_COMPILER=$compiler
+	current_compatibility=$(input_languages_header_hash) || return 1
+	compatibility=${INPUT_LANGUAGES_HEADER_HASH:-$current_compatibility}
+	[[ $compatibility == "$current_compatibility" ]] || return 1
+	linker=$(input_languages_linker_identity) || return 1
+	source_inventory=$(input_languages_integration_source_inventory_from "$INPUT_LANGUAGES_PLUGIN_SOURCE" "$INPUT_LANGUAGES_SOURCE") || return 1
+	bash "$REPOSITORY_ROOT/lib/dotfiles/input-languages-validator.sh" "$REPOSITORY_ROOT" /usr/share/omarchy --static-only >/dev/null || return 1
+	current_inventory=$(input_languages_integration_source_inventory_from "$INPUT_LANGUAGES_PLUGIN_SOURCE" "$INPUT_LANGUAGES_SOURCE") || return 1
+	[[ $current_inventory == "$source_inventory" ]] || return 1
+	source_id=$(printf '%s\n' "$source_inventory" | sha256sum | cut -d' ' -f1) || return 1
+	dependencies=$(input_languages_integration_dependency_identity) || return 1
+	unit_build_identity=$(input_languages_integration_unit_build_identity "$source_inventory") || return 1
+	publication_id=$(input_languages_integration_build_identity "$source_id" "$compiler" "$linker" "$compatibility" "$dependencies" "$unit_build_identity") || return 1
+	final=$INPUT_LANGUAGES_ARTIFACTS/integration-$publication_id
+	input_languages_safe_absolute_path "$final" || return 1
+	if [[ -e $final || -L $final ]]; then
+		[[ -d $final && ! -L $final ]] || return 1
+		jq -e --arg source "$source_id" --arg compiler "$compiler" --arg linker "$linker" --arg compatibility "$compatibility" \
+			--arg dependencies "$dependencies" --arg unit_build_identity "$unit_build_identity" '
+			.source_id == $source and .compiler == $compiler and .linker == $linker and .compatibility_hash == $compatibility and
+			.dependencies == $dependencies and .unit_build_identity == $unit_build_identity
+		' "$final/build.json" >/dev/null 2>&1 || return 1
+		input_languages_validate_integration_artifact_self "$final" || return 1
+		existing_build=$(jq -r .build_id "$final/build.json") || return 1
+		INPUT_LANGUAGES_INTEGRATION_SOURCE_ID=$source_id
+		INPUT_LANGUAGES_INTEGRATION_BUILD_ID=$existing_build
+		INPUT_LANGUAGES_INTEGRATION_ARTIFACT_DIR=$final
+		INPUT_LANGUAGES_INTEGRATION_ARTIFACT=$final/input-languages.so
+		INPUT_LANGUAGES_INTEGRATION_HELPER=$final/input-languages-fcitx-helper
+		return 0
+	fi
+	transaction=$(input_languages_new_transaction) || return 1
+	work=$INPUT_LANGUAGES_ARTIFACTS/.integration-build-$transaction
+	build_source=$work/source
+	build_config=$work/config
+	output=$work/output
+	preview=$work/unit-preview
+	[[ ! -e $work && ! -L $work ]] || return 1
+	mkdir -p -- "$INPUT_LANGUAGES_ARTIFACTS" "$INPUT_LANGUAGES_STATE/diagnostics" || return 1
+	[[ -d $INPUT_LANGUAGES_STATE/diagnostics && ! -L $INPUT_LANGUAGES_STATE/diagnostics ]] || return 1
+	chmod 700 -- "$INPUT_LANGUAGES_ARTIFACTS" "$INPUT_LANGUAGES_STATE" "$INPUT_LANGUAGES_STATE/diagnostics" 2>/dev/null || return 1
+	build_log=$(mktemp "$INPUT_LANGUAGES_STATE/diagnostics/.integration-build.XXXXXX.log") || return 1
+	chmod 600 -- "$build_log" || { rm -f -- "$build_log"; return 1; }
+	mkdir -m 0700 -- "$work" "$build_source" "$build_config" "$output" "$preview" || { rm -rf -- "$work"; return 1; }
+	cp -a -- "$INPUT_LANGUAGES_PLUGIN_SOURCE/." "$build_source/" && cp -a -- "$INPUT_LANGUAGES_SOURCE/." "$build_config/" || { rm -rf -- "$work"; return 1; }
+	snapshot_inventory=$(input_languages_integration_source_inventory_from "$build_source" "$build_config") || { rm -rf -- "$work"; return 1; }
+	[[ $snapshot_inventory == "$source_inventory" ]] || { rm -rf -- "$work"; return 1; }
+	integration=$(jq -r .integration "$build_source/contracts/manifest.json") || { rm -rf -- "$work"; return 1; }
+	protocol=$(jq -r .identity "$build_source/contracts/protocol.json") || { rm -rf -- "$work"; return 1; }
+	controller=$(jq -r .identity "$build_source/contracts/fcitx.json") || { rm -rf -- "$work"; return 1; }
+	health=$(jq -r .identity "$build_source/contracts/health.json") || { rm -rf -- "$work"; return 1; }
+	unit=$(jq -r .identity "$build_source/contracts/systemd.json") || { rm -rf -- "$work"; return 1; }
+	cp -- "$build_source/systemd/dotfiles-input-languages-fcitx.socket" "$preview/"
+	input_languages_render_integration_service "$build_source/systemd/dotfiles-input-languages-fcitx.service" "$final" >"$preview/dotfiles-input-languages-fcitx.service" || { rm -rf -- "$work"; return 1; }
+	units_sha=$(input_languages_integration_unit_digest "$preview") || { rm -rf -- "$work"; return 1; }
+	build_id=$(input_languages_integration_build_identity "$source_id" "$compiler" "$linker" "$compatibility" "$dependencies" "$units_sha") || { rm -rf -- "$work"; return 1; }
+	: >"$build_log" || { rm -rf -- "$work"; return 1; }
+	if ! env -i HOME="$HOME" PATH=/usr/bin:/bin LC_ALL=C make --no-print-directory -C "$build_source" -f integration.mk integration-artifact \
+		OUTPUT_DIR=../output BUILD_ID="$build_id" SOURCE_ID="$source_id" COMPILER_ID="$compiler" COMPATIBILITY_ID="$compatibility" \
+		INTEGRATION_ID="$integration" PROTOCOL_ID="$protocol" CONTROLLER_ID="$controller" HEALTH_ID="$health" UNIT_ID="$unit" CXX=/usr/bin/c++ \
+		>"$build_log" 2>&1; then
+		/usr/bin/cat "$build_log" >&2
+		rm -rf -- "$work"
+		return 1
+	fi
+	cp -- "$preview/dotfiles-input-languages-fcitx.service" "$output/systemd/dotfiles-input-languages-fcitx.service" || { rm -rf -- "$work"; return 1; }
+	current_inventory=$(input_languages_integration_source_inventory_from "$INPUT_LANGUAGES_PLUGIN_SOURCE" "$INPUT_LANGUAGES_SOURCE") || { rm -rf -- "$work"; return 1; }
+	current_dependencies=$(input_languages_integration_dependency_identity) || { rm -rf -- "$work"; return 1; }
+	current_linker=$(input_languages_linker_identity) || { rm -rf -- "$work"; return 1; }
+	current_compiler=$(/usr/bin/c++ -dumpfullversion -dumpversion) || { rm -rf -- "$work"; return 1; }
+	current_compatibility=$(input_languages_header_hash) || { rm -rf -- "$work"; return 1; }
+	[[ $current_inventory == "$source_inventory" && $current_dependencies == "$dependencies" && $current_linker == "$linker" &&
+		$current_compiler == "$compiler" && $current_compatibility == "$compatibility" ]] || { rm -rf -- "$work"; return 1; }
+	[[ $(input_languages_integration_unit_digest "$output/systemd") == "$units_sha" ]] || { rm -rf -- "$work"; return 1; }
+	artifact_sha=$(sha256sum -- "$output/input-languages.so") || { rm -rf -- "$work"; return 1; }; artifact_sha=${artifact_sha%% *}
+	helper_sha=$(sha256sum -- "$output/input-languages-fcitx-helper") || { rm -rf -- "$work"; return 1; }; helper_sha=${helper_sha%% *}
+	widget_sha=$(input_languages_widget_digest "$output/$INPUT_LANGUAGES_WIDGET") || { rm -rf -- "$work"; return 1; }
+	contracts_sha=$(input_languages_integration_contract_digest "$output/contracts") || { rm -rf -- "$work"; return 1; }
+	: >"$output/build.json"
+	find "$output" -mindepth 1 -type d -exec chmod 555 -- {} + && find "$output" -type f -exec chmod 444 -- {} + &&
+		chmod 555 -- "$output/input-languages.so" "$output/input-languages-fcitx-helper" || { chmod -R u+w "$work"; rm -rf -- "$work"; return 1; }
+	inventory=$(input_languages_integration_inventory "$output") || { chmod -R u+w "$work"; rm -rf -- "$work"; return 1; }
+	inventory_json=$(printf '%s\n' "$inventory" | jq -Rsc 'split("\n")[:-1]') || { chmod -R u+w "$work"; rm -rf -- "$work"; return 1; }
+	source_inventory_json=$(printf '%s\n' "$source_inventory" | jq -Rsc 'split("\n")[:-1]') || { chmod -R u+w "$work"; rm -rf -- "$work"; return 1; }
+	metadata=$work/build.json
+	jq -n --arg integration "$integration" --arg source_id "$source_id" --arg build_id "$build_id" --arg compatibility_hash "$compatibility" \
+		--arg compiler "$compiler" --arg linker "$linker" --arg dependencies "$dependencies" \
+		--arg plugin_flags "$INPUT_LANGUAGES_INTEGRATION_PLUGIN_FLAGS" --arg helper_flags "$INPUT_LANGUAGES_INTEGRATION_HELPER_FLAGS" \
+		--arg artifact_sha256 "$artifact_sha" --arg helper_sha256 "$helper_sha" --arg widget_sha256 "$widget_sha" \
+		--arg contracts_sha256 "$contracts_sha" --arg units_sha256 "$units_sha" --arg unit_build_identity "$unit_build_identity" --arg protocol_identity "$protocol" \
+		--arg controller_identity "$controller" --arg health_identity "$health" --arg unit_identity "$unit" \
+		--argjson source_inventory "$source_inventory_json" --argjson inventory "$inventory_json" '
+		{version:1,integration:$integration,source_id:$source_id,build_id:$build_id,compatibility_hash:$compatibility_hash,
+		compiler:$compiler,linker:$linker,dependencies:$dependencies,plugin_flags:$plugin_flags,helper_flags:$helper_flags,
+		artifact_sha256:$artifact_sha256,helper_sha256:$helper_sha256,widget_sha256:$widget_sha256,contracts_sha256:$contracts_sha256,
+		units_sha256:$units_sha256,unit_build_identity:$unit_build_identity,protocol_identity:$protocol_identity,controller_identity:$controller_identity,
+		health_identity:$health_identity,unit_identity:$unit_identity,source_inventory:$source_inventory,inventory:$inventory,
+		exports:["pluginAPIVersion","pluginExit","pluginInit"]}
+	' >"$metadata" || { chmod -R u+w "$work"; rm -rf -- "$work"; return 1; }
+	mv -fT -- "$metadata" "$output/build.json" && chmod 444 -- "$output/build.json" && chmod 555 -- "$output" || { chmod -R u+w "$work"; rm -rf -- "$work"; return 1; }
+	input_languages_validate_integration_artifact_values "$output" "$final" false || { chmod -R u+w "$work"; rm -rf -- "$work"; return 1; }
+	chmod u+w -- "$output" && mv -- "$output" "$final" && chmod 555 -- "$final" || { chmod -R u+w "$work"; rm -rf -- "$work"; return 1; }
+	chmod -R u+w -- "$work" && rm -rf -- "$work" || return 1
+	if ! input_languages_validate_integration_artifact_self "$final"; then
+		chmod -R u+w -- "$final" 2>/dev/null || true
+		rm -rf -- "$final"
+		return 1
+	fi
+	INPUT_LANGUAGES_INTEGRATION_SOURCE_ID=$source_id
+	INPUT_LANGUAGES_INTEGRATION_BUILD_ID=$build_id
+	INPUT_LANGUAGES_INTEGRATION_ARTIFACT_DIR=$final
+	INPUT_LANGUAGES_INTEGRATION_ARTIFACT=$final/input-languages.so
+	INPUT_LANGUAGES_INTEGRATION_HELPER=$final/input-languages-fcitx-helper
 }
 
 input_languages_source_matches_build() {
