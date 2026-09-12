@@ -123,6 +123,7 @@ bash tests/opencode_test.sh
 - [Tmux](docs/tmux.md)
 - [Ghostty](docs/ghostty.md)
 - [btop](docs/btop.md)
+- [Voxtype GPU acceleration](docs/voxtype.md)
 - [OpenCode](docs/opencode.md)
 - [Telegram Desktop theme integration](docs/telegram-theme.md)
 - [Selective screensaver effects](docs/screensaver-effects.md)
