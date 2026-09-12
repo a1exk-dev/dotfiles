@@ -303,6 +303,9 @@ helper_source_and_unit_contract_is_enforced() (
 	sed -i 's/SocketMode=0600/SocketMode=0660/' "$plugin/systemd/dotfiles-input-languages-fcitx.socket"
 	fixture_validator_reports 'helper socket unit contract changed' || return 1
 	cp "$REPOSITORY_ROOT/plugins/input-languages/systemd/dotfiles-input-languages-fcitx.socket" "$plugin/systemd/dotfiles-input-languages-fcitx.socket"
+	sed -i 's/Environment=XDG_RUNTIME_DIR=%t/Environment=XDG_RUNTIME_DIR=\/tmp/' "$plugin/systemd/dotfiles-input-languages-fcitx.service"
+	fixture_validator_reports 'helper service unit contract changed' || return 1
+	cp "$REPOSITORY_ROOT/plugins/input-languages/systemd/dotfiles-input-languages-fcitx.service" "$plugin/systemd/dotfiles-input-languages-fcitx.service"
 	sed -i 's/RestartSec=2s/RestartSec=3s/' "$plugin/systemd/dotfiles-input-languages-fcitx.service"
 	fixture_validator_reports 'helper service unit contract changed'
 )

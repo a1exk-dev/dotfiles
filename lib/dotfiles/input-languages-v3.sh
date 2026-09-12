@@ -8,14 +8,129 @@ readonly INPUT_LANGUAGES_V3_RESTORE_FCITX='Reverse only the managed-group semant
 readonly INPUT_LANGUAGES_V3_RESTORE_HELPER='Quiesce authority, then restore only the exact prior helper unit, enablement, pointer, runtime, and activation edges.'
 readonly INPUT_LANGUAGES_V3_RESTORE_LANGUAGE='Publish the operation-start language as one new explicit target after direct authority restoration.'
 
+INPUT_LANGUAGES_V3_RUNTIME_STATE=unavailable
+INPUT_LANGUAGES_V3_RUNTIME_REASON=missing-environment
+INPUT_LANGUAGES_V3_RUNTIME_ROOT=''
+
 input_languages_v3_set_paths() {
+	local runtime_root=${1-${XDG_RUNTIME_DIR-}}
 	INPUT_LANGUAGES_V3_SYSTEMD_USER=$INPUT_LANGUAGES_CONFIG_HOME/systemd/user
 	INPUT_LANGUAGES_V3_SOCKET_PATH=$INPUT_LANGUAGES_V3_SYSTEMD_USER/$INPUT_LANGUAGES_V3_SOCKET_UNIT
 	INPUT_LANGUAGES_V3_SERVICE_PATH=$INPUT_LANGUAGES_V3_SYSTEMD_USER/$INPUT_LANGUAGES_V3_SERVICE_UNIT
 	INPUT_LANGUAGES_V3_WANTS_DIR=$INPUT_LANGUAGES_V3_SYSTEMD_USER/graphical-session.target.wants
 	INPUT_LANGUAGES_V3_ENABLEMENT=$INPUT_LANGUAGES_V3_WANTS_DIR/$INPUT_LANGUAGES_V3_SOCKET_UNIT
-	INPUT_LANGUAGES_V3_RUNTIME_DIR=${XDG_RUNTIME_DIR:-/run/user/$EUID}/dotfiles-input-languages
-	INPUT_LANGUAGES_V3_RUNTIME_SOCKET=$INPUT_LANGUAGES_V3_RUNTIME_DIR/fcitx.sock
+	INPUT_LANGUAGES_V3_RUNTIME_ROOT=$runtime_root
+	INPUT_LANGUAGES_V3_RUNTIME_DIR=${INPUT_LANGUAGES_V3_RUNTIME_ROOT:+$INPUT_LANGUAGES_V3_RUNTIME_ROOT/dotfiles-input-languages}
+	INPUT_LANGUAGES_V3_RUNTIME_SOCKET=${INPUT_LANGUAGES_V3_RUNTIME_DIR:+$INPUT_LANGUAGES_V3_RUNTIME_DIR/fcitx.sock}
+}
+
+input_languages_v3_systemd_runtime_root() {
+	# systemd defines user-manager %t as /run/user/$UID; this value is never used as a fallback.
+	printf '/run/user/%s\n' "$EUID"
+}
+
+input_languages_v3_path_has_symlink_component() {
+	local path=$1 current='' component
+	local -a components
+	[[ $path == /* ]] || return 0
+	IFS=/ read -ra components <<<"${path#/}"
+	for component in "${components[@]}"; do
+		[[ -n $component ]] || continue
+		current=$current/$component
+		[[ ! -L $current ]] || return 0
+	done
+	return 1
+}
+
+input_languages_v3_runtime_failure() {
+	INPUT_LANGUAGES_V3_RUNTIME_STATE=$1
+	INPUT_LANGUAGES_V3_RUNTIME_REASON=$2
+	return 1
+}
+
+input_languages_v3_socket_is_seqpacket() {
+	local path=$1
+	awk -v path="$path" '$4 == "00010000" && $5 == "0005" && $6 == "01" && $8 == path { found=1 } END { exit !found }' /proc/net/unix
+}
+
+input_languages_v3_inspect_runtime_path() {
+	local candidate=$1 required=${2-false} expected canonical owner mode type private socket
+	INPUT_LANGUAGES_V3_RUNTIME_ROOT=$candidate
+	INPUT_LANGUAGES_V3_RUNTIME_DIR=${candidate:+$candidate/dotfiles-input-languages}
+	INPUT_LANGUAGES_V3_RUNTIME_SOCKET=${INPUT_LANGUAGES_V3_RUNTIME_DIR:+$INPUT_LANGUAGES_V3_RUNTIME_DIR/fcitx.sock}
+	[[ -n $candidate ]] || input_languages_v3_runtime_failure unavailable missing-environment || return 1
+	[[ $candidate == /* && $candidate != / && $candidate != */ ]] || input_languages_v3_runtime_failure conflicting noncanonical-root || return 1
+	canonical=$(realpath -m -s -- "$candidate" 2>/dev/null) || input_languages_v3_runtime_failure unavailable inaccessible-root || return 1
+	[[ $canonical == "$candidate" ]] || input_languages_v3_runtime_failure conflicting noncanonical-root || return 1
+	! input_languages_v3_path_has_symlink_component "$candidate" || input_languages_v3_runtime_failure conflicting symlinked-root || return 1
+	if [[ ! -e $candidate && ! -L $candidate ]]; then input_languages_v3_runtime_failure unavailable missing-root; return 1; fi
+	type=$(LC_ALL=C stat -c %F -- "$candidate" 2>/dev/null) || input_languages_v3_runtime_failure unavailable inaccessible-root || return 1
+	[[ $type == directory ]] || input_languages_v3_runtime_failure conflicting malformed-root || return 1
+	owner=$(stat -c %u -- "$candidate" 2>/dev/null) || input_languages_v3_runtime_failure unavailable inaccessible-root || return 1
+	mode=$(stat -c %a -- "$candidate" 2>/dev/null) || input_languages_v3_runtime_failure unavailable inaccessible-root || return 1
+	[[ $owner == "$EUID" ]] || input_languages_v3_runtime_failure conflicting wrong-root-owner || return 1
+	[[ -w $candidate ]] || input_languages_v3_runtime_failure unavailable unwritable-root || return 1
+	[[ -x $candidate ]] || input_languages_v3_runtime_failure unavailable unsearchable-root || return 1
+	[[ $mode == 700 ]] || input_languages_v3_runtime_failure conflicting unsafe-root-mode || return 1
+	expected=$(input_languages_v3_systemd_runtime_root 2>/dev/null) || input_languages_v3_runtime_failure unavailable systemd-runtime-unavailable || return 1
+	[[ -n $expected && $expected == /* ]] || input_languages_v3_runtime_failure unavailable systemd-runtime-unavailable || return 1
+	[[ $candidate == "$expected" ]] || input_languages_v3_runtime_failure conflicting systemd-runtime-mismatch || return 1
+
+	private=$INPUT_LANGUAGES_V3_RUNTIME_DIR
+	socket=$INPUT_LANGUAGES_V3_RUNTIME_SOCKET
+	if [[ -e $private || -L $private ]]; then
+		! input_languages_v3_path_has_symlink_component "$private" || input_languages_v3_runtime_failure conflicting malformed-private-directory || return 1
+		type=$(LC_ALL=C stat -c %F -- "$private" 2>/dev/null) || input_languages_v3_runtime_failure conflicting malformed-private-directory || return 1
+		[[ $type == directory ]] || input_languages_v3_runtime_failure conflicting malformed-private-directory || return 1
+		owner=$(stat -c %u -- "$private" 2>/dev/null) || input_languages_v3_runtime_failure conflicting malformed-private-directory || return 1
+		mode=$(stat -c %a -- "$private" 2>/dev/null) || input_languages_v3_runtime_failure conflicting malformed-private-directory || return 1
+		[[ $owner == "$EUID" && $mode == 700 ]] || input_languages_v3_runtime_failure conflicting unsafe-private-directory || return 1
+	elif [[ $required == true ]]; then
+		input_languages_v3_runtime_failure unavailable missing-private-directory
+		return 1
+	fi
+	if [[ -e $socket || -L $socket ]]; then
+		! input_languages_v3_path_has_symlink_component "$socket" || input_languages_v3_runtime_failure conflicting malformed-socket || return 1
+		type=$(LC_ALL=C stat -c %F -- "$socket" 2>/dev/null) || input_languages_v3_runtime_failure conflicting malformed-socket || return 1
+		[[ $type == socket ]] || input_languages_v3_runtime_failure conflicting malformed-socket || return 1
+		owner=$(stat -c %u -- "$socket" 2>/dev/null) || input_languages_v3_runtime_failure conflicting malformed-socket || return 1
+		mode=$(stat -c %a -- "$socket" 2>/dev/null) || input_languages_v3_runtime_failure conflicting malformed-socket || return 1
+		[[ $owner == "$EUID" && $mode == 600 ]] || input_languages_v3_runtime_failure conflicting unsafe-socket || return 1
+		input_languages_v3_socket_is_seqpacket "$socket" || input_languages_v3_runtime_failure conflicting malformed-socket || return 1
+	elif [[ $required == true ]]; then
+		input_languages_v3_runtime_failure unavailable missing-socket
+		return 1
+	fi
+	INPUT_LANGUAGES_V3_RUNTIME_STATE=available
+	INPUT_LANGUAGES_V3_RUNTIME_REASON=ready
+}
+
+input_languages_v3_inspect_runtime() {
+	input_languages_v3_inspect_runtime_path "${XDG_RUNTIME_DIR-}" "${1-false}"
+}
+
+input_languages_v3_require_runtime() {
+	local required=${1-false}
+	if ! input_languages_v3_inspect_runtime "$required"; then
+		printf 'Input Languages runtime %s: %s.\n' "$INPUT_LANGUAGES_V3_RUNTIME_STATE" "$INPUT_LANGUAGES_V3_RUNTIME_REASON" >&2
+		return 1
+	fi
+}
+
+input_languages_v3_runtime_root_from_ownership() {
+	local private
+	private=$(jq -r .runtime_directory.path <<<"$1") || return 1
+	[[ $private == /*/dotfiles-input-languages ]] || return 1
+	printf '%s\n' "${private%/dotfiles-input-languages}"
+}
+
+input_languages_v3_require_saved_runtime() {
+	local root
+	root=$(input_languages_v3_runtime_root_from_ownership "$1") || return 1
+	if ! input_languages_v3_inspect_runtime_path "$root" "${2-false}"; then
+		printf 'Input Languages saved runtime %s: %s.\n' "$INPUT_LANGUAGES_V3_RUNTIME_STATE" "$INPUT_LANGUAGES_V3_RUNTIME_REASON" >&2
+		return 1
+	fi
 }
 
 input_languages_v3_exact_keys() {
@@ -100,18 +215,43 @@ input_languages_v3_helper_ownership_valid() {
 			(.path | type == "string" and startswith("/")) and (.type | IN("absent","symlink","regular","directory","socket")) and
 			(.target == null or (.target | type == "string" and startswith("/"))) and
 			(.digest == null or (.digest | test("^[0-9a-f]{64}$"))) and (.enabled | type == "boolean") and (.active | type == "boolean");
-		(keys | sort) == (["socket_unit","service_unit","socket_enablement","artifact_pointer","runtime_directory","socket_path"] | sort) and all(.[]; edge)
+		def identity: (keys | sort) == (["uid","mode","device","inode"] | sort) and
+			(.uid | type == "number" and . >= 0 and floor == .) and (.mode | test("^[0-7]{4}$")) and
+			(.device | test("^[0-9]+$")) and (.inode | test("^[0-9]+$"));
+		def runtime_edge: (keys | sort) == (["path","type","target","digest","enabled","active","identity"] | sort) and
+			(del(.identity) | edge) and (.identity == null or (.identity | identity));
+		(keys | sort) == (["socket_unit","service_unit","socket_enablement","artifact_pointer","runtime_directory","socket_path"] | sort) and
+		(.socket_unit | edge) and (.service_unit | edge) and (.socket_enablement | edge) and (.artifact_pointer | edge) and
+		(.runtime_directory | runtime_edge and (.type | IN("absent","directory"))) and
+		(.socket_path | runtime_edge and (.type | IN("absent","socket")))
 	' <<<"$1" >/dev/null 2>&1
 }
 
+input_languages_v3_helper_ownership_matches() {
+	jq -e --argjson current "$1" --argjson expected "$2" '
+		def stable: del(.runtime_directory.identity.device,.runtime_directory.identity.inode,
+			.socket_path.identity.device,.socket_path.identity.inode);
+		($current | stable) == ($expected | stable)
+	' <<<null >/dev/null 2>&1
+}
+
+input_languages_v3_runtime_ownership_identical() {
+	jq -e --argjson current "$1" --argjson expected "$2" '
+		$current.runtime_directory == $expected.runtime_directory and $current.socket_path == $expected.socket_path
+	' <<<null >/dev/null 2>&1
+}
+
 input_languages_v3_helper_ownership_bound() {
-	local ownership=$1 artifact=$2 root
+	local ownership=$1 artifact=$2 root runtime socket
 	input_languages_v3_set_paths
 	root=${artifact%/*}
+	runtime=$(jq -r .runtime_directory.path <<<"$ownership") || return 1
+	socket=$runtime/fcitx.sock
+	[[ $runtime == /*/dotfiles-input-languages && $(realpath -m -- "$runtime") == "$runtime" ]] || return 1
 	jq -e --arg socket_unit "$INPUT_LANGUAGES_V3_SOCKET_PATH" --arg socket_target "$root/systemd/$INPUT_LANGUAGES_V3_SOCKET_UNIT" \
 		--arg service_unit "$INPUT_LANGUAGES_V3_SERVICE_PATH" --arg service_target "$root/systemd/$INPUT_LANGUAGES_V3_SERVICE_UNIT" \
 		--arg enablement "$INPUT_LANGUAGES_V3_ENABLEMENT" --arg enablement_target "$INPUT_LANGUAGES_V3_SOCKET_PATH" \
-		--arg pointer "$INPUT_LANGUAGES_POINTER" --arg artifact "$artifact" --arg runtime "$INPUT_LANGUAGES_V3_RUNTIME_DIR" --arg socket "$INPUT_LANGUAGES_V3_RUNTIME_SOCKET" '
+		--arg pointer "$INPUT_LANGUAGES_POINTER" --arg artifact "$artifact" --arg runtime "$runtime" --arg socket "$socket" '
 		.socket_unit.path == $socket_unit and (.socket_unit.target == null or .socket_unit.target == $socket_target) and
 		.service_unit.path == $service_unit and (.service_unit.target == null or .service_unit.target == $service_target) and
 		.socket_enablement.path == $enablement and (.socket_enablement.target == null or .socket_enablement.target == $enablement_target) and
@@ -180,6 +320,7 @@ input_languages_validate_active_file_v3() {
 	input_languages_v3_common_receipt_valid "$file" || return 1
 	input_languages_v3_managed_group_valid "$(jq -c .managed_group "$file")" || return 1
 	input_languages_v3_helper_ownership_valid "$(jq -c .helper_ownership "$file")" || return 1
+	jq -e '.helper_ownership | all(.runtime_directory,.socket_path; .type == "absent" or .identity != null)' "$file" >/dev/null 2>&1 || return 1
 	artifact=$(jq -r .integration_artifact.artifact "$file")
 	input_languages_v3_helper_ownership_bound "$(jq -c .helper_ownership "$file")" "$artifact" || return 1
 	input_languages_v3_hyprland_ownership_valid "$(jq -c .hyprland_ownership "$file")" || return 1
@@ -369,8 +510,21 @@ input_languages_v3_edge() {
 		'{path:$path,type:$type,target:$target,digest:$digest,enabled:$enabled,active:$active}'
 }
 
+input_languages_v3_runtime_edge() {
+	local path=$1 active=$2 edge type uid mode device inode identity=null
+	edge=$(input_languages_v3_edge "$path" false "$active") || return 1
+	type=$(jq -r .type <<<"$edge") || return 1
+	if [[ $type != absent ]]; then
+		read -r uid mode device inode < <(stat -c '%u %a %d %i' -- "$path") || return 1
+		printf -v mode '%04d' "$mode"
+		identity=$(jq -cn --argjson uid "$uid" --arg mode "$mode" --arg device "$device" --arg inode "$inode" \
+			'{uid:$uid,mode:$mode,device:$device,inode:$inode}') || return 1
+	fi
+	jq -c --argjson identity "$identity" '. + {identity:$identity}' <<<"$edge"
+}
+
 input_languages_v3_helper_ownership() {
-	input_languages_v3_set_paths
+	input_languages_v3_set_paths "${1-${XDG_RUNTIME_DIR-}}"
 	local socket_active=false service_active=false socket service enablement pointer runtime socket_path socket_state service_state
 	socket_state=$(input_languages_v3_systemctl show "$INPUT_LANGUAGES_V3_SOCKET_UNIT" 2>/dev/null) || return 1
 	service_state=$(input_languages_v3_systemctl show "$INPUT_LANGUAGES_V3_SERVICE_UNIT" 2>/dev/null) || return 1
@@ -380,15 +534,15 @@ input_languages_v3_helper_ownership() {
 	service=$(input_languages_v3_edge "$INPUT_LANGUAGES_V3_SERVICE_PATH" false "$service_active") || return 1
 	enablement=$(input_languages_v3_edge "$INPUT_LANGUAGES_V3_ENABLEMENT" "$([[ -L $INPUT_LANGUAGES_V3_ENABLEMENT ]] && printf true || printf false)" false) || return 1
 	pointer=$(input_languages_v3_edge "$INPUT_LANGUAGES_POINTER" false false) || return 1
-	runtime=$(input_languages_v3_edge "$INPUT_LANGUAGES_V3_RUNTIME_DIR" false "$([[ -d $INPUT_LANGUAGES_V3_RUNTIME_DIR ]] && printf true || printf false)") || return 1
-	socket_path=$(input_languages_v3_edge "$INPUT_LANGUAGES_V3_RUNTIME_SOCKET" false "$([[ -S $INPUT_LANGUAGES_V3_RUNTIME_SOCKET ]] && printf true || printf false)") || return 1
+	runtime=$(input_languages_v3_runtime_edge "$INPUT_LANGUAGES_V3_RUNTIME_DIR" "$([[ -d $INPUT_LANGUAGES_V3_RUNTIME_DIR ]] && printf true || printf false)") || return 1
+	socket_path=$(input_languages_v3_runtime_edge "$INPUT_LANGUAGES_V3_RUNTIME_SOCKET" "$([[ -S $INPUT_LANGUAGES_V3_RUNTIME_SOCKET ]] && printf true || printf false)") || return 1
 	jq -cn --argjson socket "$socket" --argjson service "$service" --argjson enablement "$enablement" --argjson pointer "$pointer" --argjson runtime "$runtime" --argjson socket_path "$socket_path" \
 		'{socket_unit:$socket,service_unit:$service,socket_enablement:$enablement,artifact_pointer:$pointer,runtime_directory:$runtime,socket_path:$socket_path}'
 }
 
 input_languages_v3_target_helper_ownership() {
-	input_languages_v3_set_paths
-	local root=$1 socket_digest service_digest pointer_digest
+	local root=$1 runtime_root=${2-${XDG_RUNTIME_DIR-}} socket_digest service_digest pointer_digest
+	input_languages_v3_set_paths "$runtime_root"
 	socket_digest=$(sha256sum "$root/systemd/$INPUT_LANGUAGES_V3_SOCKET_UNIT" | cut -d' ' -f1) || return 1
 	service_digest=$(sha256sum "$root/systemd/$INPUT_LANGUAGES_V3_SERVICE_UNIT" | cut -d' ' -f1) || return 1
 	pointer_digest=$(printf 'return "%s"\n' "$root/input-languages.so" | sha256sum | cut -d' ' -f1)
@@ -400,8 +554,8 @@ input_languages_v3_target_helper_ownership() {
 		service_unit:{path:$service_path,type:"symlink",target:$service_target,digest:$service_digest,enabled:false,active:false},
 		socket_enablement:{path:$enablement,type:"symlink",target:$enablement_target,digest:$socket_digest,enabled:true,active:false},
 		artifact_pointer:{path:$pointer,type:"regular",target:null,digest:$pointer_digest,enabled:false,active:false},
-		runtime_directory:{path:$runtime,type:"directory",target:null,digest:null,enabled:false,active:true},
-		socket_path:{path:$socket,type:"socket",target:null,digest:null,enabled:false,active:true}}'
+		runtime_directory:{path:$runtime,type:"directory",target:null,digest:null,enabled:false,active:true,identity:null},
+		socket_path:{path:$socket,type:"socket",target:null,digest:null,enabled:false,active:true,identity:null}}'
 }
 
 input_languages_v3_integration_artifact() {
@@ -503,9 +657,10 @@ input_languages_v3_fcitx_phase_digest() {
 }
 
 input_languages_v3_update_pending() {
-	local phase=$1 fcitx=${2-null} fcitx_digest=null helper direct receipt content
+	local phase=$1 fcitx=${2-null} fcitx_digest=null helper direct receipt content runtime_root
 	direct=$(input_languages_v3_state_digest "$(input_languages_tree_digest "$INPUT_LANGUAGES_LIVE" 2>/dev/null || printf absent)|$(sha256sum "$INPUT_LANGUAGES_POINTER" 2>/dev/null || true)")
-	helper=$(input_languages_v3_json_digest "$(input_languages_v3_helper_ownership)") || return 1
+	runtime_root=$(input_languages_v3_runtime_root_from_ownership "$(jq -c .helper_target "$INPUT_LANGUAGES_PENDING")") || return 1
+	helper=$(input_languages_v3_json_digest "$(input_languages_v3_helper_ownership "$runtime_root")") || return 1
 	if [[ $fcitx != null ]]; then
 		fcitx_digest=$(input_languages_v3_fcitx_phase_digest "$fcitx") || return 1
 	elif [[ $(jq -r .operation "$INPUT_LANGUAGES_PENDING") == remove || $phase =~ ^(prior-helper-quiesced|managed-group-created|managed-group-populated|managed-group-selected|managed-group-saved|units-published|manager-reloaded)$ ]]; then
@@ -517,6 +672,18 @@ input_languages_v3_update_pending() {
 		.phase=$phase | .expected_states |= map(if .phase == $phase then .direct_digest=$direct | .helper_digest=$helper |
 			.fcitx_semantic_digest=(if $fcitx_digest == "null" then null else $fcitx_digest end) | .receipt_digest=(if $receipt == "null" then null else $receipt end) else . end)
 	' "$INPUT_LANGUAGES_PENDING") || return 1
+	input_languages_write_json_atomic "$INPUT_LANGUAGES_PENDING" "$content" pending
+}
+
+input_languages_v3_record_runtime_target_identity() {
+	local runtime socket runtime_edge socket_edge content
+	runtime=$(jq -r .helper_target.runtime_directory.path "$INPUT_LANGUAGES_PENDING") || return 1
+	socket=$(jq -r .helper_target.socket_path.path "$INPUT_LANGUAGES_PENDING") || return 1
+	runtime_edge=$(input_languages_v3_runtime_edge "$runtime" true) || return 1
+	socket_edge=$(input_languages_v3_runtime_edge "$socket" true) || return 1
+	[[ $(jq -r .type <<<"$runtime_edge") == directory && $(jq -r .type <<<"$socket_edge") == socket ]] || return 1
+	content=$(jq -c --argjson runtime "$runtime_edge" --argjson socket "$socket_edge" \
+		'.helper_target.runtime_directory=$runtime | .helper_target.socket_path=$socket' "$INPUT_LANGUAGES_PENDING") || return 1
 	input_languages_write_json_atomic "$INPUT_LANGUAGES_PENDING" "$content" pending
 }
 
@@ -567,6 +734,7 @@ input_languages_v3_managed_group_owned() {
 }
 
 input_languages_exact_noop_v3() {
+	input_languages_v3_require_runtime true || return 1
 	[[ $INPUT_LANGUAGES_TREE_STATE == linked && $INPUT_LANGUAGES_ACTIVE_STATE == valid &&
 		$INPUT_LANGUAGES_PENDING_STATE == absent && $INPUT_LANGUAGES_RECOVERY_STATE == absent && $INPUT_LANGUAGES_CLEANUP_STATE == absent ]] || return 1
 	[[ $(jq -r .version "$INPUT_LANGUAGES_ACTIVE") == 3 ]] || return 1
@@ -583,7 +751,7 @@ input_languages_exact_noop_v3() {
 	[[ $(jq -r .snapshot.current_group <<<"$controller") == "$INPUT_LANGUAGES_V3_MANAGED_GROUP" ]] || return 1
 	jq -e '.snapshot.observed_method == "" or .snapshot.observed_method == null or (.snapshot.observed_method | IN("keyboard-us","keyboard-ru"))' <<<"$controller" >/dev/null 2>&1 || return 1
 	helper_current=$(input_languages_v3_helper_ownership) || return 1
-	[[ $(jq -cS . <<<"$helper_current") == "$(jq -cS .helper_ownership "$INPUT_LANGUAGES_ACTIVE")" ]] || return 1
+	input_languages_v3_helper_ownership_matches "$helper_current" "$(jq -c .helper_ownership "$INPUT_LANGUAGES_ACTIVE")" || return 1
 	input_languages_pointer_matches "$(jq -r .integration_artifact.artifact "$INPUT_LANGUAGES_ACTIVE")" || return 1
 	widget=$(jq -c .widget_ownership "$INPUT_LANGUAGES_ACTIVE") || return 1
 	input_languages_widget_matches true "$(jq -r .section <<<"$widget")" "$(jq -r .index <<<"$widget")" "$(jq -c .entry <<<"$widget")" || return 1
@@ -716,17 +884,18 @@ input_languages_v3_remove_fcitx_restored() {
 }
 
 input_languages_v3_absent_helper_ownership() {
-	input_languages_v3_set_paths
+	input_languages_v3_set_paths "${1-${XDG_RUNTIME_DIR-}}"
 	jq -cn --arg socket_unit "$INPUT_LANGUAGES_V3_SOCKET_PATH" --arg service_unit "$INPUT_LANGUAGES_V3_SERVICE_PATH" \
 		--arg enablement "$INPUT_LANGUAGES_V3_ENABLEMENT" --arg pointer "$INPUT_LANGUAGES_POINTER" \
 		--arg runtime "$INPUT_LANGUAGES_V3_RUNTIME_DIR" --arg socket "$INPUT_LANGUAGES_V3_RUNTIME_SOCKET" '
 		def absent($path): {path:$path,type:"absent",target:null,digest:null,enabled:false,active:false};
+		def runtime_absent($path): absent($path) + {identity:null};
 		{socket_unit:absent($socket_unit),service_unit:absent($service_unit),socket_enablement:absent($enablement),
-		artifact_pointer:absent($pointer),runtime_directory:absent($runtime),socket_path:absent($socket)}'
+		artifact_pointer:absent($pointer),runtime_directory:runtime_absent($runtime),socket_path:runtime_absent($socket)}'
 }
 
 input_languages_v3_remove_state_exact() {
-	local active=$1 controller managed expected helper_current helper_expected artifact health widget language
+	local active=$1 controller managed expected helper_current helper_expected artifact health widget language runtime_root
 	input_languages_validate_active_file_v3 "$active" artifact || return 1
 	artifact=$(jq -r .integration_artifact.artifact "$active")
 	input_languages_pointer_matches "$artifact" || return 1
@@ -735,9 +904,11 @@ input_languages_v3_remove_state_exact() {
 	input_languages_widget_matches true "$(jq -r .widget_ownership.section "$active")" "$(jq -r .widget_ownership.index "$active")" "$(jq -c .widget_ownership.entry "$active")" || return 1
 	input_languages_widget_link_matches "$(jq -r .widget_ownership.source "$active")" || return 1
 	input_languages_custom_plugin_discovered true || return 1
-	helper_current=$(input_languages_v3_helper_ownership) || return 1
 	helper_expected=$(jq -c .helper_ownership "$active") || return 1
-	[[ $(jq -cS . <<<"$helper_current") == "$(jq -cS . <<<"$helper_expected")" ]] || return 1
+	runtime_root=$(input_languages_v3_runtime_root_from_ownership "$helper_expected") || return 1
+	input_languages_v3_require_saved_runtime "$helper_expected" true || return 1
+	helper_current=$(input_languages_v3_helper_ownership "$runtime_root") || return 1
+	input_languages_v3_helper_ownership_matches "$helper_current" "$helper_expected" || return 1
 	input_languages_v3_controller_inspect "${artifact%/*}/input-languages-fcitx-helper" || return 1
 	controller=$INPUT_LANGUAGES_V3_CONTROLLER_RESPONSE
 	input_languages_v3_controller_restoration_supported "$controller" || return 1
@@ -757,13 +928,14 @@ input_languages_v3_remove_state_exact() {
 }
 
 input_languages_v3_verify_apply_rollback() {
-	local prior=$1 response helper_before helper_current helper
+	local prior=$1 response helper_before helper_current helper runtime_root
 	helper=$(jq -r .integration_artifact.artifact "$INPUT_LANGUAGES_PENDING"); helper=${helper%/*}/input-languages-fcitx-helper
 	input_languages_v3_controller_inspect "$helper" || return 1
 	response=$INPUT_LANGUAGES_V3_CONTROLLER_RESPONSE
 	input_languages_v3_fcitx_restored "$response" "$(jq -c .fcitx_before "$INPUT_LANGUAGES_PENDING")" || return 1
 	helper_before=$(jq -c .helper_before "$INPUT_LANGUAGES_PENDING") || return 1
-	helper_current=$(input_languages_v3_helper_ownership) || return 1
+	runtime_root=$(input_languages_v3_runtime_root_from_ownership "$helper_before") || return 1
+	helper_current=$(input_languages_v3_helper_ownership "$runtime_root") || return 1
 	[[ $(jq -cS . <<<"$helper_current") == "$(jq -cS . <<<"$helper_before")" ]] || return 1
 	cmp -s "$prior" "$INPUT_LANGUAGES_ACTIVE" || return 1
 	input_languages_validate_active_file_v2 "$INPUT_LANGUAGES_ACTIVE" || return 1
@@ -792,14 +964,17 @@ input_languages_v3_wait_for_health() {
 }
 
 input_languages_v3_publish_active() {
-	local transaction=$1 pending=$INPUT_LANGUAGES_PENDING metadata artifact helper fcitx managed helper_ownership health hypr widget prior content
+	local transaction=$1 pending=$INPUT_LANGUAGES_PENDING metadata artifact helper fcitx managed helper_ownership helper_target health hypr widget prior content runtime_root
 	metadata=$INPUT_LANGUAGES_INTEGRATION_ARTIFACT_DIR/build.json
 	artifact=$(input_languages_v3_integration_artifact "$INPUT_LANGUAGES_INTEGRATION_ARTIFACT_DIR") || return 1
 	helper=$INPUT_LANGUAGES_INTEGRATION_HELPER
 	input_languages_v3_controller_inspect "$helper" || return 1
 	fcitx=$(jq -c .fcitx_before "$pending") || return 1
 	managed=$(input_languages_v3_managed_group "$(jq -r '.snapshot.groups[] | select(.name == "Dotfiles Input Languages").default_im' <<<"$INPUT_LANGUAGES_V3_CONTROLLER_RESPONSE")") || return 1
-	helper_ownership=$(input_languages_v3_helper_ownership) || return 1
+	runtime_root=$(input_languages_v3_runtime_root_from_ownership "$(jq -c .helper_target "$pending")") || return 1
+	helper_ownership=$(input_languages_v3_helper_ownership "$runtime_root") || return 1
+	helper_target=$(jq -c .helper_target "$pending") || return 1
+	input_languages_v3_runtime_ownership_identical "$helper_ownership" "$helper_target" || return 1
 	health=$(hyprctl -j inputlanguages) || return 1
 	input_languages_inspect_tree
 	hypr=$(input_languages_v3_hyprland_ownership "$health") || return 1
@@ -837,7 +1012,7 @@ input_languages_v3_archive_apply_evidence() {
 input_languages_apply_v3() {
 	local INPUT_LANGUAGES_V3_WRITE_INDETERMINATE=false
 	local approved=false packages_prepared=false expect_noop=false option transaction transaction_root prior_receipt prior_digest direct artifact controller fcitx_before active_digest
-	local helper_before helper_target health hypr_before widget_before operation_start expected restoration managed_target pending_content failed='' prior_widget source_changed=true
+	local helper_before helper_target health hypr_before widget_before operation_start expected restoration managed_target pending_content failed='' prior_widget source_changed=true planned_runtime
 	for option in "$@"; do case $option in --yes) approved=true ;; --packages-prepared) packages_prepared=true ;; --expect-noop) expect_noop=true ;; --recovery-approved) ;; *) return 2 ;; esac; done
 	input_languages_inspect
 	[[ $INPUT_LANGUAGES_ACTIVE_STATE == valid && $(jq -r .version "$INPUT_LANGUAGES_ACTIVE") == 2 && $INPUT_LANGUAGES_TREE_STATE == linked ]] || return 1
@@ -848,6 +1023,8 @@ input_languages_apply_v3() {
 	input_languages_validate_active_file_v2 "$INPUT_LANGUAGES_ACTIVE" || { printf 'Apply blocked: the direct version-2 ancestry is not exact.\n' >&2; return 1; }
 	input_languages_paths_are_safe || return 1
 	[[ $INPUT_LANGUAGES_SUPPORTED == true ]] || return 1
+	input_languages_v3_require_runtime false || { printf 'Apply blocked: the Input Languages runtime contract is not satisfied.\n' >&2; return 1; }
+	planned_runtime=$INPUT_LANGUAGES_V3_RUNTIME_ROOT
 	input_languages_static_preflight || return 1
 	input_languages_prepare_roots || return 1
 	input_languages_stack_identity || return 1
@@ -880,6 +1057,7 @@ input_languages_apply_v3() {
 	input_languages_inspect
 	[[ $INPUT_LANGUAGES_ACTIVE_STATE == valid && $(jq -r .version "$INPUT_LANGUAGES_ACTIVE") == 2 && $INPUT_LANGUAGES_TREE_STATE == linked &&
 		$(sha256sum "$INPUT_LANGUAGES_ACTIVE" | cut -d' ' -f1) == "$active_digest" ]] || { input_languages_unlock || true; return 1; }
+	input_languages_v3_require_runtime false && [[ $INPUT_LANGUAGES_V3_RUNTIME_ROOT == "$planned_runtime" ]] || { printf 'Apply blocked: the runtime root changed after confirmation.\n' >&2; input_languages_unlock || true; return 1; }
 	input_languages_v3_build_inputs_match "$INPUT_LANGUAGES_INTEGRATION_ARTIFACT_DIR" || { printf 'Apply blocked: integration build inputs changed after confirmation.\n' >&2; input_languages_unlock || true; return 1; }
 	input_languages_v3_apply_plan_matches "$INPUT_LANGUAGES_INTEGRATION_HELPER" "$controller" "$helper_before" "$hypr_before" || { printf 'Apply blocked: the confirmed runtime plan changed before pending evidence.\n' >&2; input_languages_unlock || true; return 1; }
 	transaction=$(input_languages_new_transaction) || { input_languages_unlock || true; return 1; }
@@ -917,7 +1095,10 @@ input_languages_apply_v3() {
 	if [[ -z $failed ]]; then input_languages_v3_update_pending units-published || failed=record-units; fi
 	if [[ -z $failed ]]; then input_languages_v3_systemctl daemon-reload || failed=daemon-reload; fi
 	if [[ -z $failed ]]; then input_languages_v3_update_pending manager-reloaded || failed=record-manager-reload; fi
+	if [[ -z $failed ]]; then input_languages_v3_require_runtime false && [[ $INPUT_LANGUAGES_V3_RUNTIME_ROOT == "$planned_runtime" ]] || failed=runtime-before-socket; fi
 	if [[ -z $failed ]]; then input_languages_v3_systemctl start "$INPUT_LANGUAGES_V3_SOCKET_UNIT" || failed=start-socket; fi
+	if [[ -z $failed ]]; then input_languages_v3_require_runtime true || failed=inspect-socket; fi
+	if [[ -z $failed ]]; then input_languages_v3_record_runtime_target_identity || failed=record-runtime-identity; fi
 	if [[ -z $failed ]]; then input_languages_v3_update_pending socket-started || failed=record-socket; fi
 	if [[ -z $failed ]]; then input_languages_publish_pointer "$INPUT_LANGUAGES_INTEGRATION_ARTIFACT" || failed=publish-pointer; fi
 	if [[ -z $failed ]]; then hyprctl keyword misc:disable_autoreload true >/dev/null || failed=pause-autoreload; fi
@@ -936,6 +1117,7 @@ input_languages_apply_v3() {
 	if [[ -z $failed ]]; then input_languages_v3_wait_for_health acknowledged "$INPUT_LANGUAGES_INTEGRATION_BUILD_ID" "$(jq -r .protocol_identity "$INPUT_LANGUAGES_INTEGRATION_ARTIFACT_DIR/build.json")" || failed=verify-acknowledgement; fi
 	if [[ -z $failed ]]; then input_languages_v3_update_pending verified || failed=record-verified; fi
 	if [[ -z $failed ]]; then input_languages_v3_build_inputs_match "$INPUT_LANGUAGES_INTEGRATION_ARTIFACT_DIR" || failed=build-input-drift; fi
+	if [[ -z $failed ]]; then input_languages_v3_require_runtime true || failed=runtime-before-active; fi
 	if [[ -z $failed ]]; then input_languages_v3_publish_active "$transaction" || failed=publish-active; fi
 	if [[ -z $failed ]]; then input_languages_v3_update_pending active-published || failed=record-active; fi
 	if [[ -z $failed ]]; then input_languages_v3_archive_apply_evidence "$transaction" "$prior_receipt" || failed=archive-pending; fi
@@ -963,19 +1145,30 @@ input_languages_apply_v3() {
 }
 
 input_languages_v3_remove_runtime_edges() {
-	local expected=$1 expected_socket expected_runtime
-	input_languages_v3_set_paths
+	local expected=$1 expected_socket expected_runtime runtime_root runtime_dir runtime_socket current target
 	expected_socket=$(jq -r .socket_path.type <<<"$expected")
 	expected_runtime=$(jq -r .runtime_directory.type <<<"$expected")
-	if [[ -e $INPUT_LANGUAGES_V3_RUNTIME_SOCKET || -L $INPUT_LANGUAGES_V3_RUNTIME_SOCKET ]]; then
-		[[ $expected_socket == socket && -S $INPUT_LANGUAGES_V3_RUNTIME_SOCKET ]] || return 1
-		input_languages_remove_file_verified "$INPUT_LANGUAGES_V3_RUNTIME_SOCKET" || return 1
+	runtime_root=$(input_languages_v3_runtime_root_from_ownership "$expected") || return 1
+	runtime_dir=$(jq -r .runtime_directory.path <<<"$expected") || return 1
+	runtime_socket=$(jq -r .socket_path.path <<<"$expected") || return 1
+	[[ $runtime_dir == "$runtime_root/dotfiles-input-languages" && $runtime_socket == "$runtime_dir/fcitx.sock" ]] || return 1
+	input_languages_v3_inspect_runtime_path "$runtime_root" false || return 1
+	if [[ -e $runtime_socket || -L $runtime_socket ]]; then
+		[[ $expected_socket == socket && -S $runtime_socket && ! -L $runtime_socket ]] || return 1
+		current=$(input_languages_v3_runtime_edge "$runtime_socket" true) || return 1
+		target=$(jq -cS .socket_path <<<"$expected") || return 1
+		[[ $(jq -cS . <<<"$current") == "$target" ]] || return 1
+		input_languages_remove_file_verified "$runtime_socket" || return 1
 	fi
-	if [[ -e $INPUT_LANGUAGES_V3_RUNTIME_DIR || -L $INPUT_LANGUAGES_V3_RUNTIME_DIR ]]; then
-		[[ $expected_runtime == directory && -d $INPUT_LANGUAGES_V3_RUNTIME_DIR && ! -L $INPUT_LANGUAGES_V3_RUNTIME_DIR ]] || return 1
-		rmdir "$INPUT_LANGUAGES_V3_RUNTIME_DIR" || return 1
+	input_languages_v3_inspect_runtime_path "$runtime_root" false || return 1
+	if [[ -e $runtime_dir || -L $runtime_dir ]]; then
+		[[ $expected_runtime == directory && -d $runtime_dir && ! -L $runtime_dir ]] || return 1
+		current=$(input_languages_v3_runtime_edge "$runtime_dir" true) || return 1
+		target=$(jq -cS .runtime_directory <<<"$expected") || return 1
+		[[ $(jq -cS . <<<"$current") == "$target" ]] || return 1
+		rmdir "$runtime_dir" || return 1
 	fi
-	[[ ! -e $INPUT_LANGUAGES_V3_RUNTIME_SOCKET && ! -L $INPUT_LANGUAGES_V3_RUNTIME_SOCKET && ! -e $INPUT_LANGUAGES_V3_RUNTIME_DIR && ! -L $INPUT_LANGUAGES_V3_RUNTIME_DIR ]]
+	[[ ! -e $runtime_socket && ! -L $runtime_socket && ! -e $runtime_dir && ! -L $runtime_dir ]]
 }
 
 input_languages_v3_restore_original_direct() {
@@ -1035,10 +1228,12 @@ input_languages_v3_restore_installed_direct() {
 }
 
 input_languages_v3_restore_helper_ownership() {
-	local expected=$1 artifact_root=$2 current path key actual target published=false
-	input_languages_v3_set_paths
-	current=$(input_languages_v3_helper_ownership) || return 1
-	if [[ $(jq -cS . <<<"$current") != "$(jq -cS . <<<"$expected")" ]]; then
+	local expected=$1 artifact_root=$2 current path key actual target published=false runtime_root
+	runtime_root=$(input_languages_v3_runtime_root_from_ownership "$expected") || return 1
+	input_languages_v3_set_paths "$runtime_root"
+	input_languages_v3_require_saved_runtime "$expected" false || return 1
+	current=$(input_languages_v3_helper_ownership "$runtime_root") || return 1
+	if ! input_languages_v3_helper_ownership_matches "$current" "$expected"; then
 		for path in "$INPUT_LANGUAGES_V3_SOCKET_PATH" "$INPUT_LANGUAGES_V3_SERVICE_PATH" "$INPUT_LANGUAGES_V3_ENABLEMENT"; do
 			case $path in "$INPUT_LANGUAGES_V3_SOCKET_PATH") key=socket_unit ;; "$INPUT_LANGUAGES_V3_SERVICE_PATH") key=service_unit ;; *) key=socket_enablement ;; esac
 			actual=$(jq -c ".$key" <<<"$current") || return 1
@@ -1054,17 +1249,18 @@ input_languages_v3_restore_helper_ownership() {
 		[[ $(jq -r .socket_unit.active <<<"$expected") != true ]] || input_languages_v3_systemctl start "$INPUT_LANGUAGES_V3_SOCKET_UNIT" || return 1
 		[[ $(jq -r .service_unit.active <<<"$expected") != true ]] || input_languages_v3_systemctl start "$INPUT_LANGUAGES_V3_SERVICE_UNIT" || return 1
 	fi
-	current=$(input_languages_v3_helper_ownership) || return 1
-	[[ $(jq -cS . <<<"$current") == "$(jq -cS . <<<"$expected")" ]]
+	current=$(input_languages_v3_helper_ownership "$runtime_root") || return 1
+	input_languages_v3_helper_ownership_matches "$current" "$expected"
 }
 
 input_languages_v3_verify_removed() {
-	local active=$1 helper=$2 controller expected_helper backup transaction existed digest prior_present prior_section prior_index prior_entry
+	local active=$1 helper=$2 controller expected_helper backup transaction existed digest prior_present prior_section prior_index prior_entry runtime_root
 	input_languages_v3_controller_inspect "$helper" || return 1
 	controller=$INPUT_LANGUAGES_V3_CONTROLLER_RESPONSE
 	input_languages_v3_remove_fcitx_restored "$controller" "$(jq -c .fcitx_before "$INPUT_LANGUAGES_PENDING")" "$(jq -c .fcitx_before "$active")" || return 1
-	expected_helper=$(input_languages_v3_absent_helper_ownership) || return 1
-	[[ $(jq -cS . <<<"$(input_languages_v3_helper_ownership)") == "$(jq -cS . <<<"$expected_helper")" ]] || return 1
+	runtime_root=$(input_languages_v3_runtime_root_from_ownership "$(jq -c .helper_ownership "$active")") || return 1
+	expected_helper=$(input_languages_v3_absent_helper_ownership "$runtime_root") || return 1
+	[[ $(jq -cS . <<<"$(input_languages_v3_helper_ownership "$runtime_root")") == "$(jq -cS . <<<"$expected_helper")" ]] || return 1
 	backup=$(jq -r .direct_ancestry.backup "$active")
 	transaction=$(jq -r .direct_ancestry.backup_transaction_id "$active")
 	existed=$(jq -r .direct_ancestry.backup_existed "$active")
@@ -1087,7 +1283,7 @@ input_languages_remove_v3() {
 	local INPUT_LANGUAGES_V3_RESTORATION_MODE=true
 	local INPUT_LANGUAGES_V3_WRITE_INDETERMINATE=false
 	local approved=false recovery_approved=false option active_digest artifact_root helper controller fcitx_start helper_before helper_target health
-	local operation_start transaction transaction_root prior_active prior_digest pending_content managed failed='' committed=false
+	local operation_start transaction transaction_root prior_active prior_digest pending_content managed failed='' committed=false runtime_root active_helper
 	for option in "$@"; do case $option in --yes) approved=true ;; --recovery-approved) recovery_approved=true ;; *) printf 'Error: unknown Input Languages Remove option: %s\n' "$option" >&2; return 2 ;; esac; done
 	input_languages_inspect
 	input_languages_paths_are_safe || return 1
@@ -1097,13 +1293,16 @@ input_languages_remove_v3() {
 		return
 	fi
 	[[ $INPUT_LANGUAGES_ACTIVE_STATE == valid && $(jq -r .version "$INPUT_LANGUAGES_ACTIVE") == 3 ]] || return 1
+	active_helper=$(jq -c .helper_ownership "$INPUT_LANGUAGES_ACTIVE") || return 1
+	input_languages_v3_require_saved_runtime "$active_helper" true || { printf 'Remove blocked: receipt-saved runtime ownership cannot be proven.\n' >&2; return 1; }
+	runtime_root=$INPUT_LANGUAGES_V3_RUNTIME_ROOT
 	input_languages_v3_remove_state_exact "$INPUT_LANGUAGES_ACTIVE" || { printf 'Remove blocked: the version-3 installation or restoration anchors are not exact.\n' >&2; return 1; }
 	artifact_root=$(jq -r .integration_artifact.artifact "$INPUT_LANGUAGES_ACTIVE"); artifact_root=${artifact_root%/*}
 	helper=$artifact_root/input-languages-fcitx-helper
 	controller=$INPUT_LANGUAGES_V3_CONTROLLER_RESPONSE
 	fcitx_start=$(input_languages_v3_fcitx_evidence "$controller") || return 1
-	helper_before=$(input_languages_v3_helper_ownership) || return 1
-	helper_target=$(input_languages_v3_absent_helper_ownership) || return 1
+	helper_before=$(input_languages_v3_helper_ownership "$runtime_root") || return 1
+	helper_target=$(input_languages_v3_absent_helper_ownership "$runtime_root") || return 1
 	health=$INPUT_LANGUAGES_PLUGIN_HEALTH
 	operation_start=$(jq -cn --arg language "$(jq -r 'if .canonical_group == 0 then "US" else "Russian" end' <<<"$health")" \
 		--argjson groups "$(jq -c '[.physical_keyboards[] as $device | {device:$device,group:.canonical_group}]' <<<"$health")" \
@@ -1116,6 +1315,7 @@ input_languages_remove_v3() {
 	input_languages_inspect
 	[[ $INPUT_LANGUAGES_ACTIVE_STATE == valid && $(sha256sum "$INPUT_LANGUAGES_ACTIVE" | cut -d' ' -f1) == "$active_digest" && $INPUT_LANGUAGES_PENDING_STATE == absent && $INPUT_LANGUAGES_RECOVERY_STATE == absent ]] || { input_languages_unlock || true; return 1; }
 	input_languages_v3_remove_state_exact "$INPUT_LANGUAGES_ACTIVE" || { input_languages_unlock || true; return 1; }
+	input_languages_v3_require_saved_runtime "$active_helper" true || { input_languages_unlock || true; return 1; }
 	transaction=$(input_languages_new_transaction) || { input_languages_unlock || true; return 1; }
 	transaction_root=$INPUT_LANGUAGES_STATE/backups/$transaction
 	mkdir -m 0700 "$transaction_root" || { input_languages_unlock || true; return 1; }
@@ -1125,7 +1325,7 @@ input_languages_remove_v3() {
 	controller=$INPUT_LANGUAGES_V3_CONTROLLER_RESPONSE
 	fcitx_start=$(input_languages_v3_fcitx_evidence "$controller") || { input_languages_unlock || true; return 1; }
 	managed=$(input_languages_v3_observed_managed_group "$controller") || { input_languages_unlock || true; return 1; }
-	helper_before=$(input_languages_v3_helper_ownership) || { input_languages_unlock || true; return 1; }
+	helper_before=$(input_languages_v3_helper_ownership "$runtime_root") || { input_languages_unlock || true; return 1; }
 	pending_content=$(jq -cn --arg transaction "$transaction" --arg prior "$prior_active" --arg prior_digest "$prior_digest" \
 		--argjson direct "$(jq -c .direct_ancestry "$prior_active")" --argjson artifact "$(jq -c .integration_artifact "$prior_active")" \
 		--argjson fcitx "$fcitx_start" --argjson managed "$managed" --argjson helper_before "$helper_before" \
@@ -1138,6 +1338,7 @@ input_languages_remove_v3() {
 	input_languages_v3_update_pending prepared "$(jq -c .snapshot <<<"$controller")" || { input_languages_unlock || true; return 1; }
 	input_languages_v3_quiesce_helper || failed=quiesce-helper
 	if [[ -z $failed ]]; then input_languages_v3_update_pending authority-quiesced || failed=record-quiesce; fi
+	if [[ -z $failed ]]; then input_languages_v3_require_saved_runtime "$(jq -c .helper_before "$INPUT_LANGUAGES_PENDING")" false || failed=runtime-after-quiesce; fi
 	if [[ -z $failed ]]; then input_languages_v3_controller_inspect "$helper" || failed=inspect-controller; fi
 	if [[ -z $failed ]]; then
 		controller=$INPUT_LANGUAGES_V3_CONTROLLER_RESPONSE
@@ -1218,8 +1419,9 @@ input_languages_v3_recorded_phase_matches_fcitx() {
 }
 
 input_languages_v3_helper_state_between() {
-	local current before=$1 after=$2
-	current=$(input_languages_v3_helper_ownership) || return 1
+	local current before=$1 after=$2 runtime_root
+	runtime_root=$(input_languages_v3_runtime_root_from_ownership "$before") || return 1
+	current=$(input_languages_v3_helper_ownership "$runtime_root") || return 1
 	jq -e --argjson current "$current" --argjson before "$before" --argjson after "$after" '
 		all(["socket_unit","service_unit","socket_enablement","artifact_pointer","runtime_directory","socket_path"][]; . as $key |
 			($current[$key] | del(.active)) == ($before[$key] | del(.active)) or
@@ -1260,6 +1462,7 @@ input_languages_rollback_apply_pending_v3() {
 	transaction=$(jq -r .transaction_id "$INPUT_LANGUAGES_PENDING")
 	helper=$(jq -r .integration_artifact.artifact "$INPUT_LANGUAGES_PENDING"); helper=${helper%/*}/input-languages-fcitx-helper
 	input_languages_v3_quiesce_helper || failed=quiesce
+	if [[ -z $failed ]]; then input_languages_v3_require_saved_runtime "$(jq -c .helper_target "$INPUT_LANGUAGES_PENDING")" false || failed=runtime-after-quiesce; fi
 	prior=$(jq -r .direct_ancestry.receipt "$INPUT_LANGUAGES_PENDING")
 	current_widget=$(jq -r .integration_artifact.artifact "$INPUT_LANGUAGES_PENDING"); current_widget=${current_widget%/*}/$INPUT_LANGUAGES_WIDGET
 	if [[ -z $failed ]]; then input_languages_v3_controller_inspect "$helper" || failed=inspect-controller; fi
@@ -1326,6 +1529,7 @@ input_languages_rollback_remove_pending_v3() {
 	helper=$(jq -r .integration_artifact.artifact "$INPUT_LANGUAGES_PENDING"); artifact_root=${helper%/*}; helper=$artifact_root/input-languages-fcitx-helper
 	expected=$(jq -c .managed_group_before "$INPUT_LANGUAGES_PENDING")
 	input_languages_v3_quiesce_helper || failed=quiesce
+	if [[ -z $failed ]]; then input_languages_v3_require_saved_runtime "$(jq -c .helper_before "$INPUT_LANGUAGES_PENDING")" false || failed=runtime-after-quiesce; fi
 	if [[ -z $failed ]]; then input_languages_v3_controller_inspect "$helper" || failed=inspect-controller; fi
 	if [[ -z $failed ]]; then
 		controller=$INPUT_LANGUAGES_V3_CONTROLLER_RESPONSE
@@ -1378,11 +1582,12 @@ input_languages_rollback_pending_v3() {
 }
 
 input_languages_v3_recorded_phase_matches_direct_state() {
-	local phase expected direct helper receipt=null
+	local phase expected direct helper receipt=null runtime_root
 	phase=$(jq -r .phase "$INPUT_LANGUAGES_PENDING") || return 1
 	expected=$(jq -c --arg phase "$phase" '.expected_states[] | select(.phase == $phase)' "$INPUT_LANGUAGES_PENDING") || return 1
 	direct=$(input_languages_v3_state_digest "$(input_languages_tree_digest "$INPUT_LANGUAGES_LIVE" 2>/dev/null || printf absent)|$(sha256sum "$INPUT_LANGUAGES_POINTER" 2>/dev/null || true)") || return 1
-	helper=$(input_languages_v3_json_digest "$(input_languages_v3_helper_ownership)") || return 1
+	runtime_root=$(input_languages_v3_runtime_root_from_ownership "$(jq -c .helper_target "$INPUT_LANGUAGES_PENDING")") || return 1
+	helper=$(input_languages_v3_json_digest "$(input_languages_v3_helper_ownership "$runtime_root")") || return 1
 	if [[ -f $INPUT_LANGUAGES_ACTIVE ]]; then receipt=$(sha256sum "$INPUT_LANGUAGES_ACTIVE" | cut -d' ' -f1) || return 1; fi
 	jq -e --arg direct "$direct" --arg helper "$helper" --arg receipt "$receipt" '
 		.direct_digest == $direct and .helper_digest == $helper and

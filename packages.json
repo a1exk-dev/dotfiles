@@ -149,7 +149,7 @@
 		"path": "config/hyprland",
 		"description": "Portable US and Russian input languages with synchronized physical keyboards and flag indicator",
 		"dependencies": [],
-		"arch_packages": ["hyprland", "gcc", "make", "pkgconf", "binutils", "lua"],
+		"arch_packages": ["hyprland", "gcc", "make", "pkgconf", "binutils", "lua", "fcitx5", "systemd-libs", "openssl"],
 		"prerequisites": ["omarchy", "hyprctl", "flock"],
 		"validators": [
 			"bash lib/dotfiles/input-languages-validator.sh"

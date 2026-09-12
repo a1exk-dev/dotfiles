@@ -54,6 +54,7 @@ complete_immutable_integration_artifact_is_published_inertly() {
 		(.inventory | index("file|444|self|build.json"))
 	' "$INPUT_LANGUAGES_INTEGRATION_ARTIFACT_DIR/build.json" >/dev/null || return 1
 	[[ $(input_languages_systemd_exec_path '/tmp/input path:%$') == '/tmp/input path:%%$' ]] || return 1
+	grep -Fxq 'Environment=XDG_RUNTIME_DIR=%t' "$INPUT_LANGUAGES_INTEGRATION_ARTIFACT_DIR/systemd/dotfiles-input-languages-fcitx.service" || return 1
 	grep -Fq 'ExecStart=:"' "$INPUT_LANGUAGES_INTEGRATION_ARTIFACT_DIR/systemd/dotfiles-input-languages-fcitx.service" || return 1
 	[[ ! -e $INPUT_LANGUAGES_POINTER && ! -e $INPUT_LANGUAGES_ACTIVE && ! -e $INPUT_LANGUAGES_PENDING &&
 		! -e $INPUT_LANGUAGES_RECOVERY && ! -e $INPUT_LANGUAGES_CLEANUP && ! -e $XDG_CONFIG_HOME/systemd/user ]]
@@ -105,6 +106,14 @@ internally_inconsistent_artifact_is_rejected() {
 	printf '%s\n' "$original" >"$contract"
 	chmod 444 "$contract"
 	original=$(<"$service")
+	chmod u+w "$service"
+	printf '%s\n' "${original/Environment=XDG_RUNTIME_DIR=%t/Environment=XDG_RUNTIME_DIR=\/tmp}" >"$service"
+	chmod 444 "$service"
+	! input_languages_validate_integration_artifact_self "$artifact" || return 1
+	chmod u+w "$service"
+	printf '%s\n' "$original" >"$service"
+	chmod 444 "$service"
+	input_languages_validate_integration_artifact_self "$artifact" || return 1
 	chmod u+w "$service"
 	printf '%s\n' "${original/input-languages-fcitx-helper/foreign-helper}" >"$service"
 	chmod 444 "$service"

@@ -212,7 +212,7 @@ class FcitxFollower::Impl {
 		ucred credentials{};
 		socklen_t credentialsSize = sizeof(credentials);
 		if (getsockopt(socketFd, SOL_SOCKET, SO_PEERCRED, &credentials, &credentialsSize) != 0 ||
-			credentialsSize != sizeof(credentials) || credentials.uid != getuid()) {
+			credentialsSize != sizeof(credentials) || credentials.uid != geteuid()) {
 			close(socketFd);
 			return -1;
 		}

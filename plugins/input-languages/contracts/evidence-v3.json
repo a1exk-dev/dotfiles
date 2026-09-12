@@ -28,7 +28,9 @@
 		"integer-or-null": {"type": ["integer", "null"], "minimum": 0},
 		"language": {"type": "string", "enum": ["US", "Russian"]},
 		"managed-group-or-null": {"one_of": [{"object_ref": "managed_group"}, {"type": "null"}]},
+		"mode": {"type": "string", "pattern": "^[0-7]{4}$"},
 		"mode-0600": {"type": "string", "const": "0600"},
+		"numeric-string": {"type": "string", "pattern": "^[0-9]+$"},
 		"nullable_digest": {"type": ["string", "null"], "pattern": "^[0-9a-f]{64}$"},
 		"nullable_path": {"type": ["string", "null"], "absolute_when_string": true},
 		"nullable_string": {"type": ["string", "null"]},
@@ -41,6 +43,7 @@
 		"path": {"type": "string", "absolute": true},
 		"phase": {"type": "string", "enum_ref": "phase_order"},
 		"regular": {"type": "string", "const": "regular"},
+		"runtime-identity-or-null": {"one_of": [{"object_ref": "runtime_identity"}, {"type": "null"}]},
 		"string": {"type": "string", "minimum_length": 1}
 	},
 	"objects": {
@@ -89,9 +92,17 @@
 			"keys": ["path", "type", "target", "digest", "enabled", "active"],
 			"references": {"path": "path", "type": "string", "target": "nullable_path", "digest": "nullable_digest", "enabled": "boolean", "active": "boolean"}
 		},
+		"runtime_identity": {
+			"keys": ["uid", "mode", "device", "inode"],
+			"references": {"uid": "integer", "mode": "mode", "device": "numeric-string", "inode": "numeric-string"}
+		},
+		"runtime_edge": {
+			"keys": ["path", "type", "target", "digest", "enabled", "active", "identity"],
+			"references": {"path": "path", "type": "string", "target": "nullable_path", "digest": "nullable_digest", "enabled": "boolean", "active": "boolean", "identity": "runtime-identity-or-null"}
+		},
 		"helper_ownership": {
 			"keys": ["socket_unit", "service_unit", "socket_enablement", "artifact_pointer", "runtime_directory", "socket_path"],
-			"references": {"socket_unit": "helper_edge", "service_unit": "helper_edge", "socket_enablement": "helper_edge", "artifact_pointer": "helper_edge", "runtime_directory": "helper_edge", "socket_path": "helper_edge"}
+			"references": {"socket_unit": "helper_edge", "service_unit": "helper_edge", "socket_enablement": "helper_edge", "artifact_pointer": "helper_edge", "runtime_directory": "runtime_edge", "socket_path": "runtime_edge"}
 		},
 		"hyprland_ownership": {
 			"keys": ["tree_state", "source_id", "active_artifact_pointer", "autoreload", "canonical_language", "physical_groups"],

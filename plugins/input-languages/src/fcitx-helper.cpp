@@ -12,6 +12,7 @@
 #include <mutex>
 #include <optional>
 #include <poll.h>
+#include <sstream>
 #include <string_view>
 #include <sys/eventfd.h>
 #include <sys/socket.h>
@@ -94,7 +95,69 @@ bool sameUid(int descriptor) {
 	ucred credentials{};
 	socklen_t size = sizeof(credentials);
 	return getsockopt(descriptor, SOL_SOCKET, SO_PEERCRED, &credentials, &size) == 0 && size == sizeof(credentials) &&
-		credentials.uid == getuid();
+		credentials.uid == geteuid();
+}
+
+int openDirectoryNoFollow(const std::string& path) {
+	if (path.empty() || path.front() != '/')
+		return -1;
+	int directory = open("/", O_RDONLY | O_DIRECTORY | O_CLOEXEC);
+	if (directory < 0)
+		return -1;
+	std::size_t offset = 1;
+	while (offset < path.size()) {
+		const auto separator = path.find('/', offset);
+		const auto component = path.substr(offset, separator - offset);
+		if (component.empty() || component == "." || component == "..") {
+			close(directory);
+			errno = EINVAL;
+			return -1;
+		}
+		const int next = openat(directory, component.c_str(), O_RDONLY | O_DIRECTORY | O_NOFOLLOW | O_CLOEXEC);
+		close(directory);
+		if (next < 0)
+			return -1;
+		directory = next;
+		if (separator == std::string::npos)
+			break;
+		offset = separator + 1;
+	}
+	return directory;
+}
+
+std::optional<bool> listenerOwnsPath(const std::string& path, const struct stat& listenerStatus) {
+	std::ifstream sockets("/proc/net/unix");
+	if (!sockets)
+		return std::nullopt;
+	const auto listenerInode = std::to_string(listenerStatus.st_ino);
+	std::string line;
+	std::size_t pathEntries = 0;
+	std::size_t identityMatches = 0;
+	std::size_t connectingEntries = 0;
+	while (std::getline(sockets, line)) {
+		std::istringstream fields(line);
+		std::string number;
+		std::string references;
+		std::string protocol;
+		std::string flags;
+		std::string type;
+		std::string state;
+		std::string inode;
+		if (!(fields >> number >> references >> protocol >> flags >> type >> state >> inode))
+			continue;
+		std::string listedPath;
+		std::getline(fields >> std::ws, listedPath);
+		if (listedPath != path)
+			continue;
+		++pathEntries;
+		if (type != "0005")
+			return false;
+		if (state == "01" && flags == "00010000" && inode == listenerInode)
+			++identityMatches;
+		else if (state == "02" && inode == "0")
+			++connectingEntries;
+	}
+	return identityMatches == 1 && connectingEntries <= 1 && pathEntries == identityMatches + connectingEntries;
 }
 
 Protocol::Outcome protocolOutcome(Fcitx::Outcome outcome) {
@@ -335,7 +398,12 @@ int timeoutMilliseconds(Clock::time_point now, std::initializer_list<Clock::time
 
 std::string runtimeSocketPath() {
 	const char* runtime = std::getenv("XDG_RUNTIME_DIR");
-	return runtime && runtime[0] == '/' ? std::string(runtime) + "/dotfiles-input-languages/fcitx.sock" : std::string{};
+	if (!runtime || runtime[0] != '/')
+		return {};
+	const std::filesystem::path path(runtime);
+	if (path == "/" || path.string().ends_with('/') || path.lexically_normal() != path)
+		return {};
+	return path.string() + "/dotfiles-input-languages/fcitx.sock";
 }
 
 std::string installedFcitxUpstreamVersion(std::string_view databaseRoot) noexcept {
@@ -375,7 +443,24 @@ bool validateSocketActivatedListener(int listenerFd, std::string& diagnostic, bo
 			*operationalFailure = false;
 		const auto path = runtimeSocketPath();
 		if (path.empty()) {
-			diagnostic = "XDG_RUNTIME_DIR is missing or not absolute";
+			diagnostic = "XDG_RUNTIME_DIR is missing, relative, or noncanonical";
+			return false;
+		}
+		const auto runtime = path.substr(0, path.size() - std::string("/dotfiles-input-languages/fcitx.sock").size());
+		const int runtimeFd = openDirectoryNoFollow(runtime);
+		if (runtimeFd < 0) {
+			if (operationalFailure && errno != ENOENT && errno != ENOTDIR && errno != ELOOP && errno != EINVAL)
+				*operationalFailure = true;
+			diagnostic = "runtime root inspection failed";
+			return false;
+		}
+		const int parentFd = openat(runtimeFd, "dotfiles-input-languages", O_RDONLY | O_DIRECTORY | O_NOFOLLOW | O_CLOEXEC);
+		if (parentFd < 0) {
+			const int failure = errno;
+			close(runtimeFd);
+			if (operationalFailure && failure != ENOENT && failure != ENOTDIR && failure != ELOOP)
+				*operationalFailure = true;
+			diagnostic = "private runtime directory inspection failed";
 			return false;
 		}
 		int type = 0;
@@ -386,6 +471,8 @@ bool validateSocketActivatedListener(int listenerFd, std::string& diagnostic, bo
 		if (getsockopt(listenerFd, SOL_SOCKET, SO_TYPE, &type, &integerSize) != 0 ||
 			getsockopt(listenerFd, SOL_SOCKET, SO_ACCEPTCONN, &accepting, &integerSize) != 0 ||
 			getsockname(listenerFd, reinterpret_cast<sockaddr*>(&address), &addressSize) != 0) {
+			close(parentFd);
+			close(runtimeFd);
 			if (operationalFailure)
 				*operationalFailure = true;
 			diagnostic = "socket activation listener inspection failed";
@@ -393,28 +480,54 @@ bool validateSocketActivatedListener(int listenerFd, std::string& diagnostic, bo
 		}
 		if (type != SOCK_SEQPACKET || accepting != 1 || address.sun_family != AF_UNIX ||
 			address.sun_path[0] == '\0' || path != address.sun_path) {
+			close(parentFd);
+			close(runtimeFd);
 			diagnostic = "socket activation listener does not match the frozen path and type";
 			return false;
 		}
-		const auto parent = path.substr(0, path.find_last_of('/'));
+		struct stat runtimeStatus {};
 		struct stat parentStatus {};
 		struct stat socketStatus {};
+		struct stat socketStatusAfter {};
 		struct stat listenerStatus {};
-		if (lstat(parent.c_str(), &parentStatus) != 0 || lstat(path.c_str(), &socketStatus) != 0) {
-			if (operationalFailure && errno != ENOENT && errno != ENOTDIR)
+		if (fstat(runtimeFd, &runtimeStatus) != 0 || fstat(parentFd, &parentStatus) != 0 ||
+			fstatat(parentFd, "fcitx.sock", &socketStatus, AT_SYMLINK_NOFOLLOW) != 0) {
+			const int failure = errno;
+			close(parentFd);
+			close(runtimeFd);
+			if (operationalFailure && failure != ENOENT && failure != ENOTDIR)
 				*operationalFailure = true;
 			diagnostic = "socket activation path inspection failed";
 			return false;
 		}
 		if (fstat(listenerFd, &listenerStatus) != 0 || !setDescriptorFlags(listenerFd)) {
+			close(parentFd);
+			close(runtimeFd);
 			if (operationalFailure)
 				*operationalFailure = true;
 			diagnostic = "socket activation descriptor inspection failed";
 			return false;
 		}
-		if (!S_ISDIR(parentStatus.st_mode) || parentStatus.st_uid != getuid() || (parentStatus.st_mode & 07777) != 0700 ||
-			!S_ISSOCK(socketStatus.st_mode) || socketStatus.st_uid != getuid() || (socketStatus.st_mode & 07777) != 0600 ||
-			!S_ISSOCK(listenerStatus.st_mode) || listenerStatus.st_uid != getuid()) {
+		const auto listenerIdentity = listenerOwnsPath(path, listenerStatus);
+		if (!listenerIdentity) {
+			close(parentFd);
+			close(runtimeFd);
+			if (operationalFailure)
+				*operationalFailure = true;
+			diagnostic = "kernel socket identity inspection failed";
+			return false;
+		}
+		const auto effectiveUid = geteuid();
+		const bool safe = S_ISDIR(runtimeStatus.st_mode) && runtimeStatus.st_uid == effectiveUid && (runtimeStatus.st_mode & 07777) == 0700 &&
+			faccessat(runtimeFd, ".", W_OK | X_OK, AT_EACCESS) == 0 &&
+			S_ISDIR(parentStatus.st_mode) && parentStatus.st_uid == effectiveUid && (parentStatus.st_mode & 07777) == 0700 &&
+			S_ISSOCK(socketStatus.st_mode) && socketStatus.st_uid == effectiveUid && (socketStatus.st_mode & 07777) == 0600 &&
+			S_ISSOCK(listenerStatus.st_mode) && listenerStatus.st_uid == effectiveUid && *listenerIdentity &&
+			fstatat(parentFd, "fcitx.sock", &socketStatusAfter, AT_SYMLINK_NOFOLLOW) == 0 &&
+			socketStatus.st_dev == socketStatusAfter.st_dev && socketStatus.st_ino == socketStatusAfter.st_ino;
+		close(parentFd);
+		close(runtimeFd);
+		if (!safe) {
 			diagnostic = "socket activation path ownership, mode, or descriptor flags are unsafe";
 			return false;
 		}
@@ -649,9 +762,9 @@ int Helper::run(int listenerFd) noexcept {
 					stopAfterPublish = true;
 					break;
 				}
-			if (offered.generation > target.generation) {
-				target = offered;
-				worker.supersede(target.generation);
+				if (offered.generation > target.generation) {
+					target = offered;
+					worker.supersede(target.generation);
 					nextRepair = Clock::now();
 					if (!publish({.acceptedGeneration = target.generation, .acknowledgedGeneration = {}, .ownerEpoch = lastOwnerEpoch,
 						.managedGroupState = Protocol::ManagedGroupState::Unknown, .observedMethod = {},

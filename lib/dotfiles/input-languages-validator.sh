@@ -129,6 +129,11 @@ grep -Fq 'm_impl->evidence.uniqueOwner = owner' "$plugin_root/src/fcitx-sd-bus-t
 	grep -Fq 'MAX_PACKET_BYTES = 1024' "$plugin_root/include/fcitx-protocol.hpp" &&
 	grep -Fq 'HEADER_BYTES = 12' "$plugin_root/include/fcitx-protocol.hpp" &&
 	grep -Fq 'SO_PEERCRED' "$plugin_root/src/fcitx-helper.cpp" &&
+	grep -Fq 'credentials.uid == geteuid()' "$plugin_root/src/fcitx-helper.cpp" &&
+	grep -Fq 'O_RDONLY | O_DIRECTORY | O_NOFOLLOW | O_CLOEXEC' "$plugin_root/src/fcitx-helper.cpp" &&
+	grep -Fq 'fstatat(parentFd, "fcitx.sock", &socketStatus, AT_SYMLINK_NOFOLLOW)' "$plugin_root/src/fcitx-helper.cpp" &&
+	grep -Fq 'listenerOwnsPath(path, listenerStatus)' "$plugin_root/src/fcitx-helper.cpp" &&
+	grep -Fq 'socketStatus.st_dev == socketStatusAfter.st_dev && socketStatus.st_ino == socketStatusAfter.st_ino' "$plugin_root/src/fcitx-helper.cpp" &&
 	grep -Fq 'SOCK_NONBLOCK | SOCK_CLOEXEC' "$plugin_root/src/fcitx-helper.cpp" &&
 	grep -Fq 'MSG_TRUNC' "$plugin_root/src/fcitx-helper.cpp" &&
 	grep -Fq 'installedFcitxUpstreamVersion()' "$plugin_root/src/fcitx-helper-main.cpp" &&
@@ -146,6 +151,7 @@ grep -Fq 'pkg-config --cflags --libs libsystemd libcrypto' "$plugin_root/Makefil
 grep -Fq 'SOCK_SEQPACKET | SOCK_NONBLOCK | SOCK_CLOEXEC' "$plugin_root/src/fcitx-follower.cpp" &&
 	grep -Fq 'MSG_DONTWAIT | MSG_TRUNC' "$plugin_root/src/fcitx-follower.cpp" &&
 	grep -Fq 'SO_PEERCRED' "$plugin_root/src/fcitx-follower.cpp" &&
+	grep -Fq 'credentials.uid != geteuid()' "$plugin_root/src/fcitx-follower.cpp" &&
 	grep -Fq -- '-DINPUT_LANGUAGES_FCITX_COORDINATION' "$plugin_root/Makefile" &&
 	grep -Fq -- '-DINPUT_LANGUAGES_FCITX_COORDINATION' "$plugin_root/integration.mk" &&
 	! grep -Eq '(^|[^[:alnum:]_])(fork|exec[lvpe]*|system|posix_spawn|sd_bus)[[:space:]_(]' \
@@ -161,7 +167,7 @@ for setting in \
 	[[ $(grep -Fxc "$setting" "$socket_unit") == 1 ]] || { printf 'Error: Fcitx helper socket unit contract changed: %s\n' "$setting" >&2; exit 1; }
 done
 for setting in 'StartLimitIntervalSec=30s' 'StartLimitBurst=5' 'Type=simple' \
-	'ExecStart="@ARTIFACT_DIR@/input-languages-fcitx-helper"' 'Restart=on-failure' 'RestartSec=2s'; do
+	'Environment=XDG_RUNTIME_DIR=%t' 'ExecStart="@ARTIFACT_DIR@/input-languages-fcitx-helper"' 'Restart=on-failure' 'RestartSec=2s'; do
 	[[ $(grep -Fxc "$setting" "$service_unit") == 1 ]] || { printf 'Error: Fcitx helper service unit contract changed: %s\n' "$setting" >&2; exit 1; }
 done
 ! grep -Eq '(^|/)(fcitx5|systemctl|omarchy)([[:space:]]|$)' "$service_unit" || {
@@ -288,7 +294,7 @@ jq -e '
 jq -e '
 	. as $root |
 	.version == 3 and .version_2.immutable and
-	(.objects | keys | sort) == (["active","addon_state","device_group","direct_ancestry","expected_state","fcitx_group","fcitx_item","fcitx_semantic_snapshot","helper_edge","helper_ownership","hyprland_ownership","integration_artifact","integration_cleanup","managed_group","operation_start","pending","profile_evidence","recovery_required","remove_cleanup","restoration","service_snapshot","widget_ownership"] | sort) and
+	(.objects | keys | sort) == (["active","addon_state","device_group","direct_ancestry","expected_state","fcitx_group","fcitx_item","fcitx_semantic_snapshot","helper_edge","helper_ownership","hyprland_ownership","integration_artifact","integration_cleanup","managed_group","operation_start","pending","profile_evidence","recovery_required","remove_cleanup","restoration","runtime_edge","runtime_identity","service_snapshot","widget_ownership"] | sort) and
 	all(.objects[]; (.keys | sort) == (((.references // {}) + (.constants // {}) + (.enums // {})) | keys | sort)) and
 	all(.objects[].references[]; . as $ref | ($root.types | has($ref)) or ($root.objects | has($ref))) and
 	.version_2.exact_keys.active == ["version","operation","transaction_id","backup_transaction_id","source_id","build_id","artifact","artifact_sha256","widget_sha256","compatibility_hash","compiler","compiler_warning","dependencies","backup","backup_digest","backup_existed","widget_source","widget_section","widget_index","widget_entry","prior_stock_present","prior_stock_section","prior_stock_index","prior_stock_entry"] and
@@ -296,7 +302,7 @@ jq -e '
 	.objects.recovery_required.constants == {version:3,state:"recovery-required"} and .objects.remove_cleanup.constants == {version:3,state:"remove-cleanup"} and
 	.raw_profile_restoration_allowed == false and .active_receipt_publish_order == "last"
 ' "$contract_root/evidence-v3.json" >/dev/null || { printf 'Error: Fcitx version-3 evidence schema or version-2 ancestry contract changed.\n' >&2; exit 1; }
-jq -e '.service.restart == "on-failure" and .service.restart_seconds == 2 and .service.start_limit_interval_seconds == 30 and .service.start_limit_burst == 5 and .service.starts_or_restarts_fcitx == false' "$contract_root/systemd.json" >/dev/null || { printf 'Error: Fcitx helper systemd contract changed.\n' >&2; exit 1; }
+jq -e '.service.environment == "XDG_RUNTIME_DIR=%t" and .service.restart == "on-failure" and .service.restart_seconds == 2 and .service.start_limit_interval_seconds == 30 and .service.start_limit_burst == 5 and .service.starts_or_restarts_fcitx == false' "$contract_root/systemd.json" >/dev/null || { printf 'Error: Fcitx helper systemd contract changed.\n' >&2; exit 1; }
 jq -e '[.fixtures[].id] == ["ghostty-fcitx-wayland","brave-fcitx-wayland","dotfiles-direct-wayland","dotfiles-direct-xwayland"] and [.fixtures[].backend] == ["wayland","wayland","wayland","x11"] and [.fixtures[2:][].route] == ["direct-compositor-xkb","direct-xwayland-xkb"] and [.fixtures[2:][].fcitx_frontend] == [null,null]' "$contract_root/active-fixtures.json" >/dev/null || { printf 'Error: Input Languages active fixture contract changed.\n' >&2; exit 1; }
 protocol_header=$plugin_root/include/fcitx-protocol.hpp
 protocol_outcome_enum=$(sed -n '/^enum class Outcome : uint8_t {$/,/^};$/p' "$protocol_header" | tr -d '[:space:]')

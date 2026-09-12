@@ -15,6 +15,7 @@
 	},
 	"service": {
 		"unit": "dotfiles-input-languages-fcitx.service",
+		"environment": "XDG_RUNTIME_DIR=%t",
 		"exec_start": "@ARTIFACT_DIR@/input-languages-fcitx-helper",
 		"restart": "on-failure",
 		"restart_seconds": 2,

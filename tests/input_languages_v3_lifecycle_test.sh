@@ -4,6 +4,172 @@ set -u
 
 source "$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)/support/test_helper.sh"
 
+runtime_contract_classifies_without_mutation() (
+	set -euo pipefail
+	local root runtime private socket before test_runtime_path test_private_path test_socket_path socket_pid=''
+	root=$(mktemp -d)
+	trap '[[ -z $socket_pid ]] || { kill "$socket_pid" 2>/dev/null || true; wait "$socket_pid" 2>/dev/null || true; }; chmod -R u+rwx -- "$root" 2>/dev/null || true; rm -rf -- "$root"' EXIT
+	runtime=$root/runtime
+	private=$runtime/dotfiles-input-languages
+	socket=$private/fcitx.sock
+	test_runtime_path=$runtime
+	test_private_path=$private
+	test_socket_path=$socket
+	mkdir -m 0700 "$runtime"
+	REPOSITORY_ROOT=$SOURCE_REPO
+	source "$SOURCE_REPO/lib/dotfiles/core.sh"
+	source "$SOURCE_REPO/lib/dotfiles/input-languages.sh"
+	input_languages_v3_systemd_runtime_root() { printf '%s\n' "$runtime"; }
+	assert_runtime() {
+		local required=$1 expected_result=$2 expected_state=$3 expected_reason=$4 result=0
+		input_languages_v3_inspect_runtime "$required" || result=$?
+		if [[ $result != "$expected_result" || $INPUT_LANGUAGES_V3_RUNTIME_STATE != "$expected_state" || $INPUT_LANGUAGES_V3_RUNTIME_REASON != "$expected_reason" ]]; then
+			printf 'runtime assertion failed: expected=%s/%s/%s actual=%s/%s/%s\n' "$expected_result" "$expected_state" "$expected_reason" \
+				"$result" "$INPUT_LANGUAGES_V3_RUNTIME_STATE" "$INPUT_LANGUAGES_V3_RUNTIME_REASON" >&2
+			return 1
+		fi
+	}
+
+	unset XDG_RUNTIME_DIR
+	assert_runtime false 1 unavailable missing-environment || return 1
+	[[ ! -e $private ]]
+
+	XDG_RUNTIME_DIR=relative
+	assert_runtime false 1 conflicting noncanonical-root || return 1
+
+	XDG_RUNTIME_DIR=$root/missing
+	assert_runtime false 1 unavailable missing-root || return 1
+	printf 'foreign\n' >"$root/not-a-directory"
+	XDG_RUNTIME_DIR=$root/not-a-directory
+	assert_runtime false 1 conflicting malformed-root || return 1
+
+	XDG_RUNTIME_DIR=$root/../${root##*/}/runtime
+	assert_runtime false 1 conflicting noncanonical-root || return 1
+
+	XDG_RUNTIME_DIR=$runtime
+	stat() {
+		[[ ${1-} != -c || ${4-} != "$test_runtime_path" ]] || return 1
+		command stat "$@"
+	}
+	assert_runtime false 1 unavailable inaccessible-root || return 1
+	unset -f stat
+	stat() {
+		if [[ ${1-} == -c && ${2-} == %u && ${4-} == "$test_runtime_path" ]]; then printf '%s\n' "$((EUID + 1))"; else command stat "$@"; fi
+	}
+	assert_runtime false 1 conflicting wrong-root-owner || return 1
+	unset -f stat
+	chmod 0500 "$runtime"
+	assert_runtime false 1 unavailable unwritable-root || return 1
+	chmod 0600 "$runtime"
+	assert_runtime false 1 unavailable unsearchable-root || return 1
+	chmod 0755 "$runtime"
+	assert_runtime false 1 conflicting unsafe-root-mode || return 1
+	chmod 0700 "$runtime"
+	ln -s "$runtime" "$root/runtime-link"
+	XDG_RUNTIME_DIR=$root/runtime-link
+	assert_runtime false 1 conflicting symlinked-root || return 1
+
+	XDG_RUNTIME_DIR=$runtime
+	input_languages_v3_systemd_runtime_root() { printf '%s\n' "$root/other"; }
+	assert_runtime false 1 conflicting systemd-runtime-mismatch || return 1
+	input_languages_v3_systemd_runtime_root() { return 1; }
+	assert_runtime false 1 unavailable systemd-runtime-unavailable || return 1
+	input_languages_v3_systemd_runtime_root() { printf '%s\n' "$runtime"; }
+	assert_runtime false 0 available ready || return 1
+
+	before=$(stat -c '%d:%i' "$runtime")
+	assert_runtime true 1 unavailable missing-private-directory || return 1
+	[[ $before == "$(stat -c '%d:%i' "$runtime")" && ! -e $private ]] || return 1
+
+	printf 'foreign\n' >"$private"
+	assert_runtime true 1 conflicting malformed-private-directory || return 1
+	rm "$private"
+	mkdir -m 0700 "$private"
+	stat() {
+		if [[ ${1-} == -c && ${2-} == %u && ${4-} == "$test_private_path" ]]; then printf '%s\n' "$((EUID + 1))"; else command stat "$@"; fi
+	}
+	assert_runtime true 1 conflicting unsafe-private-directory || return 1
+	unset -f stat
+	chmod 0755 "$private"
+	assert_runtime true 1 conflicting unsafe-private-directory || return 1
+	chmod 0700 "$private"
+	rmdir "$private"
+	mkdir -m 0700 "$root/private-target"
+	ln -s "$root/private-target" "$private"
+	assert_runtime true 1 conflicting malformed-private-directory || return 1
+	rm "$private"
+	rmdir "$root/private-target"
+	mkdir -m 0700 "$private"
+	assert_runtime true 1 unavailable missing-socket || return 1
+	printf 'foreign\n' >"$socket"
+	chmod 0600 "$socket"
+	assert_runtime true 1 conflicting malformed-socket || return 1
+	rm "$socket"
+	printf 'foreign\n' >"$root/socket-target"
+	ln -s "$root/socket-target" "$socket"
+	assert_runtime true 1 conflicting malformed-socket || return 1
+	rm "$socket" "$root/socket-target"
+	/usr/bin/python3 -c '
+import socket
+import sys
+import time
+
+listener = socket.socket(socket.AF_UNIX, socket.SOCK_SEQPACKET)
+listener.bind(sys.argv[1])
+listener.listen(1)
+time.sleep(30)
+' "$socket" &
+	socket_pid=$!
+	for _ in {1..100}; do [[ -S $socket ]] && break; sleep 0.01; done
+	[[ -S $socket ]]
+	for _ in {1..100}; do input_languages_v3_socket_is_seqpacket "$socket" && break; sleep 0.01; done
+	input_languages_v3_socket_is_seqpacket "$socket" || return 1
+	chmod 0660 "$socket"
+	assert_runtime true 1 conflicting unsafe-socket || return 1
+	chmod 0600 "$socket"
+	stat() {
+		if [[ ${1-} == -c && ${2-} == %u && ${4-} == "$test_socket_path" ]]; then printf '%s\n' "$((EUID + 1))"; else command stat "$@"; fi
+	}
+	assert_runtime true 1 conflicting unsafe-socket || return 1
+	unset -f stat
+	assert_runtime true 0 available ready || return 1
+	kill "$socket_pid"
+	wait "$socket_pid" 2>/dev/null || true
+	socket_pid=''
+)
+
+runtime_cleanup_preserves_replaced_private_directory() (
+	set -euo pipefail
+	local root runtime private socket old_uid old_mode old_device old_inode expected recreated
+	root=$(mktemp -d)
+	trap 'chmod -R u+rwx -- "$root" 2>/dev/null || true; rm -rf -- "$root"' EXIT
+	runtime=$root/runtime
+	private=$runtime/dotfiles-input-languages
+	socket=$private/fcitx.sock
+	mkdir -m 0700 "$runtime" "$private"
+	read -r old_uid old_mode old_device old_inode < <(stat -c '%u %a %d %i' -- "$private")
+	REPOSITORY_ROOT=$SOURCE_REPO
+	source "$SOURCE_REPO/lib/dotfiles/core.sh"
+	source "$SOURCE_REPO/lib/dotfiles/input-languages.sh"
+	input_languages_v3_systemd_runtime_root() { printf '%s\n' "$runtime"; }
+	expected=$(jq -cn --arg runtime "$private" --arg socket "$socket" --argjson uid "$old_uid" \
+		--arg mode "0$old_mode" --arg device "$old_device" --arg inode "$old_inode" '
+		def edge($path; $type): {path:$path,type:$type,target:null,digest:null,enabled:false,active:false};
+		{socket_unit:edge("/unused/socket";"absent"),service_unit:edge("/unused/service";"absent"),
+		socket_enablement:edge("/unused/enablement";"absent"),artifact_pointer:edge("/unused/pointer";"absent"),
+		runtime_directory:(edge($runtime;"directory") + {active:true,identity:{uid:$uid,mode:$mode,device:$device,inode:$inode}}),
+		socket_path:(edge($socket;"absent") + {identity:null})}')
+	input_languages_v3_helper_ownership_valid "$expected" || return 1
+	recreated=$(jq '.runtime_directory.identity.device="999" | .runtime_directory.identity.inode="999"' <<<"$expected") || return 1
+	input_languages_v3_helper_ownership_matches "$recreated" "$expected" || return 1
+	if input_languages_v3_runtime_ownership_identical "$recreated" "$expected"; then return 1; fi
+
+	rmdir "$private"
+	mkdir -m 0700 "$private"
+	if input_languages_v3_remove_runtime_edges "$expected"; then return 1; fi
+	[[ -d $private ]]
+)
+
 direct_v2_expands_to_v3() (
 	set -euo pipefail
 	local lifecycle_mode=$1 root home transaction backup_transaction build source artifact_sha widget_sha artifact_dir backup digest profile_digest
@@ -204,7 +370,7 @@ direct_v2_expands_to_v3() (
 				jq -n --arg unit "$2" --arg state "$state" '{unit:$unit,load_state:"loaded",fragment_path:"/usr/lib/systemd/user/omarchy-fcitx5.service",active_state:$state,sub_state:(if $state == "active" then "running" else "dead" end),main_pid:(if $state == "inactive" then 0 else 42 end)}'
 				;;
 			start)
-				if [[ $lifecycle_mode == rollback || $lifecycle_mode == recovery || $lifecycle_mode == corrupt-recovery || $lifecycle_mode == semantic-phase-drift ]]; then
+				if [[ $lifecycle_mode == rollback || $lifecycle_mode == recovery || $lifecycle_mode == recovery-environment-changed || $lifecycle_mode == corrupt-recovery || $lifecycle_mode == semantic-phase-drift ]]; then
 					if [[ $lifecycle_mode == semantic-phase-drift ]]; then
 						: >"$root/semantic-failure"
 						jq '.groups |= map(if .name == "Default" then .properties={foreign:true} else . end)' "$root/controller.json" >"$root/controller.next"
@@ -212,7 +378,7 @@ direct_v2_expands_to_v3() (
 						jq '.groups += [{name:"Unrelated",default_layout:"de",default_im:"keyboard-de",properties:{},items:[{method:"keyboard-de",layout_override:"",display_name:"German",native_name:"Deutsch",language_code:"de",addon:"keyboard",configurable:true,variant:null,properties:{}}]}]' "$root/controller.json" >"$root/controller.next"
 					fi
 					mv "$root/controller.next" "$root/controller.json"
-					[[ $lifecycle_mode != recovery && $lifecycle_mode != corrupt-recovery ]] || : >"$root/fail-rollback"
+					[[ $lifecycle_mode != recovery && $lifecycle_mode != recovery-environment-changed && $lifecycle_mode != corrupt-recovery ]] || : >"$root/fail-rollback"
 					return 1
 				fi
 				[[ ${2-} != dotfiles-input-languages-fcitx.socket ]] || printf 'active\n' >"$root/socket-state"
@@ -227,6 +393,52 @@ direct_v2_expands_to_v3() (
 			*) return 2 ;;
 		 esac
 	}
+	local TEST_SYSTEMD_RUNTIME_ROOT=$root/runtime
+	input_languages_v3_systemd_runtime_root() { printf '%s\n' "$TEST_SYSTEMD_RUNTIME_ROOT"; }
+	local runtime_inspector_definition
+	runtime_inspector_definition=$(declare -f input_languages_v3_inspect_runtime)
+	runtime_inspector_definition=${runtime_inspector_definition/input_languages_v3_inspect_runtime /input_languages_v3_inspect_runtime_real }
+	eval "$runtime_inspector_definition"
+	input_languages_v3_inspect_runtime() {
+		local required=${1-false}
+		if [[ $required == true && ${XDG_RUNTIME_DIR-} == "$root/runtime" && $(<"$root/socket-state") == active ]]; then
+			input_languages_v3_set_paths
+			INPUT_LANGUAGES_V3_RUNTIME_STATE=available
+			INPUT_LANGUAGES_V3_RUNTIME_REASON=ready
+			return 0
+		fi
+		input_languages_v3_inspect_runtime_real "$required"
+	}
+	local saved_runtime_definition
+	saved_runtime_definition=$(declare -f input_languages_v3_require_saved_runtime)
+	saved_runtime_definition=${saved_runtime_definition/input_languages_v3_require_saved_runtime /input_languages_v3_require_saved_runtime_real }
+	eval "$saved_runtime_definition"
+	input_languages_v3_require_saved_runtime() {
+		local ownership=$1 required=${2-false} saved_root
+		saved_root=$(input_languages_v3_runtime_root_from_ownership "$ownership") || return 1
+		if [[ $required == true && $saved_root == "$TEST_SYSTEMD_RUNTIME_ROOT" && $(<"$root/socket-state") == active ]]; then
+			input_languages_v3_set_paths "$saved_root"
+			INPUT_LANGUAGES_V3_RUNTIME_STATE=available
+			INPUT_LANGUAGES_V3_RUNTIME_REASON=ready
+			return 0
+		fi
+		input_languages_v3_require_saved_runtime_real "$ownership" "$required"
+	}
+	input_languages_v3_record_runtime_target_identity() {
+		local content identity
+		identity='{"uid":1000,"mode":"0700","device":"1","inode":"2"}'
+		content=$(jq -c --argjson runtime "$identity" --argjson socket "${identity/0700/0600}" \
+			'.helper_target.runtime_directory.identity=$runtime | .helper_target.socket_path.identity=$socket' "$INPUT_LANGUAGES_PENDING") || return 1
+		input_languages_write_json_atomic "$INPUT_LANGUAGES_PENDING" "$content" pending
+	}
+	input_languages_v3_runtime_ownership_identical() { return 0; }
+	if [[ $lifecycle_mode == runtime-invalid ]]; then
+		unset XDG_RUNTIME_DIR
+		if apply_input_languages --yes --packages-prepared >/dev/null 2>&1; then return 1; fi
+		[[ ! -e $XDG_DATA_HOME/dotfiles/input-languages/plugins/integration-test && ! -e $INPUT_LANGUAGES_PENDING ]] || return 1
+		! grep -Eq '^(controller|systemctl (start|stop|daemon-reload))' "$root/calls" || return 1
+		return 0
+	fi
 	if [[ $lifecycle_mode == phase-interrupt ]]; then
 		local update_definition rollback_definition
 		update_definition=$(declare -f input_languages_v3_update_pending)
@@ -356,12 +568,15 @@ direct_v2_expands_to_v3() (
 		[[ $(<"$root/autoreload") == false && ! -e $INPUT_LANGUAGES_PENDING && ! -e $INPUT_LANGUAGES_RECOVERY ]] || return 1
 		return 0
 	fi
-	if [[ $lifecycle_mode == stale-helper || $lifecycle_mode == stale-controller ]]; then
+	if [[ $lifecycle_mode == stale-helper || $lifecycle_mode == stale-controller || $lifecycle_mode == stale-runtime ]]; then
 		input_languages_v3_set_paths
 		wizard_confirm() {
 			if [[ $lifecycle_mode == stale-helper ]]; then
 				mkdir -p "${INPUT_LANGUAGES_V3_SOCKET_PATH%/*}"
 				printf 'foreign\n' >"$INPUT_LANGUAGES_V3_SOCKET_PATH"
+			elif [[ $lifecycle_mode == stale-runtime ]]; then
+				mkdir -m 0700 "$root/other-runtime"
+				XDG_RUNTIME_DIR=$root/other-runtime
 			else
 				jq '.groups[0].properties={concurrent:true}' "$root/controller.json" >"$root/controller.next"
 				mv "$root/controller.next" "$root/controller.json"
@@ -410,13 +625,14 @@ direct_v2_expands_to_v3() (
 		return 0
 	fi
 
-	if [[ $lifecycle_mode == rollback || $lifecycle_mode == recovery ]]; then
+	if [[ $lifecycle_mode == rollback || $lifecycle_mode == recovery || $lifecycle_mode == recovery-environment-changed ]]; then
 		if apply_input_languages --yes --packages-prepared >/dev/null 2>&1; then return 1; fi
-		if [[ $lifecycle_mode == recovery ]]; then
+		if [[ $lifecycle_mode == recovery || $lifecycle_mode == recovery-environment-changed ]]; then
 			input_languages_validate_pending_file_v3 "$INPUT_LANGUAGES_PENDING" || return 1
 			input_languages_validate_recovery_file_v3 "$INPUT_LANGUAGES_RECOVERY" || return 1
 			[[ -L $XDG_CONFIG_HOME/systemd/user/dotfiles-input-languages-fcitx.socket ]] || return 1
 			rm -f "$root/fail-rollback"
+			if [[ $lifecycle_mode == recovery-environment-changed ]]; then mkdir -m 0700 "$root/other-runtime"; XDG_RUNTIME_DIR=$root/other-runtime; fi
 			lifecycle_mode=rollback-complete
 			unset INPUT_LANGUAGES_INTEGRATION_ARTIFACT_DIR INPUT_LANGUAGES_INTEGRATION_ARTIFACT INPUT_LANGUAGES_INTEGRATION_HELPER INPUT_LANGUAGES_INTEGRATION_BUILD_ID
 			apply_input_languages --recovery-approved >/dev/null || return 1
@@ -425,6 +641,7 @@ direct_v2_expands_to_v3() (
 		jq -e '[.groups[].name] == ["Default","Unrelated"] and .current_group == "Default" and .observed_method == "keyboard-ru"' "$root/controller.json" >/dev/null || return 1
 		[[ ! -e $INPUT_LANGUAGES_PENDING && ! -e $INPUT_LANGUAGES_RECOVERY ]] || return 1
 		[[ ! -e $XDG_CONFIG_HOME/systemd/user/dotfiles-input-languages-fcitx.socket && ! -e $XDG_CONFIG_HOME/systemd/user/dotfiles-input-languages-fcitx.service ]] || return 1
+		if [[ -d $root/other-runtime ]]; then [[ ! -e $root/other-runtime/dotfiles-input-languages ]] || return 1; fi
 		[[ $(<"$root/group") == 1 ]] || return 1
 		local direct_restore_line fcitx_restore_line
 		direct_restore_line=$(grep -n '^hyprctl reload$' "$root/calls" | cut -d: -f1 | { read -r line; printf '%s\n' "$line"; })
@@ -496,6 +713,20 @@ direct_v2_expands_to_v3() (
 	controller_before=$(sha256sum "$root/controller.json" | cut -d' ' -f1)
 	profile_before=$(sha256sum "$XDG_CONFIG_HOME/fcitx5/profile" | cut -d' ' -f1)
 	mutation_calls_before=$(grep -Ec '^(systemctl (start|stop|daemon-reload)|controller execute|hyprctl (-j inputlanguagesreset|reload|keyword)|omarchy (restart|shell shell rescanPlugins))' "$root/calls" || true)
+	if [[ $lifecycle_mode == noop-runtime-invalid || $lifecycle_mode == status-runtime-invalid ]]; then
+		mkdir -m 0700 "$root/other-runtime"
+		XDG_RUNTIME_DIR=$root/other-runtime
+		if [[ $lifecycle_mode == noop-runtime-invalid ]]; then
+			if apply_input_languages --yes --packages-prepared >/dev/null 2>&1; then return 1; fi
+		else
+			input_languages_status >"$root/status.out"
+			grep -Fq 'Overall: conflict' "$root/status.out" || return 1
+			grep -Fq 'Fcitx runtime: state=conflicting; reason=systemd-runtime-mismatch;' "$root/status.out" || return 1
+		fi
+		mutation_calls_after=$(grep -Ec '^(systemctl (start|stop|daemon-reload)|controller execute|hyprctl (-j inputlanguagesreset|reload|keyword)|omarchy (restart|shell shell rescanPlugins))' "$root/calls" || true)
+		[[ $(sha256sum "$INPUT_LANGUAGES_ACTIVE" | cut -d' ' -f1) == "$active_before" && $mutation_calls_after -eq $mutation_calls_before && ! -e $INPUT_LANGUAGES_PENDING ]] || return 1
+		return 0
+	fi
 	apply_input_languages --yes --packages-prepared >/dev/null
 	mutation_calls_after=$(grep -Ec '^(systemctl (start|stop|daemon-reload)|controller execute|hyprctl (-j inputlanguagesreset|reload|keyword)|omarchy (restart|shell shell rescanPlugins))' "$root/calls" || true)
 	[[ $(sha256sum "$INPUT_LANGUAGES_ACTIVE" | cut -d' ' -f1) == "$active_before" ]]
@@ -503,9 +734,33 @@ direct_v2_expands_to_v3() (
 	[[ $(sha256sum "$XDG_CONFIG_HOME/fcitx5/profile" | cut -d' ' -f1) == "$profile_before" ]]
 	[[ $mutation_calls_after -eq $mutation_calls_before && ! -e $INPUT_LANGUAGES_PENDING ]]
 
-	if [[ $lifecycle_mode == remove || $lifecycle_mode == remove-rollback || $lifecycle_mode == remove-unsupported || $lifecycle_mode == remove-unrelated-edit || $lifecycle_mode == remove-defaultim-drift ]]; then
+	if [[ $lifecycle_mode == remove-runtime-replaced ]]; then
+		local quiesce_definition
+		quiesce_definition=$(declare -f input_languages_v3_quiesce_helper)
+		quiesce_definition=${quiesce_definition/input_languages_v3_quiesce_helper /input_languages_v3_quiesce_helper_recorded }
+		eval "$quiesce_definition"
+		input_languages_v3_quiesce_helper() {
+			input_languages_v3_quiesce_helper_recorded || return 1
+			if [[ ! -e $root/runtime-replaced ]]; then
+				mkdir -m 0755 "$root/runtime/dotfiles-input-languages"
+				: >"$root/runtime-replaced"
+			fi
+		}
+		if remove_input_languages --yes >"$root/remove-failed.out" 2>&1; then return 1; fi
+		grep -Fq 'Remove failed at runtime-after-quiesce' "$root/remove-failed.out" || return 1
+		input_languages_validate_pending_file_v3 "$INPUT_LANGUAGES_PENDING" || return 1
+		input_languages_validate_recovery_file_v3 "$INPUT_LANGUAGES_RECOVERY" || return 1
+		[[ -f $INPUT_LANGUAGES_ACTIVE && -d $root/runtime/dotfiles-input-languages ]] || return 1
+		return 0
+	fi
+
+	if [[ $lifecycle_mode == remove || $lifecycle_mode == remove-rollback || $lifecycle_mode == remove-unsupported || $lifecycle_mode == remove-unrelated-edit || $lifecycle_mode == remove-defaultim-drift || $lifecycle_mode == remove-environment-changed ]]; then
 		local installed_active=$root/installed-v3.json remove_archive
 		cp "$INPUT_LANGUAGES_ACTIVE" "$installed_active"
+		if [[ $lifecycle_mode == remove-environment-changed ]]; then
+			mkdir -m 0700 "$root/other-runtime"
+			XDG_RUNTIME_DIR=$root/other-runtime
+		fi
 		if [[ $lifecycle_mode == remove-unsupported ]]; then
 			jq '.identity.upstream_version="5.1.22" | .available_methods=[] | .addons=[]' "$root/controller.json" >"$root/controller.next"
 			mv "$root/controller.next" "$root/controller.json"
@@ -534,6 +789,7 @@ direct_v2_expands_to_v3() (
 		jq -e '[.groups[].name] == ["Default"] and .current_group == "Default" and .observed_method == "keyboard-ru"' "$root/controller.json" >/dev/null || return 1
 		if [[ $lifecycle_mode == remove-unrelated-edit ]]; then jq -e '.groups[0].properties == {user_note:"retained"}' "$root/controller.json" >/dev/null || return 1; fi
 		[[ ! -e $XDG_CONFIG_HOME/systemd/user/dotfiles-input-languages-fcitx.socket && ! -e $XDG_CONFIG_HOME/systemd/user/dotfiles-input-languages-fcitx.service ]] || return 1
+		if [[ $lifecycle_mode == remove-environment-changed ]]; then [[ -d $root/other-runtime && ! -e $root/other-runtime/dotfiles-input-languages ]] || return 1; fi
 		[[ ! -e $XDG_CONFIG_HOME/omarchy/plugins/dotfiles.keyboard-layout && ! -e $XDG_DATA_HOME/dotfiles/input-languages/active-artifact.lua ]] || return 1
 		[[ ! -e $XDG_CONFIG_HOME/hypr && $(<"$root/plugin-state") == inactive ]] || return 1
 		remove_archive=$(find "$INPUT_LANGUAGES_STATE/archive" -mindepth 1 -maxdepth 1 -type d -name '*-remove' -print -quit)
@@ -548,6 +804,7 @@ direct_v2_expands_to_acknowledged_v3() { direct_v2_expands_to_v3 acknowledged; }
 direct_v2_expands_to_idle_v3() { direct_v2_expands_to_v3 idle; }
 direct_v2_failure_rolls_back() { direct_v2_expands_to_v3 rollback; }
 direct_v2_failed_rollback_recovers() { direct_v2_expands_to_v3 recovery; }
+direct_v2_recovery_uses_saved_runtime() { direct_v2_expands_to_v3 recovery-environment-changed; }
 direct_v2_stale_build_input_blocks() { direct_v2_expands_to_v3 stale-build-input; }
 direct_v2_partial_helper_publication_rolls_back() { direct_v2_expands_to_v3 partial-helper; }
 direct_v3_active_publication_recovers_archive() { direct_v2_expands_to_v3 archive-recovery; }
@@ -573,11 +830,18 @@ direct_v2_durable_phase_interruptions_recover() {
 }
 direct_v2_stale_helper_plan_blocks() { direct_v2_expands_to_v3 stale-helper; }
 direct_v2_stale_controller_plan_blocks() { direct_v2_expands_to_v3 stale-controller; }
+direct_v2_invalid_runtime_blocks_before_mutation() { direct_v2_expands_to_v3 runtime-invalid; }
+direct_v2_changed_runtime_plan_blocks() { direct_v2_expands_to_v3 stale-runtime; }
+direct_v3_remove_uses_saved_runtime() { direct_v2_expands_to_v3 remove-environment-changed; }
+direct_v3_noop_rejects_invalid_runtime() { direct_v2_expands_to_v3 noop-runtime-invalid; }
+direct_v3_status_classifies_runtime_read_only() { direct_v2_expands_to_v3 status-runtime-invalid; }
+direct_v3_replaced_runtime_requires_recovery() { direct_v2_expands_to_v3 remove-runtime-replaced; }
 
 run_test direct_v2_expands_to_acknowledged_v3 'healthy direct-v2 installation expands transactionally to acknowledged version 3 and exact no-op'
 run_test direct_v2_expands_to_idle_v3 'idle-no-context direct-v2 installation expands transactionally and remains an exact no-op'
 run_test direct_v2_failure_rolls_back 'reachable expansion failure restores direct-v2 state and preserves an unrelated Fcitx group'
 run_test direct_v2_failed_rollback_recovers 'failed semantic rollback records recovery-required and retries from retained evidence'
+run_test direct_v2_recovery_uses_saved_runtime 'recovery uses receipt-saved runtime after environment changes'
 run_test direct_v2_stale_build_input_blocks 'confirmed version-3 Apply rechecks build inputs before pending evidence or mutation'
 run_test direct_v2_partial_helper_publication_rolls_back 'partial helper publication rolls back every owned edge'
 run_test direct_v3_active_publication_recovers_archive 'interrupted active publication archives retained Apply evidence during recovery'
@@ -598,5 +862,13 @@ run_test direct_v2_post_pause_failure_restores_autoreload 'post-pause Apply fail
 run_test direct_v2_durable_phase_interruptions_recover 'every durable Fcitx and helper Apply phase supports verified rollback'
 run_test direct_v2_stale_helper_plan_blocks 'locked Apply rejects changed helper ownership before pending evidence'
 run_test direct_v2_stale_controller_plan_blocks 'locked Apply rejects changed Controller semantics before pending evidence'
+run_test direct_v2_invalid_runtime_blocks_before_mutation 'invalid runtime blocks Apply before persistent mutation'
+run_test direct_v2_changed_runtime_plan_blocks 'Apply reinspects the runtime root before pending evidence'
+run_test direct_v3_remove_uses_saved_runtime 'Remove uses the receipt-saved runtime after environment changes'
+run_test direct_v3_noop_rejects_invalid_runtime 'a proposed exact no-op rejects an invalid current runtime without mutation'
+run_test direct_v3_status_classifies_runtime_read_only 'Status classifies runtime conflict without lifecycle mutation'
+run_test direct_v3_replaced_runtime_requires_recovery 'Remove retains foreign runtime state and records recovery after post-quiescence replacement'
+run_test runtime_contract_classifies_without_mutation 'runtime roots and private endpoints are classified without mutation'
+run_test runtime_cleanup_preserves_replaced_private_directory 'runtime cleanup preserves a same-type private directory that replaced the receipt-owned endpoint'
 
 finish_tests

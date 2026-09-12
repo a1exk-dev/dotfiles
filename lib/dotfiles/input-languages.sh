@@ -35,12 +35,12 @@ input_languages_integration_contract_expected_digest() {
 	case $1 in
 		active-fixtures.json) printf '%s\n' c8135a04fb250bf523831709f13905a1fbfef513855e4443d906d82c3b64599f ;;
 		authority.json) printf '%s\n' 3c7670889f080f5b03c26a51b77a402267c6cb566f7727631717fc33de3f4526 ;;
-		evidence-v3.json) printf '%s\n' 52ba3d128bc8a2c2f2c90c495508a8a65c7082d245d68e6b88ec1e06cc762810 ;;
+		evidence-v3.json) printf '%s\n' 74b603cf7f5d4464464c6a95a202a73ad335a6f8e4f29c0572bb5984819993f2 ;;
 		fcitx.json) printf '%s\n' 113df77363f2d4d1552eacad65170f11bc6c66f842b7369941dc830336e92315 ;;
 		health.json) printf '%s\n' 10477d8adc5e186c510928436b31bbdac81fce7083deec5ce5acb7115a4419fe ;;
 		manifest.json) printf '%s\n' 84714ebf5bb3d3b2d49c13b72a692da66fea91d896199ea668af384b4eebaaa8 ;;
 		protocol.json) printf '%s\n' 3bcc3b22a57bfbf2d8a5d77c90242207a2a3fcad0940e4019bb422e9f3b43990 ;;
-		systemd.json) printf '%s\n' 48a3437efc83ec91293c74f1e043cafab98e35c7b5e4e70f4f268d32863a3296 ;;
+		systemd.json) printf '%s\n' 181fd97e0ce84f8c80f141be8cbf330a2621c17a554657fa95b89c02a6e02a1a ;;
 		*) return 1 ;;
 	esac
 }
@@ -555,9 +555,10 @@ input_languages_validate_integration_artifact_values() {
 	' "$root/contracts/fcitx.json" >/dev/null || return 1
 	jq -e '
 		.socket == {unit:"dotfiles-input-languages-fcitx.socket",listen_sequential_packet:"%t/dotfiles-input-languages/fcitx.sock",directory_mode:"0700",socket_mode:"0600",remove_on_stop:true,wanted_by:"graphical-session.target",enabled:true,started:true} and
-		.service == {unit:"dotfiles-input-languages-fcitx.service",exec_start:"@ARTIFACT_DIR@/input-languages-fcitx-helper",restart:"on-failure",restart_seconds:2,start_limit_interval_seconds:30,start_limit_burst:5,socket_activated:true,starts_or_restarts_fcitx:false}
+		.service == {unit:"dotfiles-input-languages-fcitx.service",environment:"XDG_RUNTIME_DIR=%t",exec_start:"@ARTIFACT_DIR@/input-languages-fcitx-helper",restart:"on-failure",restart_seconds:2,start_limit_interval_seconds:30,start_limit_burst:5,socket_activated:true,starts_or_restarts_fcitx:false}
 	' "$root/contracts/systemd.json" >/dev/null || return 1
 	expected=$(input_languages_systemd_exec_path "$expected_artifact_dir") || return 1
+	grep -Fxc 'Environment=XDG_RUNTIME_DIR=%t' "$root/systemd/dotfiles-input-languages-fcitx.service" >/dev/null || return 1
 	grep -Fxc "ExecStart=:\"$expected/input-languages-fcitx-helper\"" "$root/systemd/dotfiles-input-languages-fcitx.service" >/dev/null || return 1
 	! grep -Fq '@ARTIFACT_DIR@' "$root/systemd/dotfiles-input-languages-fcitx.service" || return 1
 	input_languages_validate_integration_artifact_binaries "$root" || return 1
@@ -928,6 +929,9 @@ input_languages_inspect() {
 	input_languages_inspect_widget
 	input_languages_read_health || true
 	input_languages_read_indicator_health || true
+	local runtime_required=false
+	if [[ $INPUT_LANGUAGES_ACTIVE_STATE == valid && $(jq -r '.version // 0' "$INPUT_LANGUAGES_ACTIVE" 2>/dev/null) == 3 ]]; then runtime_required=true; fi
+	input_languages_v3_inspect_runtime "$runtime_required" || true
 }
 
 input_languages_source_identity_from() {
@@ -1436,6 +1440,10 @@ input_languages_status() {
 		else
 			action='Restore a supported Omarchy version before choosing Apply.'
 		fi
+	elif [[ $INPUT_LANGUAGES_ACTIVE_STATE == valid && $(jq -r '.version // 0' "$INPUT_LANGUAGES_ACTIVE") == 3 && $INPUT_LANGUAGES_V3_RUNTIME_STATE == conflicting ]]; then
+		overall=conflict; action='Correct the conflicting Input Languages runtime path before mutation.'
+	elif [[ $INPUT_LANGUAGES_ACTIVE_STATE == valid && $(jq -r '.version // 0' "$INPUT_LANGUAGES_ACTIVE") == 3 && $INPUT_LANGUAGES_V3_RUNTIME_STATE == unavailable ]]; then
+		overall=degraded; action='Restore the required Input Languages runtime endpoint before mutation.'
 	elif input_languages_exact_noop; then
 		overall=healthy; action='No action required.'
 	elif [[ $INPUT_LANGUAGES_TREE_STATE == migratable || $INPUT_LANGUAGES_TREE_STATE == uninstalled ]]; then
@@ -1480,6 +1488,9 @@ input_languages_status() {
 	printf 'Indicator: state=%s; custom-present=%s; custom-entries=%d; stock-entries=%d; link=%s; runtime-healthy=%s; ownership=%s\n' \
 		"$INPUT_LANGUAGES_WIDGET_STATE" "$INPUT_LANGUAGES_WIDGET_PRESENT" "$INPUT_LANGUAGES_WIDGET_COUNT" "$INPUT_LANGUAGES_STOCK_WIDGET_COUNT" \
 		"$INPUT_LANGUAGES_WIDGET_LINK_STATE" "$INPUT_LANGUAGES_INDICATOR_HEALTHY" "$([[ $INPUT_LANGUAGES_ACTIVE_STATE == valid ]] && printf lifecycle-clone || printf unrecorded)"
+	printf 'Fcitx runtime: state=%s; reason=%s; root=%s; private-directory=%s; socket=%s\n' \
+		"$INPUT_LANGUAGES_V3_RUNTIME_STATE" "$INPUT_LANGUAGES_V3_RUNTIME_REASON" "${INPUT_LANGUAGES_V3_RUNTIME_ROOT:-unset}" \
+		"${INPUT_LANGUAGES_V3_RUNTIME_DIR:-unavailable}" "${INPUT_LANGUAGES_V3_RUNTIME_SOCKET:-unavailable}"
 	printf 'Required next action: %s\n' "$action"
 	printf 'Warning: Omarchy Hyprland refresh commands can write through Stow links into repository sources; review resulting Git changes.\n'
 }

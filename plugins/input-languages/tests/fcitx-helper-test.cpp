@@ -179,12 +179,21 @@ class SocketFixture {
 	}
 
 	int connectClient() {
-		const int descriptor = socket(AF_UNIX, SOCK_SEQPACKET | SOCK_CLOEXEC, 0);
+		const int descriptor = socket(AF_UNIX, SOCK_SEQPACKET | SOCK_NONBLOCK | SOCK_CLOEXEC, 0);
 		require(descriptor >= 0, "seqpacket client is created");
 		sockaddr_un address{};
 		address.sun_family = AF_UNIX;
 		std::strcpy(address.sun_path, path.c_str());
-		require(connect(descriptor, reinterpret_cast<sockaddr*>(&address), sizeof(address)) == 0, "seqpacket client connects");
+		const int result = connect(descriptor, reinterpret_cast<sockaddr*>(&address), sizeof(address));
+		if (result != 0 && errno == EINPROGRESS) {
+			pollfd connecting{.fd = descriptor, .events = POLLOUT, .revents = 0};
+			int error = 0;
+			socklen_t size = sizeof(error);
+			require(poll(&connecting, 1, 500) == 1 && getsockopt(descriptor, SOL_SOCKET, SO_ERROR, &error, &size) == 0 && error == 0,
+				"nonblocking seqpacket client connects");
+		} else {
+			require(result == 0, "seqpacket client connects");
+		}
 		return descriptor;
 	}
 
@@ -333,7 +342,12 @@ void codecTests() {
 void listenerValidation() {
 	SocketFixture fixture;
 	std::string diagnostic;
-	require(validateSocketActivatedListener(fixture.listener, diagnostic), "the exact socket-activated listener is accepted");
+	const bool valid = validateSocketActivatedListener(fixture.listener, diagnostic);
+	if (!valid)
+		std::cerr << "listener diagnostic: " << diagnostic << '\n';
+	require(valid, "the exact socket-activated listener is accepted");
+	require((fcntl(fixture.listener, F_GETFL) & O_NONBLOCK) != 0 && (fcntl(fixture.listener, F_GETFD) & FD_CLOEXEC) != 0,
+		"listener descriptor constraints are established");
 	bool operationalFailure = false;
 	require(!validateSocketActivatedListener(-1, diagnostic, &operationalFailure) && operationalFailure,
 		"listener inspection syscall failures are operational rather than deterministic incompatibility");
@@ -341,10 +355,32 @@ void listenerValidation() {
 	require(!validateSocketActivatedListener(fixture.listener, diagnostic), "a non-private runtime parent is rejected");
 	require(chmod(fixture.parent.c_str(), 0700) == 0 && chmod(fixture.path.c_str(), 0660) == 0, "test socket mode changes");
 	require(!validateSocketActivatedListener(fixture.listener, diagnostic), "a non-private socket mode is rejected");
+	require(chmod(fixture.path.c_str(), 0600) == 0 && chmod(fixture.root.c_str(), 0755) == 0, "test runtime root mode changes");
+	require(!validateSocketActivatedListener(fixture.listener, diagnostic), "a non-private runtime root is rejected");
+	require(chmod(fixture.root.c_str(), 0700) == 0, "test runtime root mode is restored");
+	const auto movedParent = fixture.parent + "-moved";
+	require(rename(fixture.parent.c_str(), movedParent.c_str()) == 0 && symlink(movedParent.c_str(), fixture.parent.c_str()) == 0,
+		"private runtime directory can be replaced by a symlink for validation");
+	require(!validateSocketActivatedListener(fixture.listener, diagnostic), "a symlinked private runtime path component is rejected");
+	require(unlink(fixture.parent.c_str()) == 0 && rename(movedParent.c_str(), fixture.parent.c_str()) == 0,
+		"private runtime directory is restored after validation");
+	const int replacement = socket(AF_UNIX, SOCK_SEQPACKET | SOCK_NONBLOCK | SOCK_CLOEXEC, 0);
+	require(replacement >= 0 && unlink(fixture.path.c_str()) == 0, "listener path can be replaced for identity validation");
+	sockaddr_un address{};
+	address.sun_family = AF_UNIX;
+	std::strcpy(address.sun_path, fixture.path.c_str());
+	const auto oldMask = umask(0177);
+	const int rebound = bind(replacement, reinterpret_cast<sockaddr*>(&address), sizeof(address));
+	umask(oldMask);
+	require(rebound == 0 && chmod(fixture.path.c_str(), 0600) == 0 && listen(replacement, 8) == 0,
+		"replacement listener is established at the frozen path");
+	require(!validateSocketActivatedListener(fixture.listener, diagnostic),
+		"an inherited listener whose device and inode differ from the path is rejected");
 	ScriptedTransport transport;
 	fixture.start(transport);
 	fixture.thread.join();
 	fixture.stop();
+	close(replacement);
 	require(fixture.result == 0, "deterministic listener incompatibility exits cleanly");
 	std::cout << "ok - socket activation path, type, ownership, and modes are validated\n";
 }

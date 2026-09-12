@@ -64,6 +64,14 @@ Guidance: Own the complete reviewed Hyprland user tree in one `hyprland` Stow pa
 
 Reason: The full replacement must preserve personal Hyprland configuration, while Hyprland's unstable C++ ABI, path-based plugin reconciliation, shared Shell state, and refresh writers require one recoverable boundary without automatic update hooks or Git policy. Complete plans and visible outcomes keep mutation and recovery effects reviewable in both interactive control paths.
 
+## Correlate Unix listener identity through procfs
+
+Applies when: Validating a socket-activated Unix endpoint against its inherited listener descriptor and filesystem pathname.
+
+Guidance: Correlate the descriptor inode with exactly one listening row for the exact path, `SOCK_SEQPACKET` type, and listening flags in `/proc/net/unix`; separately pin the no-follow pathname device and inode before and after validation. A queued nonblocking client may add one connecting row with inode zero for the same path, but that row is valid only alongside the exact listener-inode row. Treat procfs access failure as operational. Do not compare descriptor and pathname device numbers directly because Linux reports them from different namespaces.
+
+Reason: A socket-activation listener and its filesystem node can have different `st_dev` values even when they are the same endpoint, while accepting a path-only connecting row would fail to prove that the inherited descriptor still owns the pathname.
+
 ## Carry screensaver overrides through Hyprland dispatch
 
 Applies when: A user-owned Omarchy screensaver launcher must pass a private command or environment into terminals started through Hyprland's Lua dispatcher.

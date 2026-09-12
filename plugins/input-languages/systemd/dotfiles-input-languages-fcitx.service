@@ -5,6 +5,7 @@ StartLimitBurst=5
 
 [Service]
 Type=simple
+Environment=XDG_RUNTIME_DIR=%t
 ExecStart="@ARTIFACT_DIR@/input-languages-fcitx-helper"
 Restart=on-failure
 RestartSec=2s
