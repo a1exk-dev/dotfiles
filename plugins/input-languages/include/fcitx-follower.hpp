@@ -34,8 +34,11 @@ struct FollowerSnapshot {
 	std::optional<uint64_t> reportSequence;
 	std::optional<std::chrono::milliseconds> reportAge;
 	uint64_t coalescedTargets = 0;
+	Protocol::OwnerState ownerState = Protocol::OwnerState::Absent;
+	std::optional<std::string> uniqueOwner;
 	uint64_t ownerEpoch = 0;
 	Protocol::ManagedGroupState managedGroupState = Protocol::ManagedGroupState::Unknown;
+	std::optional<std::string> currentGroup;
 	std::string observedMethod;
 	Protocol::Outcome outcome = Protocol::Outcome::Disconnected;
 	Protocol::RetryPhase retryPhase = Protocol::RetryPhase::None;

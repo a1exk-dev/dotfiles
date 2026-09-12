@@ -162,10 +162,14 @@ int main() {
 		coordinator.key(1, 29, KeyState::Released, true);
 		require(waitUntil([&] { return follower.snapshot().acknowledgedGeneration == 2; }),
 			"the real helper acknowledges the post-fan-out canonical generation");
+		const auto health = follower.snapshot();
 		std::ranges::sort(updates);
 		require(updates == std::vector<std::pair<DeviceId, uint32_t>>{{1, 1}, {2, 1}} &&
 			coordinator.target() == LanguageTarget{.language = InputLanguages::Language::Russian, .generation = 2} &&
-			transport.currentMethod() == RUSSIAN_METHOD && follower.snapshot().outcome == Protocol::Outcome::Converged,
+			transport.currentMethod() == RUSSIAN_METHOD && health.outcome == Protocol::Outcome::Converged &&
+			health.ownerState == Protocol::OwnerState::Present && health.uniqueOwner == ":1.42" && health.ownerEpoch == 1 &&
+			health.managedGroupState == Protocol::ManagedGroupState::Exact && health.currentGroup == MANAGED_GROUP_NAME &&
+			health.observedMethod == RUSSIAN_METHOD && !health.stale,
 			"the production coordinator-follower-helper path converges after physical fan-out");
 	}
 

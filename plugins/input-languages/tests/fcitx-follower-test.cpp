@@ -145,8 +145,11 @@ int main() {
 		.reportSequence = 2,
 		.acceptedGeneration = 4,
 		.acknowledgedGeneration = 4,
+		.ownerState = OwnerState::Present,
+		.uniqueOwner = ":1.42",
 		.ownerEpoch = 7,
 		.managedGroupState = ManagedGroupState::Exact,
+		.currentGroup = "Dotfiles Input Languages",
 		.observedMethod = "keyboard-ru",
 		.outcome = Outcome::Converged,
 		.retryPhase = RetryPhase::None,
@@ -156,13 +159,75 @@ int main() {
 		"matching current-session STATE updates cached acknowledgement");
 	const auto converged = follower->snapshot();
 	require(converged.target == LanguageTarget{.language = InputLanguages::Language::Russian, .generation = 4} &&
-		converged.reportSequence == 2 && converged.ownerEpoch == 7 && converged.observedMethod == "keyboard-ru" &&
+		converged.reportSequence == 2 && converged.ownerState == OwnerState::Present && converged.uniqueOwner == ":1.42" &&
+		converged.ownerEpoch == 7 && converged.currentGroup == "Dotfiles Input Languages" && converged.observedMethod == "keyboard-ru" &&
 		converged.outcome == Outcome::Converged && !converged.stale && converged.coalescedTargets >= 1,
 		"cached health describes the current target and helper report");
 	follower->offer({.language = InputLanguages::Language::Us, .generation = 5});
 	target = std::get<Target>(receiveFrame(peer));
-	require(target.generation == 5 && follower->snapshot().outcome == Outcome::Pending,
-		"a newer offer cannot retain an older generation's converged outcome");
+	require(target.generation == 5 && follower->snapshot().outcome == Outcome::Pending &&
+		!follower->snapshot().acceptedGeneration && !follower->snapshot().acknowledgedGeneration,
+		"a newer offer cannot retain an older accepted generation, acknowledgement, or converged outcome");
+	sendFrame(peer, State{
+		.protocolIdentity = IDENTITY,
+		.buildId = BUILD,
+		.authoritySession = hello.authoritySession,
+		.reportSequence = 3,
+		.acceptedGeneration = 5,
+		.acknowledgedGeneration = {},
+		.ownerState = OwnerState::Absent,
+		.uniqueOwner = {},
+		.ownerEpoch = 7,
+		.managedGroupState = ManagedGroupState::Unknown,
+		.currentGroup = {},
+		.observedMethod = {},
+		.outcome = Outcome::Pending,
+		.retryPhase = RetryPhase::Write,
+		.diagnostic = {},
+	});
+	require(waitUntil([&] {
+		const auto snapshot = follower->snapshot();
+		return snapshot.acceptedGeneration == 5 && snapshot.reportSequence == 3 && snapshot.ownerState == OwnerState::Absent;
+	}), "the newest owner-unknown pending report replaces prior-generation observations");
+	sendFrame(peer, State{
+		.protocolIdentity = IDENTITY,
+		.buildId = BUILD,
+		.authoritySession = hello.authoritySession,
+		.reportSequence = 4,
+		.acceptedGeneration = 5,
+		.acknowledgedGeneration = 5,
+		.ownerState = OwnerState::Present,
+		.uniqueOwner = ":1.99",
+		.ownerEpoch = 7,
+		.managedGroupState = ManagedGroupState::Exact,
+		.currentGroup = "Dotfiles Input Languages",
+		.observedMethod = "keyboard-us",
+		.outcome = Outcome::Converged,
+		.retryPhase = RetryPhase::None,
+		.diagnostic = {},
+	});
+	std::this_thread::sleep_for(20ms);
+	require(follower->snapshot().reportSequence == 3 && !follower->snapshot().acknowledgedGeneration,
+		"owner-unknown progress cannot erase the known alias used to reject a same-epoch replacement");
+	sendFrame(peer, State{
+		.protocolIdentity = IDENTITY,
+		.buildId = BUILD,
+		.authoritySession = hello.authoritySession,
+		.reportSequence = 4,
+		.acceptedGeneration = 5,
+		.acknowledgedGeneration = 5,
+		.ownerState = OwnerState::Present,
+		.uniqueOwner = ":1.42",
+		.ownerEpoch = 7,
+		.managedGroupState = ManagedGroupState::Exact,
+		.currentGroup = "Dotfiles Input Languages",
+		.observedMethod = "keyboard-us",
+		.outcome = Outcome::Converged,
+		.retryPhase = RetryPhase::None,
+		.diagnostic = {},
+	});
+	require(waitUntil([&] { return follower->snapshot().acknowledgedGeneration == 5; }),
+		"the original owner can converge after an owner-unknown pending report in the same epoch");
 
 	sendFrame(peer, State{
 		.protocolIdentity = IDENTITY,
@@ -171,17 +236,22 @@ int main() {
 		.reportSequence = 1,
 		.acceptedGeneration = 4,
 		.acknowledgedGeneration = {},
+		.ownerState = OwnerState::Present,
+		.uniqueOwner = ":1.41",
 		.ownerEpoch = 6,
 		.managedGroupState = ManagedGroupState::Foreign,
+		.currentGroup = "Other",
 		.observedMethod = "keyboard-us",
 		.outcome = Outcome::ConfigurationConflict,
 		.retryPhase = RetryPhase::None,
 		.diagnostic = "stale",
 	});
 	std::this_thread::sleep_for(20ms);
-	require(follower->snapshot().acknowledgedGeneration == 4 && follower->snapshot().reportSequence == 2,
+	require(follower->snapshot().acknowledgedGeneration == 5 && follower->snapshot().reportSequence == 4,
 		"reordered old-owner health cannot replace the current report");
 	require(waitUntil([&] { return follower->snapshot().stale; }), "cached health becomes stale after the frozen age bound");
+	require(!follower->snapshot().acknowledgedGeneration,
+		"an over-age report cannot remain acknowledged in the cached snapshot");
 
 	close(peer);
 	require(waitUntil([&] { return follower->snapshot().connection == FollowerConnection::Disconnected; }),
@@ -198,8 +268,11 @@ int main() {
 		.reportSequence = 1,
 		.acceptedGeneration = 5,
 		.acknowledgedGeneration = 5,
+		.ownerState = OwnerState::Present,
+		.uniqueOwner = ":1.43",
 		.ownerEpoch = 1,
 		.managedGroupState = ManagedGroupState::Exact,
+		.currentGroup = "Dotfiles Input Languages",
 		.observedMethod = "keyboard-us",
 		.outcome = Outcome::Converged,
 		.retryPhase = RetryPhase::None,
@@ -207,12 +280,17 @@ int main() {
 	});
 	require(waitUntil([&] { return follower->snapshot().reportSequence == 1; }),
 		"a replacement helper starts a fresh report and owner epoch sequence");
+	close(peer);
+	peer = -1;
+	require(waitUntil([&] {
+		const auto snapshot = follower->snapshot();
+		return snapshot.connection == FollowerConnection::Disconnected && !snapshot.acknowledgedGeneration;
+	}), "a disconnected helper cannot retain acknowledgement in cached health");
 
 	const auto destroyStart = std::chrono::steady_clock::now();
 	follower.reset();
 	require(std::chrono::steady_clock::now() - destroyStart < 250ms,
 		"follower unload stays bounded while the helper peer is silent");
-	close(peer);
 
 	{
 		const std::string absentPath = "/tmp/input-languages-follower-absent-" + std::to_string(getpid()) + ".sock";

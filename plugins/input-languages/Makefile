@@ -7,13 +7,14 @@ PLUGIN_PACKAGES := hyprland pixman-1 libdrm aquamarine hyprutils hyprgraphics hy
 PLUGIN_FLAGS := -shared -fPIC -fno-gnu-unique
 WIDGET_ID := dotfiles.keyboard-layout
 WIDGET_SOURCE := widget/$(WIDGET_ID)
-COORDINATED_SOURCE_FILES := Makefile include/input-language-model.hpp include/fcitx-follower.hpp include/fcitx-protocol.hpp src/input-language-model.cpp src/plugin.cpp src/fcitx-follower.cpp src/fcitx-protocol.cpp
+COORDINATED_SOURCE_FILES := Makefile include/input-language-model.hpp include/input-language-health.hpp include/fcitx-follower.hpp include/fcitx-protocol.hpp src/input-language-model.cpp src/input-language-health.cpp src/plugin.cpp src/fcitx-follower.cpp src/fcitx-protocol.cpp
 COORDINATED_SOURCE_ID := $(shell sha256sum -- $(COORDINATED_SOURCE_FILES) | sha256sum | cut -d' ' -f1)
 
 .PHONY: test check helper coordinated-plugin artifact clean
 
-test: $(BUILD_DIR)/input-language-model-test $(BUILD_DIR)/fcitx-controller-test $(BUILD_DIR)/fcitx-helper-test $(BUILD_DIR)/fcitx-follower-test $(BUILD_DIR)/input-language-integration-test
+test: $(BUILD_DIR)/input-language-model-test $(BUILD_DIR)/input-language-health-test $(BUILD_DIR)/fcitx-controller-test $(BUILD_DIR)/fcitx-helper-test $(BUILD_DIR)/fcitx-follower-test $(BUILD_DIR)/input-language-integration-test
 	@$(BUILD_DIR)/input-language-model-test
+	@$(BUILD_DIR)/input-language-health-test
 	@$(BUILD_DIR)/fcitx-controller-test
 	@$(BUILD_DIR)/fcitx-helper-test
 	@$(BUILD_DIR)/fcitx-follower-test
@@ -22,6 +23,10 @@ test: $(BUILD_DIR)/input-language-model-test $(BUILD_DIR)/fcitx-controller-test 
 $(BUILD_DIR)/input-language-model-test: tests/input-language-model-test.cpp src/input-language-model.cpp include/input-language-model.hpp
 	@mkdir -p "$(BUILD_DIR)"
 	$(CXX) $(CPPFLAGS) $(CXXFLAGS) tests/input-language-model-test.cpp src/input-language-model.cpp -o "$@"
+
+$(BUILD_DIR)/input-language-health-test: tests/input-language-health-test.cpp src/input-language-health.cpp src/fcitx-follower.cpp src/fcitx-protocol.cpp src/input-language-model.cpp include/input-language-health.hpp include/fcitx-follower.hpp include/fcitx-protocol.hpp include/input-language-model.hpp
+	@mkdir -p "$(BUILD_DIR)"
+	$(CXX) $(CPPFLAGS) $(CXXFLAGS) tests/input-language-health-test.cpp src/input-language-health.cpp src/fcitx-follower.cpp src/fcitx-protocol.cpp src/input-language-model.cpp -o "$@" -pthread
 
 $(BUILD_DIR)/fcitx-controller-test: tests/fcitx-controller-test.cpp src/fcitx-controller.cpp src/fcitx-controller-cli.cpp src/fcitx-sd-bus-transport.cpp include/fcitx-controller.hpp include/fcitx-controller-cli.hpp
 	@mkdir -p "$(BUILD_DIR)"
@@ -87,7 +92,7 @@ coordinated-plugin:
 		-DINPUT_LANGUAGES_SOURCE_ID='"$(COORDINATED_SOURCE_ID)"' \
 		-DINPUT_LANGUAGES_COMPILER_ID='"$(COMPILER_ID)"' \
 		-DINPUT_LANGUAGES_FCITX_COORDINATION \
-		src/plugin.cpp src/input-language-model.cpp src/fcitx-follower.cpp src/fcitx-protocol.cpp -o "$(OUTPUT_FILE)" \
+		src/plugin.cpp src/input-language-model.cpp src/input-language-health.cpp src/fcitx-follower.cpp src/fcitx-protocol.cpp -o "$(OUTPUT_FILE)" \
 		-pthread $$(pkg-config --cflags --libs $(PLUGIN_PACKAGES))
 
 helper:

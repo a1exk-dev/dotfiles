@@ -24,9 +24,9 @@ readonly INPUT_LANGUAGES_INTEGRATION_CONTRACT_FILES=(
 )
 readonly INPUT_LANGUAGES_INTEGRATION_SOURCE_FILES=(
 	integration.mk migration-baseline.json
-	include/fcitx-controller-cli.hpp include/fcitx-controller.hpp include/fcitx-follower.hpp include/fcitx-helper.hpp include/fcitx-protocol.hpp include/input-language-model.hpp
+	include/fcitx-controller-cli.hpp include/fcitx-controller.hpp include/fcitx-follower.hpp include/fcitx-helper.hpp include/fcitx-protocol.hpp include/input-language-health.hpp include/input-language-model.hpp
 	src/fcitx-controller-cli.cpp src/fcitx-controller.cpp src/fcitx-follower.cpp src/fcitx-helper-main.cpp src/fcitx-helper.cpp src/fcitx-protocol.cpp
-	src/fcitx-sd-bus-transport.cpp src/input-language-model.cpp src/integration-artifact-identity.cpp src/plugin.cpp
+	src/fcitx-sd-bus-transport.cpp src/input-language-health.cpp src/input-language-model.cpp src/integration-artifact-identity.cpp src/plugin.cpp
 )
 readonly INPUT_LANGUAGES_INTEGRATION_PLUGIN_FLAGS='-std=c++23,-Wall,-Wextra,-Wpedantic,-Werror,-shared,-fPIC,-fno-gnu-unique,-pthread'
 readonly INPUT_LANGUAGES_INTEGRATION_HELPER_FLAGS='-std=c++23,-Wall,-Wextra,-Wpedantic,-Werror,-pthread'
@@ -35,11 +35,11 @@ input_languages_integration_contract_expected_digest() {
 	case $1 in
 		active-fixtures.json) printf '%s\n' c8135a04fb250bf523831709f13905a1fbfef513855e4443d906d82c3b64599f ;;
 		authority.json) printf '%s\n' 3c7670889f080f5b03c26a51b77a402267c6cb566f7727631717fc33de3f4526 ;;
-		evidence-v3.json) printf '%s\n' 74b603cf7f5d4464464c6a95a202a73ad335a6f8e4f29c0572bb5984819993f2 ;;
+		evidence-v3.json) printf '%s\n' 79d5e2c42e5c8d7ea79ecc935013f138003af0b9c920a80dfea07306d2c75341 ;;
 		fcitx.json) printf '%s\n' 113df77363f2d4d1552eacad65170f11bc6c66f842b7369941dc830336e92315 ;;
-		health.json) printf '%s\n' 10477d8adc5e186c510928436b31bbdac81fce7083deec5ce5acb7115a4419fe ;;
+		health.json) printf '%s\n' 7444c1a034fd595f5d93fd14c15389efccc6cc892755b0c77174758d2daad193 ;;
 		manifest.json) printf '%s\n' 84714ebf5bb3d3b2d49c13b72a692da66fea91d896199ea668af384b4eebaaa8 ;;
-		protocol.json) printf '%s\n' 3bcc3b22a57bfbf2d8a5d77c90242207a2a3fcad0940e4019bb422e9f3b43990 ;;
+		protocol.json) printf '%s\n' 4b45f0d68339d8f51df3d0c8132abb40429f2ecc9e4eb8aa9dd8588f8f76e041 ;;
 		systemd.json) printf '%s\n' 181fd97e0ce84f8c80f141be8cbf330a2621c17a554657fa95b89c02a6e02a1a ;;
 		*) return 1 ;;
 	esac
@@ -71,6 +71,7 @@ INPUT_LANGUAGES_COMPETING_CLONES=''
 INPUT_LANGUAGES_PLUGIN_HEALTH=''
 INPUT_LANGUAGES_PLUGIN_HEALTH_VALID=false
 INPUT_LANGUAGES_INDICATOR_HEALTHY=false
+INPUT_LANGUAGES_V3_DELIVERY_STATE=unavailable
 INPUT_LANGUAGES_SUPPORTED=false
 INPUT_LANGUAGES_VERSION=unknown
 INPUT_LANGUAGES_PREPARED_RESULT=''
@@ -868,9 +869,16 @@ input_languages_any_widget_matches() {
 input_languages_read_control_state() {
 	INPUT_LANGUAGES_PLUGIN_HEALTH_VALID=false
 	INPUT_LANGUAGES_PLUGIN_HEALTH=$(hyprctl -j inputlanguages 2>/dev/null || true)
-	jq -e '(.healthy | type == "boolean") and (.build_id | type == "string") and (.source_id | type == "string") and
+	if jq -e 'has("direct_xkb_health")' <<<"$INPUT_LANGUAGES_PLUGIN_HEALTH" >/dev/null 2>&1; then
+		input_languages_v3_health_valid "$INPUT_LANGUAGES_PLUGIN_HEALTH" || { INPUT_LANGUAGES_V3_DELIVERY_STATE=conflicting; return 1; }
+		INPUT_LANGUAGES_V3_DELIVERY_STATE=$(input_languages_v3_delivery_state "$INPUT_LANGUAGES_PLUGIN_HEALTH")
+		return 0
+	fi
+	jq -e '(keys | sort) == (["healthy","build_id","source_id","compatibility_hash","canonical_group","physical_keyboards","excluded_keyboards"] | sort) and
+		(.healthy | type == "boolean") and (.build_id | type == "string") and (.source_id | type == "string") and
 		(.compatibility_hash | type == "string") and (.canonical_group == 0 or .canonical_group == 1) and
-		(.physical_keyboards | type == "array") and (.excluded_keyboards | type == "array")' \
+		(.physical_keyboards | type == "array" and all(.[]; type == "string" and length > 0)) and
+		(.excluded_keyboards | type == "array" and all(.[]; type == "string" and length > 0))' \
 		<<<"$INPUT_LANGUAGES_PLUGIN_HEALTH" >/dev/null 2>&1
 }
 
@@ -906,14 +914,18 @@ input_languages_read_indicator_health() {
 	' <<<"$geometry" >/dev/null 2>&1 || return 1
 	devices=$(hyprctl -j devices 2>/dev/null) || return 1
 	group=$(jq -r .canonical_group <<<"$INPUT_LANGUAGES_PLUGIN_HEALTH") || return 1
-	physical=$(jq -c .physical_keyboards <<<"$INPUT_LANGUAGES_PLUGIN_HEALTH") || return 1
-	jq -e --argjson names "$physical" --argjson group "$group" '
+	if jq -e 'has("physical_groups")' <<<"$INPUT_LANGUAGES_PLUGIN_HEALTH" >/dev/null 2>&1; then
+		physical=$(jq -c .physical_groups <<<"$INPUT_LANGUAGES_PLUGIN_HEALTH") || return 1
+	else
+		physical=$(jq -c '[.physical_keyboards[] as $device | {device:$device,group:.canonical_group}]' <<<"$INPUT_LANGUAGES_PLUGIN_HEALTH") || return 1
+	fi
+	jq -e --argjson groups "$physical" --argjson group "$group" '
 		.keyboards as $keyboards |
 		($keyboards | type == "array") and
-		([$names[] as $name | any($keyboards[];
-			.name == $name and .layout == "us,ru" and .variant == "," and
-			.active_layout_index == $group and
-			(($group == 0 and .active_keymap == "English (US)") or ($group == 1 and .active_keymap == "Russian")))] | all)
+		([$groups[] as $physical | any($keyboards[];
+			.name == $physical.device and .layout == "us,ru" and .variant == "," and
+			.active_layout_index == $physical.group and $physical.group == $group and
+			(($physical.group == 0 and .active_keymap == "English (US)") or ($physical.group == 1 and .active_keymap == "Russian")))] | all)
 	' <<<"$devices" >/dev/null 2>&1 || return 1
 	INPUT_LANGUAGES_INDICATOR_HEALTHY=true
 }
@@ -1374,6 +1386,7 @@ input_languages_active_widget_matches() {
 
 input_languages_exact_noop() {
 	[[ $INPUT_LANGUAGES_TREE_STATE == linked && $INPUT_LANGUAGES_ACTIVE_STATE == valid && $INPUT_LANGUAGES_PENDING_STATE == absent && $INPUT_LANGUAGES_RECOVERY_STATE == absent && $INPUT_LANGUAGES_CLEANUP_STATE == absent ]] || return 1
+	if [[ $(jq -r '.version // 0' "$INPUT_LANGUAGES_ACTIVE") == 3 ]]; then input_languages_exact_noop_v3; return; fi
 	input_languages_static_preflight || return 1
 	local artifact build source compatibility current_source running compiler dependencies artifact_sha widget_sha errors current_compiler current_dependencies current_header expected_build built_compiler current_warning=''
 	artifact=$(jq -r .artifact "$INPUT_LANGUAGES_ACTIVE")

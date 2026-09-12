@@ -37,6 +37,11 @@ class Writer {
 		return true;
 	}
 
+	bool optionalText(const std::optional<std::string>& value) {
+		integer<uint8_t>(value ? 1 : 0);
+		return !value || (!value->empty() && text(*value));
+	}
+
 	std::vector<std::byte> take() { return std::move(m_bytes); }
 
   private:
@@ -122,6 +127,18 @@ class Reader {
 		});
 	}
 
+	bool optionalText(std::optional<std::string>& value) {
+		uint8_t present = 0;
+		std::string textValue;
+		if (!integer(present) || present > 1 || (present == 1 && (!text(textValue) || textValue.empty())))
+			return false;
+		if (present)
+			value = std::move(textValue);
+		else
+			value.reset();
+		return true;
+	}
+
 	[[nodiscard]] std::size_t remaining() const { return m_bytes.size() - m_offset; }
 
   private:
@@ -174,15 +191,25 @@ bool writePayload(Writer& writer, const State& frame) {
 	writer.integer<uint8_t>(frame.acknowledgedGeneration ? 1 : 0);
 	if (frame.acknowledgedGeneration)
 		writer.integer(*frame.acknowledgedGeneration);
+	writer.integer(frame.ownerState);
+	if (!writer.optionalText(frame.uniqueOwner))
+		return false;
 	writer.integer(frame.ownerEpoch);
 	writer.integer(frame.managedGroupState);
-	if (!writer.text(frame.observedMethod))
+	if (!writer.optionalText(frame.currentGroup) || !writer.text(frame.observedMethod))
 		return false;
 	writer.integer(frame.outcome);
 	writer.integer(frame.retryPhase);
+	const bool ownerValid = (frame.ownerState == OwnerState::Absent && !frame.uniqueOwner) ||
+		((frame.ownerState == OwnerState::Present || frame.ownerState == OwnerState::Competing) &&
+			frame.uniqueOwner && frame.ownerEpoch != 0);
+	const bool acknowledgementValid = !frame.acknowledgedGeneration ||
+		(frame.ownerState == OwnerState::Present && frame.managedGroupState == ManagedGroupState::Exact &&
+			frame.currentGroup && !frame.observedMethod.empty() && frame.outcome == Outcome::Converged);
 	return writer.text(frame.diagnostic) && validSession(frame.authoritySession) && frame.reportSequence != 0 && frame.acceptedGeneration != 0 &&
 		(!frame.acknowledgedGeneration || *frame.acknowledgedGeneration == frame.acceptedGeneration) &&
-		validEnum(frame.managedGroupState, 3) && validEnum(frame.outcome, 11) && validEnum(frame.retryPhase, 5);
+		validEnum(frame.ownerState, 2) && ownerValid && acknowledgementValid && validEnum(frame.managedGroupState, 3) &&
+		validEnum(frame.outcome, 11) && validEnum(frame.retryPhase, 5);
 }
 
 bool writePayload(Writer& writer, const Heartbeat& frame) {
@@ -221,13 +248,21 @@ bool readPayload(Reader& reader, State& frame) {
 	if (!reader.text(frame.protocolIdentity) || frame.protocolIdentity.empty() || !reader.digest(frame.buildId) || !reader.raw(frame.authoritySession) || !validSession(frame.authoritySession) ||
 		!reader.integer(frame.reportSequence) || frame.reportSequence == 0 || !reader.integer(frame.acceptedGeneration) ||
 		frame.acceptedGeneration == 0 || !reader.integer(present) || present > 1 ||
-		(present == 1 && (!reader.integer(acknowledged) || acknowledged == 0)) || !reader.integer(frame.ownerEpoch) ||
-		!readEnum(reader, frame.managedGroupState, 3) || !reader.text(frame.observedMethod) ||
+		(present == 1 && (!reader.integer(acknowledged) || acknowledged == 0)) || !readEnum(reader, frame.ownerState, 2) ||
+		!reader.optionalText(frame.uniqueOwner) || !reader.integer(frame.ownerEpoch) ||
+		!readEnum(reader, frame.managedGroupState, 3) || !reader.optionalText(frame.currentGroup) || !reader.text(frame.observedMethod) ||
 		!readEnum(reader, frame.outcome, 11) || !readEnum(reader, frame.retryPhase, 5) || !reader.text(frame.diagnostic))
 		return false;
 	if (present)
 		frame.acknowledgedGeneration = acknowledged;
-	return !frame.acknowledgedGeneration || *frame.acknowledgedGeneration == frame.acceptedGeneration;
+	const bool ownerValid = (frame.ownerState == OwnerState::Absent && !frame.uniqueOwner) ||
+		((frame.ownerState == OwnerState::Present || frame.ownerState == OwnerState::Competing) &&
+			frame.uniqueOwner && frame.ownerEpoch != 0);
+	const bool acknowledgementValid = !frame.acknowledgedGeneration ||
+		(frame.ownerState == OwnerState::Present && frame.managedGroupState == ManagedGroupState::Exact &&
+			frame.currentGroup && !frame.observedMethod.empty() && frame.outcome == Outcome::Converged);
+	return ownerValid && acknowledgementValid &&
+		(!frame.acknowledgedGeneration || *frame.acknowledgedGeneration == frame.acceptedGeneration);
 }
 
 bool readPayload(Reader& reader, Heartbeat& frame) {

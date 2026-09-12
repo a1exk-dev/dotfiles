@@ -128,11 +128,18 @@ class FcitxFollower::Impl {
 			result.authoritySession = m_session;
 			result.target = currentTarget();
 			result.coalescedTargets = m_coalesced.load(std::memory_order_relaxed);
-			if (result.connection == FollowerConnection::Connected && result.acceptedGeneration != result.target.generation)
+			if (result.connection != FollowerConnection::Connected)
+				result.acknowledgedGeneration.reset();
+			else if (result.acceptedGeneration != result.target.generation) {
+				result.acceptedGeneration.reset();
 				result.outcome = Protocol::Outcome::Pending;
+				result.acknowledgedGeneration.reset();
+			}
 			if (lastReport) {
 				result.reportAge = std::chrono::duration_cast<std::chrono::milliseconds>(Clock::now() - *lastReport);
 				result.stale = *result.reportAge > m_options.staleAfter;
+				if (result.stale)
+					result.acknowledgedGeneration.reset();
 			}
 			return result;
 		} catch (...) {
@@ -245,6 +252,8 @@ class FcitxFollower::Impl {
 			{
 				const std::scoped_lock lock(m_snapshotMutex);
 				m_snapshot = {};
+				m_knownOwner.reset();
+				m_knownOwnerEpoch = 0;
 				m_snapshot.connection = FollowerConnection::Connected;
 				m_snapshot.outcome = Protocol::Outcome::Pending;
 				m_lastReport.reset();
@@ -274,13 +283,26 @@ class FcitxFollower::Impl {
 		if (state.protocolIdentity != Protocol::IDENTITY || state.buildId != m_options.buildId || state.authoritySession != m_session ||
 			state.acceptedGeneration != current.generation || (m_snapshot.reportSequence && state.reportSequence <= *m_snapshot.reportSequence) ||
 			state.ownerEpoch < m_snapshot.ownerEpoch ||
-			(state.acknowledgedGeneration && (state.observedMethod.empty() || state.observedMethod != expectedMethod)))
+			(state.ownerEpoch == m_knownOwnerEpoch && m_knownOwner && state.uniqueOwner && state.uniqueOwner != m_knownOwner) ||
+			(state.acknowledgedGeneration &&
+				(*state.acknowledgedGeneration != current.generation || state.ownerState != Protocol::OwnerState::Present ||
+				 state.managedGroupState != Protocol::ManagedGroupState::Exact || state.currentGroup != "Dotfiles Input Languages" ||
+				 state.observedMethod != expectedMethod || state.outcome != Protocol::Outcome::Converged)))
 			return;
+		if (state.ownerEpoch > m_knownOwnerEpoch) {
+			m_knownOwnerEpoch = state.ownerEpoch;
+			m_knownOwner = state.uniqueOwner;
+		} else if (state.ownerEpoch == m_knownOwnerEpoch && state.uniqueOwner) {
+			m_knownOwner = state.uniqueOwner;
+		}
 		m_snapshot.acceptedGeneration = state.acceptedGeneration;
 		m_snapshot.acknowledgedGeneration = state.acknowledgedGeneration;
 		m_snapshot.reportSequence = state.reportSequence;
+		m_snapshot.ownerState = state.ownerState;
+		m_snapshot.uniqueOwner = state.uniqueOwner;
 		m_snapshot.ownerEpoch = state.ownerEpoch;
 		m_snapshot.managedGroupState = state.managedGroupState;
+		m_snapshot.currentGroup = state.currentGroup;
 		m_snapshot.observedMethod = state.observedMethod;
 		m_snapshot.outcome = state.outcome;
 		m_snapshot.retryPhase = state.retryPhase;
@@ -381,6 +403,8 @@ class FcitxFollower::Impl {
 	mutable std::condition_variable m_wake;
 	mutable std::mutex m_snapshotMutex;
 	FollowerSnapshot m_snapshot;
+	std::optional<std::string> m_knownOwner;
+	uint64_t m_knownOwnerEpoch = 0;
 	std::optional<Clock::time_point> m_lastReport;
 	std::thread m_worker;
 };

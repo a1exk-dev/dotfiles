@@ -82,9 +82,10 @@ done
 grep -Fq 'active-artifact.lua' "$package_root/hyprland.lua"
 grep -Fq 'hl.plugin.load(artifact)' "$package_root/hyprland.lua"
 
-for source in Makefile integration.mk migration-baseline.json include/input-language-model.hpp include/fcitx-follower.hpp src/input-language-model.cpp src/fcitx-follower.cpp \
+for source in Makefile integration.mk migration-baseline.json include/input-language-model.hpp include/input-language-health.hpp include/fcitx-follower.hpp \
+		src/input-language-model.cpp src/input-language-health.cpp src/fcitx-follower.cpp \
 		src/integration-artifact-identity.cpp \
-		src/plugin.cpp tests/input-language-model-test.cpp tests/fcitx-follower-test.cpp \
+		src/plugin.cpp tests/input-language-model-test.cpp tests/input-language-health-test.cpp tests/fcitx-follower-test.cpp \
 		tests/input-language-integration-test.cpp \
 	tests/keyboard-layout-model-test.cjs widget/dotfiles.keyboard-layout/manifest.json widget/dotfiles.keyboard-layout/KeyboardLayout.qml \
 	widget/dotfiles.keyboard-layout/KeyboardLayoutModel.js; do
@@ -105,9 +106,9 @@ for source in include/fcitx-protocol.hpp include/fcitx-helper.hpp src/fcitx-prot
 done
 	expected_integration_identity_sources=(
 	integration.mk migration-baseline.json
-	include/fcitx-controller-cli.hpp include/fcitx-controller.hpp include/fcitx-follower.hpp include/fcitx-helper.hpp include/fcitx-protocol.hpp include/input-language-model.hpp
+	include/fcitx-controller-cli.hpp include/fcitx-controller.hpp include/fcitx-follower.hpp include/fcitx-helper.hpp include/fcitx-protocol.hpp include/input-language-health.hpp include/input-language-model.hpp
 	src/fcitx-controller-cli.cpp src/fcitx-controller.cpp src/fcitx-follower.cpp src/fcitx-helper-main.cpp src/fcitx-helper.cpp src/fcitx-protocol.cpp
-	src/fcitx-sd-bus-transport.cpp src/input-language-model.cpp src/integration-artifact-identity.cpp src/plugin.cpp
+	src/fcitx-sd-bus-transport.cpp src/input-language-health.cpp src/input-language-model.cpp src/integration-artifact-identity.cpp src/plugin.cpp
 )
 [[ $(printf '%s\n' "${INPUT_LANGUAGES_INTEGRATION_SOURCE_FILES[@]}") == "$(printf '%s\n' "${expected_integration_identity_sources[@]}")" ]] || {
 	printf 'Error: integration source identity inventory is not exact.\n' >&2
@@ -274,22 +275,34 @@ jq -e --slurpfile authority "$contract_root/authority.json" '
 jq -e '
 	.transport.maximum_packet_bytes == 1024 and .connection_retry_milliseconds == [100,200,400,800,1600,2000] and
 	.wire.enums.managed_group_state == {unknown:0,exact:1,missing:2,foreign:3} and
+	.wire.enums.owner_state == {absent:0,present:1,competing:2} and
 	.wire.enums.retry_phase == {none:0,poll:1,read:2,write:3,"read-before-retry":4,backoff:5} and
 	.wire.enums.outcome == {pending:0,converged:1,"idle-no-context":2,drift:3,unavailable:4,disconnected:5,"timeout-indeterminate":6,"method-error":7,"configuration-conflict":8,"unsupported-interface":9,"protocol-error":10,"helper-failed":11} and
 	[.frames.HELLO.fields[].name] == ["protocol_identity","build_id","source_id","authority_session","language","generation"] and
 	[.frames.READY.fields[].name] == ["protocol_identity","build_id","source_id","authority_session"] and
 	[.frames.TARGET.fields[].name] == ["authority_session","language","generation"] and
-	[.frames.STATE.fields[].name] == ["protocol_identity","build_id","authority_session","report_sequence","accepted_generation","acknowledged_generation","owner_epoch","managed_group_state","observed_method","outcome","retry_phase","diagnostic"] and
+	[.frames.STATE.fields[].name] == ["protocol_identity","build_id","authority_session","report_sequence","accepted_generation","acknowledged_generation","owner_state","unique_owner","owner_epoch","managed_group_state","current_group","observed_method","outcome","retry_phase","diagnostic"] and
 	[.frames.HEARTBEAT.fields[].name] == ["authority_session","report_sequence"] and
 	(.wire.scalars as $scalars | all(.frames[].fields[]; .scalar as $scalar | $scalars[$scalar] != null))
 ' "$contract_root/protocol.json" >/dev/null || { printf 'Error: Fcitx private protocol frame schema or fixed constants changed.\n' >&2; exit 1; }
 jq -e '
-	(["healthy","direct_xkb_health","build_id","source_id","compatibility_hash","canonical_group","physical_keyboards","excluded_keyboards","indicator_state"] - (.snapshot_fields | keys) | length) == 0 and
+	.snapshot_keys == ["healthy","direct_xkb_health","build_id","source_id","compatibility_hash","canonical_group","physical_keyboards","excluded_keyboards","authority_session","canonical_language","canonical_generation","physical_groups","physical_synchronized","helper_connection","helper_build_id","protocol_identity","offered_generation","accepted_generation","acknowledged_generation","report_sequence","report_age_milliseconds","coalesced_targets","fcitx_owner_state","fcitx_unique_owner","fcitx_owner_epoch","managed_group_state","current_group","observed_method","retry_phase","outcome","diagnostic","report_stale"] and
+	(.snapshot_fields | keys | sort) == (.snapshot_keys | sort) and (.snapshot_fields | has("indicator_state") | not) and
+	.snapshot_fields.physical_groups == {type:"array",items_ref:"evidence-v3.objects.device_group",unique_by:"device"} and
+	.snapshot_fields.report_stale == {type:"boolean"} and .snapshot_fields.diagnostic.maximum_utf8_bytes == 96 and
+	.snapshot_fields.canonical_generation.minimum == 1 and .snapshot_fields.offered_generation.minimum == 1 and
+	.snapshot_fields.accepted_generation.minimum == 1 and .snapshot_fields.acknowledged_generation.minimum == 1 and .snapshot_fields.report_sequence.minimum == 1 and
 	(.helper_outcomes | length) == 12 and (.outcome_runtime_state | keys | sort) == (.helper_outcomes | sort) and
 	.runtime_states == ["converged","pending","unavailable","stale","conflicting"] and
 	.heartbeat_maximum_interval_seconds == 1 and .maximum_fresh_report_age_seconds == 3 and
 	.classification.precedence == ["recovery-required","conflict","uninstalled","healthy","degraded"] and
-	.classification["idle-no-context_runtime"] == "pending" and .classification["healthy_requires"] == "converged"
+	.classification["idle-no-context_runtime"] == "pending" and .classification["healthy_requires"] == "converged" and
+	.cross_field_relationships == {canonical_language_matches_group:true,physical_keyboard_names_equal_group_devices:true,
+		healthy_equals_direct_xkb_health_and_physical_synchronized:true,physical_synchronized_requires_nonempty_groups_at_canonical_group:true,
+		offered_generation_equals_canonical_generation:true,connected_requires_matching_helper_build:true,
+		disconnected_failed_or_incompatible_requires_null_helper_build:true,report_sequence_age_and_stale_are_jointly_present:true,
+		owner_present_or_competing_requires_alias_and_positive_epoch:true,owner_absent_requires_null_alias:true,
+		acknowledgement_requires_current_generation_present_owner_exact_managed_current_group_converged_nonempty_matching_method_fresh_report:true}
 ' "$contract_root/health.json" >/dev/null || { printf 'Error: Fcitx health schema, outcome mapping, or classification constants changed.\n' >&2; exit 1; }
 jq -e '
 	. as $root |
@@ -299,6 +312,7 @@ jq -e '
 	all(.objects[].references[]; . as $ref | ($root.types | has($ref)) or ($root.objects | has($ref))) and
 	.version_2.exact_keys.active == ["version","operation","transaction_id","backup_transaction_id","source_id","build_id","artifact","artifact_sha256","widget_sha256","compatibility_hash","compiler","compiler_warning","dependencies","backup","backup_digest","backup_existed","widget_source","widget_section","widget_index","widget_entry","prior_stock_present","prior_stock_section","prior_stock_index","prior_stock_entry"] and
 	.objects.active.constants == {version:3,operation:"active"} and .objects.pending.constants.version == 3 and .objects.pending.enums.operation == ["apply","remove"] and
+	.types["input-group"] == {type:"integer",enum:[0,1]} and .objects.device_group == {keys:["device","group"],references:{device:"string",group:"input-group"}} and
 	.objects.recovery_required.constants == {version:3,state:"recovery-required"} and .objects.remove_cleanup.constants == {version:3,state:"remove-cleanup"} and
 	.raw_profile_restoration_allowed == false and .active_receipt_publish_order == "last"
 ' "$contract_root/evidence-v3.json" >/dev/null || { printf 'Error: Fcitx version-3 evidence schema or version-2 ancestry contract changed.\n' >&2; exit 1; }
@@ -314,6 +328,7 @@ grep -Fq "MAGIC = $(jq -r '.wire.header[] | select(.name == "magic").value' "$co
 	grep -Fq "IDENTITY = \"$protocol_identity\"" "$protocol_header" &&
 	grep -Fq 'enum class FrameType : uint16_t { Hello = 1, Ready = 2, Target = 3, State = 4, Heartbeat = 5 };' "$protocol_header" &&
 	grep -Fq 'enum class Language : uint8_t { Us = 0, Russian = 1 };' "$protocol_header" &&
+	grep -Fq 'enum class OwnerState : uint8_t { Absent = 0, Present = 1, Competing = 2 };' "$protocol_header" &&
 	grep -Fq 'enum class ManagedGroupState : uint8_t { Unknown = 0, Exact = 1, Missing = 2, Foreign = 3 };' "$protocol_header" &&
 	grep -Fq 'enum class RetryPhase : uint8_t { None = 0, Poll = 1, Read = 2, Write = 3, ReadBeforeRetry = 4, Backoff = 5 };' "$protocol_header" &&
 	[[ $protocol_outcome_enum == 'enumclassOutcome:uint8_t{Pending=0,Converged=1,IdleNoContext=2,Drift=3,Unavailable=4,Disconnected=5,TimeoutIndeterminate=6,MethodError=7,ConfigurationConflict=8,UnsupportedInterface=9,ProtocolError=10,HelperFailed=11,};' ]] &&

@@ -11,6 +11,7 @@ readonly INPUT_LANGUAGES_V3_RESTORE_LANGUAGE='Publish the operation-start langua
 INPUT_LANGUAGES_V3_RUNTIME_STATE=unavailable
 INPUT_LANGUAGES_V3_RUNTIME_REASON=missing-environment
 INPUT_LANGUAGES_V3_RUNTIME_ROOT=''
+INPUT_LANGUAGES_V3_DELIVERY_STATE=unavailable
 
 input_languages_v3_set_paths() {
 	local runtime_root=${1-${XDG_RUNTIME_DIR-}}
@@ -140,7 +141,7 @@ input_languages_v3_exact_keys() {
 
 input_languages_v3_semantics_valid() {
 	jq -e '
-		def exact($keys): (keys | sort) == ($keys | sort);
+		def exact($wanted): (keys | sort) == ($wanted | sort);
 		def item: exact(["method","layout_override","display_name","native_name","language_code","addon","configurable","variant","properties"]) and
 			([.method,.display_name,.native_name,.language_code,.addon] | all(type == "string" and length > 0)) and
 			(.layout_override == null or (.layout_override | type == "string")) and (.configurable | type == "boolean") and
@@ -166,6 +167,100 @@ input_languages_v3_semantics_valid() {
 	' <<<"$1" >/dev/null 2>&1
 }
 
+input_languages_v3_health_valid() {
+	local health=$1
+	jq -e '
+		def exact($wanted): (keys | sort) == ($wanted | sort);
+		def uint: type == "number" and . >= 0 and . <= 18446744073709551615 and floor == .;
+		def positive_uint: uint and . >= 1;
+		def nullable_positive_uint: . == null or positive_uint;
+		def digest: type == "string" and test("^[0-9a-f]{64}$");
+		def name_array: type == "array" and all(.[]; type == "string" and length > 0) and length == (unique | length);
+		def device_group: exact(["device","group"]) and (.device | type == "string" and length > 0) and (.group == 0 or .group == 1);
+		def expected_method: if .canonical_group == 0 then "keyboard-us" else "keyboard-ru" end;
+		. as $health |
+		exact(["healthy","direct_xkb_health","build_id","source_id","compatibility_hash","canonical_group","physical_keyboards","excluded_keyboards",
+			"authority_session","canonical_language","canonical_generation","physical_groups","physical_synchronized","helper_connection","helper_build_id",
+			"protocol_identity","offered_generation","accepted_generation","acknowledged_generation","report_sequence","report_age_milliseconds",
+			"coalesced_targets","fcitx_owner_state","fcitx_unique_owner","fcitx_owner_epoch","managed_group_state","current_group","observed_method",
+			"retry_phase","outcome","diagnostic","report_stale"]) and
+		(.healthy | type == "boolean") and (.direct_xkb_health | IN("healthy","unhealthy")) and
+		(.build_id | digest) and (.source_id | digest) and (.compatibility_hash | type == "string" and length > 0) and
+		(.canonical_group == 0 or .canonical_group == 1) and (.physical_keyboards | name_array) and (.excluded_keyboards | name_array) and
+		((.physical_keyboards - .excluded_keyboards | length) == (.physical_keyboards | length)) and
+		(.authority_session | test("^[0-9a-f]{32}$") and . != "00000000000000000000000000000000") and
+		((.canonical_group == 0 and .canonical_language == "US") or (.canonical_group == 1 and .canonical_language == "Russian")) and
+		(.canonical_generation | positive_uint) and (.physical_groups | type == "array" and all(.[]; device_group)) and
+		([.physical_groups[].device] == .physical_keyboards) and ([.physical_groups[].device] | length == (unique | length)) and
+		(.physical_synchronized | type == "boolean") and .healthy == .physical_synchronized and
+		(.direct_xkb_health == (if .healthy then "healthy" else "unhealthy" end)) and
+		(if .physical_synchronized then (.physical_groups | length > 0 and all(.[]; .group == $health.canonical_group)) else true end) and
+		(.helper_connection | IN("connected","disconnected","failed","incompatible")) and
+		(if .helper_connection == "connected" then .helper_build_id == .build_id else .helper_build_id == null end) and
+		.protocol_identity == "dotfiles-input-languages-fcitx-seqpacket-v1" and (.offered_generation | positive_uint) and
+		.offered_generation == .canonical_generation and (.accepted_generation | nullable_positive_uint) and
+		(.accepted_generation == null or .accepted_generation == .canonical_generation) and
+		(.acknowledged_generation | nullable_positive_uint) and (.coalesced_targets | uint) and
+		((.report_sequence == null and .report_age_milliseconds == null and .report_stale == true) or
+		 ((.report_sequence | positive_uint) and (.report_age_milliseconds | uint) and
+		  .report_stale == (.report_age_milliseconds > 3000))) and
+		(.fcitx_owner_state | IN("present","absent","competing")) and (.fcitx_owner_epoch | uint) and
+		(if .fcitx_owner_state == "absent" then .fcitx_unique_owner == null
+		 else (.fcitx_unique_owner | type == "string" and length > 0) and .fcitx_owner_epoch > 0 end) and
+		(.managed_group_state | IN("unknown","exact","missing","foreign")) and
+		(.current_group == null or (.current_group | type == "string" and length > 0)) and (.observed_method | type == "string") and
+		(.retry_phase | IN("none","poll","read","write","read-before-retry","backoff")) and
+		(.outcome | IN("pending","converged","idle-no-context","drift","unavailable","disconnected","timeout-indeterminate","method-error",
+			"configuration-conflict","unsupported-interface","protocol-error","helper-failed")) and
+		(.diagnostic | type == "string" and utf8bytelength <= 96) and (.report_stale | type == "boolean") and
+		(if .acknowledged_generation != null then
+			.acknowledged_generation == .canonical_generation and .acknowledged_generation == .accepted_generation and
+			.helper_connection == "connected" and .fcitx_owner_state == "present" and .fcitx_owner_epoch > 0 and
+			.managed_group_state == "exact" and .current_group == "Dotfiles Input Languages" and .observed_method == expected_method and
+			.outcome == "converged" and .report_stale == false
+		 else true end) and
+		(if .outcome == "idle-no-context" then .acknowledged_generation == null and .observed_method == "" else true end) and
+		(if .outcome == "converged" and .report_stale == false then .acknowledged_generation == .canonical_generation else true end)
+	' <<<"$health" >/dev/null 2>&1
+}
+
+input_languages_v3_health_matches_artifact() {
+	local health=$1 artifact=$2
+	jq -e --argjson health "$health" '
+		$health.build_id == .build_id and $health.source_id == .source_id and
+		$health.compatibility_hash == .compatibility_hash and $health.protocol_identity == .protocol_identity
+	' <<<"$artifact" >/dev/null 2>&1
+}
+
+input_languages_v3_health_matches_controller() {
+	local health=$1 controller=$2
+	jq -e --argjson health "$health" '
+		.snapshot.identity.unique_owner == $health.fcitx_unique_owner and
+		.snapshot.identity.owner_epoch == $health.fcitx_owner_epoch and
+		.snapshot.current_group == ($health.current_group // "") and
+		.snapshot.observed_method == $health.observed_method
+	' <<<"$controller" >/dev/null 2>&1
+}
+
+input_languages_v3_delivery_state() {
+	local health=$1
+	input_languages_v3_health_valid "$health" || { printf 'conflicting\n'; return; }
+	if jq -e '.report_stale == true and .report_sequence != null' <<<"$health" >/dev/null 2>&1; then
+		printf 'stale\n'
+	elif jq -e '.helper_connection == "incompatible" or .fcitx_owner_state == "competing" or
+		(.managed_group_state | IN("missing","foreign")) or (.outcome | IN("configuration-conflict","unsupported-interface","protocol-error"))' \
+		<<<"$health" >/dev/null 2>&1; then
+		printf 'conflicting\n'
+	elif jq -e '.helper_connection | IN("disconnected","failed") or .fcitx_owner_state == "absent" or
+		(.outcome | IN("unavailable","disconnected","helper-failed"))' <<<"$health" >/dev/null 2>&1; then
+		printf 'unavailable\n'
+	elif jq -e '.outcome == "converged" and .acknowledged_generation == .canonical_generation' <<<"$health" >/dev/null 2>&1; then
+		printf 'converged\n'
+	else
+		printf 'pending\n'
+	fi
+}
+
 input_languages_v3_hyprland_ownership_valid() {
 	jq -e '
 		(keys | sort) == (["tree_state","source_id","active_artifact_pointer","autoreload","canonical_language","physical_groups"] | sort) and
@@ -174,7 +269,7 @@ input_languages_v3_hyprland_ownership_valid() {
 		(.canonical_language | IN("US","Russian")) and
 		(.physical_groups | type == "array" and all(.[];
 			(keys | sort) == (["device","group"] | sort) and (.device | type == "string" and length > 0) and
-			(.group | type == "number" and . >= 0 and floor == .)))
+			(.group == 0 or .group == 1)))
 	' <<<"$1" >/dev/null 2>&1
 }
 
@@ -601,8 +696,14 @@ input_languages_v3_managed_group() {
 
 input_languages_v3_hyprland_ownership() {
 	local health=$1 language groups source pointer autoreload
-	language=$(jq -r 'if .canonical_group == 0 then "US" else "Russian" end' <<<"$health")
-	groups=$(jq -c '[.physical_keyboards[] as $device | {device:$device,group:.canonical_group}]' <<<"$health") || return 1
+	if jq -e 'has("direct_xkb_health")' <<<"$health" >/dev/null 2>&1; then
+		input_languages_v3_health_valid "$health" || return 1
+		language=$(jq -r .canonical_language <<<"$health") || return 1
+		groups=$(jq -c .physical_groups <<<"$health") || return 1
+	else
+		language=$(jq -r 'if .canonical_group == 0 then "US" else "Russian" end' <<<"$health") || return 1
+		groups=$(jq -c '[.physical_keyboards[] as $device | {device:$device,group:.canonical_group}]' <<<"$health") || return 1
+	fi
 	source=$(jq -r '.source_id // empty' <<<"$health")
 	pointer=$(cut -d'"' -f2 "$INPUT_LANGUAGES_POINTER" 2>/dev/null || true)
 	autoreload=$(input_languages_current_autoreload) || return 1
@@ -616,6 +717,24 @@ input_languages_v3_widget_ownership() {
 		--argjson index "${INPUT_LANGUAGES_WIDGET_INDEX:-0}" --argjson entry "$INPUT_LANGUAGES_WIDGET_ENTRY" --argjson prior "$prior" '
 		{source:$source,source_digest:$digest,live_link:$live,section:$section,index:$index,entry:$entry,
 		prior_stock_present:$prior.prior_stock_present,prior_stock_section:$prior.prior_stock_section,prior_stock_index:$prior.prior_stock_index,prior_stock_entry:$prior.prior_stock_entry}'
+}
+
+input_languages_v3_indicator_valid() {
+	local widget=$1 health=$2 source digest
+	input_languages_v3_health_valid "$health" || return 1
+	input_languages_v3_widget_ownership_valid "$widget" || return 1
+	input_languages_widget_matches true "$(jq -r .section <<<"$widget")" "$(jq -r .index <<<"$widget")" "$(jq -c .entry <<<"$widget")" || return 1
+	input_languages_custom_widget_at_target || return 1
+	source=$(jq -r .source <<<"$widget") || return 1
+	digest=$(jq -r .source_digest <<<"$widget") || return 1
+	input_languages_widget_link_matches "$source" || return 1
+	input_languages_widget_tree_valid "$source" 555 444 || return 1
+	[[ $(input_languages_widget_digest "$source") == "$digest" ]] || return 1
+	[[ -z $INPUT_LANGUAGES_COMPETING_CLONES ]] || return 1
+	input_languages_custom_plugin_discovered true || return 1
+	INPUT_LANGUAGES_PLUGIN_HEALTH=$health
+	INPUT_LANGUAGES_PLUGIN_HEALTH_VALID=true
+	input_languages_read_indicator_health
 }
 
 input_languages_v3_restoration() {
@@ -739,12 +858,16 @@ input_languages_exact_noop_v3() {
 		$INPUT_LANGUAGES_PENDING_STATE == absent && $INPUT_LANGUAGES_RECOVERY_STATE == absent && $INPUT_LANGUAGES_CLEANUP_STATE == absent ]] || return 1
 	[[ $(jq -r .version "$INPUT_LANGUAGES_ACTIVE") == 3 ]] || return 1
 	input_languages_validate_active_file_v3 "$INPUT_LANGUAGES_ACTIVE" artifact || return 1
-	local artifact_root helper controller managed expected helper_current widget errors source
+	local artifact_root helper controller managed expected helper_current widget errors source artifact
 	artifact_root=$(jq -r .integration_artifact.artifact "$INPUT_LANGUAGES_ACTIVE"); artifact_root=${artifact_root%/*}
 	helper=$artifact_root/input-languages-fcitx-helper
 	input_languages_v3_controller_inspect "$helper" || return 1
 	controller=$INPUT_LANGUAGES_V3_CONTROLLER_RESPONSE
 	input_languages_v3_controller_supported "$controller" || return 1
+	artifact=$(jq -c .integration_artifact "$INPUT_LANGUAGES_ACTIVE") || return 1
+	input_languages_v3_health_valid "$INPUT_LANGUAGES_PLUGIN_HEALTH" || return 1
+	input_languages_v3_health_matches_artifact "$INPUT_LANGUAGES_PLUGIN_HEALTH" "$artifact" || return 1
+	input_languages_v3_health_matches_controller "$INPUT_LANGUAGES_PLUGIN_HEALTH" "$controller" || return 1
 	managed=$(input_languages_v3_observed_managed_group "$controller") || return 1
 	expected=$(jq -c .managed_group "$INPUT_LANGUAGES_ACTIVE") || return 1
 	input_languages_v3_managed_group_owned "$managed" "$expected" || return 1
@@ -754,11 +877,7 @@ input_languages_exact_noop_v3() {
 	input_languages_v3_helper_ownership_matches "$helper_current" "$(jq -c .helper_ownership "$INPUT_LANGUAGES_ACTIVE")" || return 1
 	input_languages_pointer_matches "$(jq -r .integration_artifact.artifact "$INPUT_LANGUAGES_ACTIVE")" || return 1
 	widget=$(jq -c .widget_ownership "$INPUT_LANGUAGES_ACTIVE") || return 1
-	input_languages_widget_matches true "$(jq -r .section <<<"$widget")" "$(jq -r .index <<<"$widget")" "$(jq -c .entry <<<"$widget")" || return 1
-	input_languages_widget_link_matches "$(jq -r .source <<<"$widget")" || return 1
-	[[ $INPUT_LANGUAGES_WIDGET_LINK_STATE == exact && -z $INPUT_LANGUAGES_COMPETING_CLONES ]] || return 1
-	input_languages_custom_plugin_discovered || return 1
-	jq -e '.indicator_state == "healthy"' <<<"$INPUT_LANGUAGES_PLUGIN_HEALTH" >/dev/null 2>&1 || return 1
+	input_languages_v3_indicator_valid "$widget" "$INPUT_LANGUAGES_PLUGIN_HEALTH" || return 1
 	source=$(input_languages_integration_source_identity) || return 1
 	[[ $source == "$(jq -r .integration_artifact.source_id "$INPUT_LANGUAGES_ACTIVE")" ]] || return 1
 	jq -e --arg build "$(jq -r .integration_artifact.build_id "$INPUT_LANGUAGES_ACTIVE")" --arg protocol "$(jq -r .integration_artifact.protocol_identity "$INPUT_LANGUAGES_ACTIVE")" '
@@ -895,7 +1014,7 @@ input_languages_v3_absent_helper_ownership() {
 }
 
 input_languages_v3_remove_state_exact() {
-	local active=$1 controller managed expected helper_current helper_expected artifact health widget language runtime_root
+	local active=$1 controller managed expected helper_current helper_expected artifact health widget language runtime_root integration_artifact
 	input_languages_validate_active_file_v3 "$active" artifact || return 1
 	artifact=$(jq -r .integration_artifact.artifact "$active")
 	input_languages_pointer_matches "$artifact" || return 1
@@ -912,17 +1031,23 @@ input_languages_v3_remove_state_exact() {
 	input_languages_v3_controller_inspect "${artifact%/*}/input-languages-fcitx-helper" || return 1
 	controller=$INPUT_LANGUAGES_V3_CONTROLLER_RESPONSE
 	input_languages_v3_controller_restoration_supported "$controller" || return 1
+	integration_artifact=$(jq -c .integration_artifact "$active") || return 1
+	health=$INPUT_LANGUAGES_PLUGIN_HEALTH
+	input_languages_v3_health_valid "$health" || return 1
+	input_languages_v3_health_matches_artifact "$health" "$integration_artifact" || return 1
+	input_languages_v3_health_matches_controller "$health" "$controller" || return 1
 	managed=$(input_languages_v3_observed_managed_group "$controller") || return 1
 	expected=$(jq -c .managed_group "$active") || return 1
 	input_languages_v3_managed_group_owned "$managed" "$expected" || return 1
 	[[ $(jq -r .snapshot.current_group <<<"$controller") == "$INPUT_LANGUAGES_V3_MANAGED_GROUP" ]] || return 1
 	input_languages_v3_remove_anchors_valid "$controller" "$(jq -c .fcitx_before "$active")" || return 1
-	health=$INPUT_LANGUAGES_PLUGIN_HEALTH
+	widget=$(jq -c .widget_ownership "$active") || return 1
+	input_languages_v3_indicator_valid "$widget" "$health" || return 1
 	language=$(jq -r .hyprland_ownership.canonical_language "$active")
 	jq -e --arg build "$(jq -r .integration_artifact.build_id "$active")" --arg source "$(jq -r .integration_artifact.source_id "$active")" \
 		--arg compatibility "$(jq -r .integration_artifact.compatibility_hash "$active")" --arg language "$language" '
 		.build_id == $build and .source_id == $source and .compatibility_hash == $compatibility and
-		.direct_xkb_health == "healthy" and .indicator_state == "healthy" and
+		.direct_xkb_health == "healthy" and
 		((.canonical_group == 0 and $language == "US") or (.canonical_group == 1 and $language == "Russian"))
 	' <<<"$health" >/dev/null 2>&1
 }
@@ -947,10 +1072,12 @@ input_languages_v3_verify_apply_rollback() {
 }
 
 input_languages_v3_wait_for_health() {
-	local mode=$1 build=$2 protocol=$3 attempt health
+	local mode=$1 build=$2 protocol=$3 attempt health artifact
+	artifact=$(input_languages_v3_integration_artifact "$INPUT_LANGUAGES_INTEGRATION_ARTIFACT_DIR") || return 1
 	for ((attempt = 0; attempt < 40; attempt++)); do
 		health=$(hyprctl -j inputlanguages 2>/dev/null || true)
-		if jq -e --arg mode "$mode" --arg build "$build" --arg protocol "$protocol" '
+		if input_languages_v3_health_valid "$health" && input_languages_v3_health_matches_artifact "$health" "$artifact" &&
+			jq -e --arg mode "$mode" --arg build "$build" --arg protocol "$protocol" '
 			.direct_xkb_health == "healthy" and .helper_connection == "connected" and
 			.helper_build_id == $build and .protocol_identity == $protocol and .managed_group_state == "exact" and .report_stale == false and
 			(if $mode == "ready" then .accepted_generation == .canonical_generation and (.outcome | IN("converged","pending","idle-no-context"))
@@ -969,6 +1096,7 @@ input_languages_v3_publish_active() {
 	artifact=$(input_languages_v3_integration_artifact "$INPUT_LANGUAGES_INTEGRATION_ARTIFACT_DIR") || return 1
 	helper=$INPUT_LANGUAGES_INTEGRATION_HELPER
 	input_languages_v3_controller_inspect "$helper" || return 1
+	input_languages_v3_controller_supported "$INPUT_LANGUAGES_V3_CONTROLLER_RESPONSE" || return 1
 	fcitx=$(jq -c .fcitx_before "$pending") || return 1
 	managed=$(input_languages_v3_managed_group "$(jq -r '.snapshot.groups[] | select(.name == "Dotfiles Input Languages").default_im' <<<"$INPUT_LANGUAGES_V3_CONTROLLER_RESPONSE")") || return 1
 	runtime_root=$(input_languages_v3_runtime_root_from_ownership "$(jq -c .helper_target "$pending")") || return 1
@@ -976,11 +1104,15 @@ input_languages_v3_publish_active() {
 	helper_target=$(jq -c .helper_target "$pending") || return 1
 	input_languages_v3_runtime_ownership_identical "$helper_ownership" "$helper_target" || return 1
 	health=$(hyprctl -j inputlanguages) || return 1
+	input_languages_v3_health_valid "$health" || return 1
+	input_languages_v3_health_matches_artifact "$health" "$artifact" || return 1
+	input_languages_v3_health_matches_controller "$health" "$INPUT_LANGUAGES_V3_CONTROLLER_RESPONSE" || return 1
 	input_languages_inspect_tree
 	hypr=$(input_languages_v3_hyprland_ownership "$health") || return 1
 	input_languages_inspect_widget
 	prior=$(jq -c '.widget_before | {prior_stock_present,prior_stock_section,prior_stock_index,prior_stock_entry}' "$pending") || return 1
 	widget=$(input_languages_v3_widget_ownership "$INPUT_LANGUAGES_INTEGRATION_ARTIFACT_DIR/$INPUT_LANGUAGES_WIDGET" "$(jq -r .widget_sha256 "$metadata")" "$prior") || return 1
+	input_languages_v3_indicator_valid "$widget" "$health" || return 1
 	content=$(jq -cn --arg transaction "$transaction" --argjson direct "$(jq -c .direct_ancestry "$pending")" --argjson artifact "$artifact" \
 		--argjson fcitx "$fcitx" --argjson managed "$managed" --argjson helper "$helper_ownership" --argjson hypr "$hypr" --argjson widget "$widget" \
 		--argjson operation_start "$(jq -c .operation_start "$pending")" --argjson restoration "$(jq -c .restoration "$pending")" '

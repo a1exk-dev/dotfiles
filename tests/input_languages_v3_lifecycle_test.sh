@@ -4,6 +4,50 @@ set -u
 
 source "$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)/support/test_helper.sh"
 
+health_contract_rejects_inconsistent_snapshots() (
+	set -euo pipefail
+	REPOSITORY_ROOT=$SOURCE_REPO
+	source "$SOURCE_REPO/lib/dotfiles/core.sh"
+	source "$SOURCE_REPO/lib/dotfiles/input-languages.sh"
+	local health idle unavailable stale conflicting mutation
+	health=$(jq -cn '{healthy:true,direct_xkb_health:"healthy",build_id:("b"*64),source_id:("c"*64),compatibility_hash:"stack",canonical_group:1,
+		physical_keyboards:["keyboard-a"],excluded_keyboards:[],authority_session:("a"*32),canonical_language:"Russian",canonical_generation:8,
+		physical_groups:[{device:"keyboard-a",group:1}],physical_synchronized:true,helper_connection:"connected",helper_build_id:("b"*64),
+		protocol_identity:"dotfiles-input-languages-fcitx-seqpacket-v1",offered_generation:8,accepted_generation:8,acknowledged_generation:8,
+		report_sequence:12,report_age_milliseconds:25,coalesced_targets:0,fcitx_owner_state:"present",fcitx_unique_owner:":1.42",fcitx_owner_epoch:3,
+		managed_group_state:"exact",current_group:"Dotfiles Input Languages",observed_method:"keyboard-ru",retry_phase:"none",outcome:"converged",diagnostic:"",report_stale:false}')
+	input_languages_v3_health_valid "$health" || return 1
+	[[ $(input_languages_v3_delivery_state "$health") == converged ]] || return 1
+
+	idle=$(jq '.acknowledged_generation=null | .observed_method="" | .outcome="idle-no-context"' <<<"$health")
+	input_languages_v3_health_valid "$idle" || return 1
+	[[ $(input_languages_v3_delivery_state "$idle") == pending ]] || return 1
+	unavailable=$(jq '.helper_connection="disconnected" | .helper_build_id=null | .accepted_generation=null | .acknowledged_generation=null |
+		.report_sequence=null | .report_age_milliseconds=null | .fcitx_owner_state="absent" | .fcitx_unique_owner=null | .fcitx_owner_epoch=4 |
+		.managed_group_state="unknown" | .current_group=null | .observed_method="" | .outcome="disconnected" | .report_stale=true' <<<"$health")
+	input_languages_v3_health_valid "$unavailable" || return 1
+	[[ $(input_languages_v3_delivery_state "$unavailable") == unavailable ]] || return 1
+	stale=$(jq '.acknowledged_generation=null | .report_age_milliseconds=3001 | .report_stale=true' <<<"$health")
+	input_languages_v3_health_valid "$stale" || return 1
+	[[ $(input_languages_v3_delivery_state "$stale") == stale ]] || return 1
+	conflicting=$(jq '.acknowledged_generation=null | .fcitx_owner_state="competing" | .outcome="unsupported-interface"' <<<"$health")
+	input_languages_v3_health_valid "$conflicting" || return 1
+	[[ $(input_languages_v3_delivery_state "$conflicting") == conflicting ]] || return 1
+
+	for mutation in \
+		'del(.report_stale)' \
+		'.indicator_state="healthy"' \
+		'.physical_groups=[{name:"keyboard-a",group:1}]' \
+		'.canonical_language="US"' \
+		'.acknowledged_generation=7' \
+		'.canonical_generation=18446744073709551616 | .offered_generation=18446744073709551616 | .accepted_generation=18446744073709551616 | .acknowledged_generation=18446744073709551616' \
+		'.fcitx_unique_owner=":1.99" | .fcitx_owner_state="absent"' \
+		'.report_age_milliseconds=3001 | .report_stale=false' \
+		'.diagnostic=("x"*97)'; do
+		if input_languages_v3_health_valid "$(jq "$mutation" <<<"$health")"; then return 1; fi
+	done
+)
+
 runtime_contract_classifies_without_mutation() (
 	set -euo pipefail
 	local root runtime private socket before test_runtime_path test_private_path test_socket_path socket_pid=''
@@ -279,13 +323,19 @@ direct_v2_expands_to_v3() (
 				group=$(<"$root/group")
 				if [[ $pointer == *'/integration-test/input-languages.so' ]]; then
 					if [[ $lifecycle_mode == idle ]]; then method=''; else method=$([[ $group == 0 ]] && printf keyboard-us || printf keyboard-ru); fi
-					jq -n --argjson group "$group" --arg method "$method" --arg mode "$lifecycle_mode" '{healthy:($mode != "idle"),direct_xkb_health:"healthy",build_id:("b"*64),source_id:("c"*64),compatibility_hash:"test-compat",canonical_group:$group,physical_keyboards:["test-keyboard"],excluded_keyboards:[],indicator_state:"healthy",authority_session:("a"*32),canonical_language:(if $group == 0 then "US" else "Russian" end),canonical_generation:2,physical_groups:[{device:"test-keyboard",group:$group}],physical_synchronized:true,helper_connection:"connected",helper_build_id:("b"*64),protocol_identity:"dotfiles-input-languages-fcitx-seqpacket-v1",offered_generation:2,accepted_generation:2,acknowledged_generation:(if $mode == "idle" then 0 else 2 end),report_sequence:4,report_age_milliseconds:10,coalesced_targets:0,fcitx_owner_epoch:1,managed_group_state:"exact",observed_method:$method,retry_phase:"none",outcome:(if $mode == "idle" then "idle-no-context" else "converged" end),diagnostic:"",report_stale:false}'
+					jq -n --argjson group "$group" --arg method "$method" --arg mode "$lifecycle_mode" '{healthy:true,direct_xkb_health:"healthy",build_id:("b"*64),source_id:("c"*64),compatibility_hash:"test-compat",canonical_group:$group,physical_keyboards:["test-keyboard"],excluded_keyboards:[],authority_session:("a"*32),canonical_language:(if $group == 0 then "US" else "Russian" end),canonical_generation:2,physical_groups:[{device:"test-keyboard",group:$group}],physical_synchronized:true,helper_connection:"connected",helper_build_id:("b"*64),protocol_identity:"dotfiles-input-languages-fcitx-seqpacket-v1",offered_generation:2,accepted_generation:2,acknowledged_generation:(if $mode == "idle" then null else 2 end),report_sequence:4,report_age_milliseconds:10,coalesced_targets:0,fcitx_owner_state:"present",fcitx_unique_owner:":1.42",fcitx_owner_epoch:1,managed_group_state:"exact",current_group:"Dotfiles Input Languages",observed_method:$method,retry_phase:"none",outcome:(if $mode == "idle" then "idle-no-context" else "converged" end),diagnostic:"",report_stale:false}'
 				else
 					jq -n --argjson group "$group" --arg build "$build" --arg source "$source" '{healthy:true,build_id:$build,source_id:$source,compatibility_hash:"test-compat",canonical_group:$group,physical_keyboards:["test-keyboard"],excluded_keyboards:[]}'
 				fi ;;
 			'-j devices') jq -n --argjson group "$(<"$root/group")" '{keyboards:[{name:"test-keyboard",layout:"us,ru",variant:",",active_layout_index:$group,active_keymap:(if $group == 0 then "English (US)" else "Russian" end)}]}' ;;
-			'-j inputlanguagesreset 0') printf '0\n' >"$root/group"; printf '%s\n' '{"ok":true,"canonical_group":0}' ;;
-			'-j inputlanguagesreset 1') printf '1\n' >"$root/group"; printf '%s\n' '{"ok":true,"canonical_group":1}' ;;
+			'-j inputlanguagesreset 0')
+				printf '0\n' >"$root/group"
+				if [[ $lifecycle_mode != idle ]]; then jq '.observed_method="keyboard-us"' "$root/controller.json" >"$root/controller.next" && mv "$root/controller.next" "$root/controller.json"; fi
+				printf '%s\n' '{"ok":true,"canonical_group":0}' ;;
+			'-j inputlanguagesreset 1')
+				printf '1\n' >"$root/group"
+				if [[ $lifecycle_mode != idle ]]; then jq '.observed_method="keyboard-ru"' "$root/controller.json" >"$root/controller.next" && mv "$root/controller.next" "$root/controller.json"; fi
+				printf '%s\n' '{"ok":true,"canonical_group":1}' ;;
 			'-j getoption misc:disable_autoreload') jq -n --argjson value "$(<"$root/autoreload")" '{bool:$value}' ;;
 			'-j plugin list')
 				if [[ $(<"$root/plugin-state") == active ]]; then printf '%s\n' '[{"name":"Input Languages","author":"dotfiles","version":"test"}]'; else printf '%s\n' '[]'; fi
@@ -310,6 +360,7 @@ direct_v2_expands_to_v3() (
 	input_languages_integration_dependency_identity() { printf 'test-dependencies\n'; }
 	input_languages_linker_identity() { printf 'test-linker\n'; }
 	input_languages_build_integration_artifact() {
+		local widget_sha
 		INPUT_LANGUAGES_INTEGRATION_SOURCE_ID=$(printf c%.0s {1..64})
 		INPUT_LANGUAGES_INTEGRATION_BUILD_ID=$(printf b%.0s {1..64})
 		INPUT_LANGUAGES_INTEGRATION_ARTIFACT_DIR=$XDG_DATA_HOME/dotfiles/input-languages/plugins/integration-test
@@ -321,7 +372,8 @@ direct_v2_expands_to_v3() (
 		cp -a "$SOURCE_REPO/plugins/input-languages/widget/dotfiles.keyboard-layout" "$INPUT_LANGUAGES_INTEGRATION_ARTIFACT_DIR/dotfiles.keyboard-layout"
 		printf 'socket\n' >"$INPUT_LANGUAGES_INTEGRATION_ARTIFACT_DIR/systemd/dotfiles-input-languages-fcitx.socket"
 		printf 'service\n' >"$INPUT_LANGUAGES_INTEGRATION_ARTIFACT_DIR/systemd/dotfiles-input-languages-fcitx.service"
-		jq -n '{version:1,integration:"dotfiles-input-languages-fcitx-v1",source_id:("c"*64),build_id:("b"*64),compatibility_hash:"test-compat",compiler:"test-compiler",linker:"test-linker",dependencies:"test-dependencies",artifact_sha256:("d"*64),helper_sha256:("e"*64),widget_sha256:("f"*64),protocol_identity:"dotfiles-input-languages-fcitx-seqpacket-v1",controller_identity:"dotfiles-input-languages-fcitx-controller-v1",health_identity:"dotfiles-input-languages-health-v1",unit_identity:"dotfiles-input-languages-fcitx-systemd-v1",inventory:["test"]}' >"$INPUT_LANGUAGES_INTEGRATION_ARTIFACT_DIR/build.json"
+		widget_sha=$(input_languages_widget_digest "$INPUT_LANGUAGES_INTEGRATION_ARTIFACT_DIR/dotfiles.keyboard-layout")
+		jq -n --arg widget_sha "$widget_sha" '{version:1,integration:"dotfiles-input-languages-fcitx-v1",source_id:("c"*64),build_id:("b"*64),compatibility_hash:"test-compat",compiler:"test-compiler",linker:"test-linker",dependencies:"test-dependencies",artifact_sha256:("d"*64),helper_sha256:("e"*64),widget_sha256:$widget_sha,protocol_identity:"dotfiles-input-languages-fcitx-seqpacket-v1",controller_identity:"dotfiles-input-languages-fcitx-controller-v1",health_identity:"dotfiles-input-languages-health-v1",unit_identity:"dotfiles-input-languages-fcitx-systemd-v1",inventory:["test"]}' >"$INPUT_LANGUAGES_INTEGRATION_ARTIFACT_DIR/build.json"
 		chmod 555 "$INPUT_LANGUAGES_INTEGRATION_ARTIFACT_DIR/dotfiles.keyboard-layout"
 		chmod 444 "$INPUT_LANGUAGES_INTEGRATION_ARTIFACT_DIR/dotfiles.keyboard-layout"/*
 	}
@@ -661,7 +713,7 @@ direct_v2_expands_to_v3() (
 	ancestry=$(jq -r .direct_ancestry.receipt "$INPUT_LANGUAGES_ACTIVE")
 	cmp -s "$ancestry" "$root/original-v2.json"
 	[[ $(sha256sum "$ancestry" | cut -d' ' -f1) == "$(jq -r .direct_ancestry.receipt_digest "$INPUT_LANGUAGES_ACTIVE")" ]]
-	jq -e --arg method "$([[ $lifecycle_mode == idle ]] && printf '' || printf keyboard-ru)" '[.groups[].name] == ["Dotfiles Input Languages","Default"] and .current_group == "Dotfiles Input Languages" and .observed_method == $method' "$root/controller.json" >/dev/null
+	jq -e --arg method "$([[ $lifecycle_mode == idle ]] && printf '' || printf keyboard-us)" '[.groups[].name] == ["Dotfiles Input Languages","Default"] and .current_group == "Dotfiles Input Languages" and .observed_method == $method' "$root/controller.json" >/dev/null
 	[[ -L $XDG_CONFIG_HOME/systemd/user/dotfiles-input-languages-fcitx.socket ]]
 	[[ -L $XDG_CONFIG_HOME/systemd/user/dotfiles-input-languages-fcitx.service ]]
 	[[ ! -e $INPUT_LANGUAGES_PENDING ]]
@@ -778,7 +830,7 @@ direct_v2_expands_to_v3() (
 			cmp -s "$INPUT_LANGUAGES_ACTIVE" "$installed_active" || return 1
 			[[ ! -e $INPUT_LANGUAGES_PENDING && ! -e $INPUT_LANGUAGES_RECOVERY ]] || return 1
 			input_languages_validate_active_file_v3 "$INPUT_LANGUAGES_ACTIVE" artifact || return 1
-			jq -e '[.groups[].name] == ["Dotfiles Input Languages","Default"] and .current_group == "Dotfiles Input Languages" and .observed_method == "keyboard-ru"' "$root/controller.json" >/dev/null || return 1
+			jq -e '[.groups[].name] == ["Dotfiles Input Languages","Default"] and .current_group == "Dotfiles Input Languages" and .observed_method == "keyboard-us"' "$root/controller.json" >/dev/null || return 1
 			[[ -L $XDG_CONFIG_HOME/systemd/user/dotfiles-input-languages-fcitx.socket && -L $XDG_CONFIG_HOME/systemd/user/dotfiles-input-languages-fcitx.service ]] || return 1
 			[[ -L $XDG_CONFIG_HOME/omarchy/plugins/dotfiles.keyboard-layout && -f $XDG_DATA_HOME/dotfiles/input-languages/active-artifact.lua ]] || return 1
 			[[ $(<"$root/plugin-state") == active && $(<"$root/group") == 0 && $(<"$root/autoreload") == false ]] || return 1
@@ -868,6 +920,7 @@ run_test direct_v3_remove_uses_saved_runtime 'Remove uses the receipt-saved runt
 run_test direct_v3_noop_rejects_invalid_runtime 'a proposed exact no-op rejects an invalid current runtime without mutation'
 run_test direct_v3_status_classifies_runtime_read_only 'Status classifies runtime conflict without lifecycle mutation'
 run_test direct_v3_replaced_runtime_requires_recovery 'Remove retains foreign runtime state and records recovery after post-quiescence replacement'
+run_test health_contract_rejects_inconsistent_snapshots 'version-3 health accepts only exact internally consistent cached snapshots'
 run_test runtime_contract_classifies_without_mutation 'runtime roots and private endpoints are classified without mutation'
 run_test runtime_cleanup_preserves_replaced_private_directory 'runtime cleanup preserves a same-type private directory that replaced the receipt-owned endpoint'
 

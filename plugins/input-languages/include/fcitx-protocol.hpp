@@ -23,6 +23,7 @@ using Session = std::array<std::byte, 16>;
 
 enum class FrameType : uint16_t { Hello = 1, Ready = 2, Target = 3, State = 4, Heartbeat = 5 };
 enum class Language : uint8_t { Us = 0, Russian = 1 };
+enum class OwnerState : uint8_t { Absent = 0, Present = 1, Competing = 2 };
 enum class ManagedGroupState : uint8_t { Unknown = 0, Exact = 1, Missing = 2, Foreign = 3 };
 enum class Outcome : uint8_t {
 	Pending = 0,
@@ -72,8 +73,11 @@ struct State {
 	uint64_t reportSequence = 0;
 	uint64_t acceptedGeneration = 0;
 	std::optional<uint64_t> acknowledgedGeneration;
+	OwnerState ownerState = OwnerState::Absent;
+	std::optional<std::string> uniqueOwner;
 	uint64_t ownerEpoch = 0;
 	ManagedGroupState managedGroupState = ManagedGroupState::Unknown;
+	std::optional<std::string> currentGroup;
 	std::string observedMethod;
 	Outcome outcome = Outcome::Pending;
 	RetryPhase retryPhase = RetryPhase::None;

@@ -30,7 +30,7 @@ integration-artifact:
 		-DINPUT_LANGUAGES_UNIT_ID='"$(UNIT_ID)"' \
 		-DINPUT_LANGUAGES_ARTIFACT_ROLE='"plugin"' \
 		-DINPUT_LANGUAGES_FCITX_COORDINATION \
-		src/plugin.cpp src/input-language-model.cpp src/fcitx-follower.cpp src/fcitx-protocol.cpp src/integration-artifact-identity.cpp \
+		src/plugin.cpp src/input-language-model.cpp src/input-language-health.cpp src/fcitx-follower.cpp src/fcitx-protocol.cpp src/integration-artifact-identity.cpp \
 		-o "$(OUTPUT_DIR)/input-languages.so" $(HELPER_FLAGS) $$(pkg-config --cflags --libs $(PLUGIN_PACKAGES))
 	$(CXX) $(CPPFLAGS) $(CXXFLAGS) \
 		-DINPUT_LANGUAGES_BUILD_ID='"$(BUILD_ID)"' \

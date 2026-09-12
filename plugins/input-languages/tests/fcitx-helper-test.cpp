@@ -305,7 +305,9 @@ void codecTests() {
 		Ready{.protocolIdentity = IDENTITY, .buildId = std::string(BUILD), .sourceId = std::string(SOURCE), .authoritySession = authority},
 		Target{.authoritySession = authority, .language = Language::Us, .generation = 10},
 		State{.protocolIdentity = IDENTITY, .buildId = std::string(BUILD), .authoritySession = authority, .reportSequence = 4,
-			.acceptedGeneration = 10, .acknowledgedGeneration = 10, .ownerEpoch = 2, .managedGroupState = ManagedGroupState::Exact,
+			.acceptedGeneration = 10, .acknowledgedGeneration = 10, .ownerState = OwnerState::Present,
+			.uniqueOwner = ":1.42", .ownerEpoch = 2, .managedGroupState = ManagedGroupState::Exact,
+			.currentGroup = MANAGED_GROUP_NAME,
 			.observedMethod = RUSSIAN_METHOD, .outcome = Protocol::Outcome::Converged, .retryPhase = RetryPhase::None, .diagnostic = "ok"},
 		Heartbeat{.authoritySession = authority, .reportSequence = 5},
 	};
@@ -336,6 +338,16 @@ void codecTests() {
 		.authoritySession = authority, .language = Language::Us, .generation = 1}), "overlong identities are rejected");
 	require(!encode(Target{.authoritySession = {}, .language = Language::Us, .generation = 1}), "an empty authority nonce is rejected");
 	require(!encode(Target{.authoritySession = authority, .language = static_cast<Language>(2), .generation = 1}), "out-of-range enums are rejected");
+	require(!encode(State{.protocolIdentity = IDENTITY, .buildId = std::string(BUILD), .authoritySession = authority,
+		.reportSequence = 1, .acceptedGeneration = 1, .acknowledgedGeneration = 1, .ownerState = OwnerState::Absent,
+		.uniqueOwner = {}, .ownerEpoch = 1, .managedGroupState = ManagedGroupState::Exact, .currentGroup = MANAGED_GROUP_NAME,
+		.observedMethod = US_METHOD, .outcome = Protocol::Outcome::Converged, .diagnostic = {}}),
+		"an acknowledgement without a present owner is rejected");
+	require(!encode(State{.protocolIdentity = IDENTITY, .buildId = std::string(BUILD), .authoritySession = authority,
+		.reportSequence = 1, .acceptedGeneration = 1, .acknowledgedGeneration = 1, .ownerState = OwnerState::Present,
+		.uniqueOwner = ":1.42", .ownerEpoch = 1, .managedGroupState = ManagedGroupState::Exact,
+		.currentGroup = MANAGED_GROUP_NAME, .observedMethod = US_METHOD, .outcome = Protocol::Outcome::Pending, .diagnostic = {}}),
+		"an acknowledgement with a non-converged outcome is rejected");
 	std::cout << "ok - bounded codec accepts only exact frozen frames\n";
 }
 
@@ -408,7 +420,9 @@ void handshakeHeartbeatAndSecondAuthority() {
 	fixture.start(transport, true);
 	fixture.connectAndHello();
 	const auto converged = fixture.waitState([](const State& state) { return state.outcome == Protocol::Outcome::Converged; });
-	require(converged.acknowledgedGeneration == 1 && converged.observedMethod == US_METHOD, "matching nonempty readback acknowledges the HELLO target");
+	require(converged.acknowledgedGeneration == 1 && converged.ownerState == OwnerState::Present && converged.uniqueOwner == ":1.42" &&
+		converged.ownerEpoch == 1 && converged.currentGroup == MANAGED_GROUP_NAME && converged.observedMethod == US_METHOD,
+		"matching owner, group, and method readback acknowledges the HELLO target");
 	uint64_t sequence = converged.reportSequence;
 	bool sawHeartbeat = false;
 	for (int attempt = 0; attempt < 5; ++attempt) {
@@ -482,6 +496,18 @@ void startupRecoveryNoContextAndDrift() {
 		fixture.connectAndHello();
 		const auto conflict = fixture.waitState([](const State& state) { return state.outcome == Protocol::Outcome::ConfigurationConflict; });
 		require(conflict.managedGroupState == ManagedGroupState::Missing, "a missing lifecycle-owned group is a deterministic conflict");
+		fixture.stop();
+	}
+	{
+		ScriptedTransport transport;
+		transport.snapshot.identity.supervised = false;
+		SocketFixture fixture;
+		fixture.start(transport);
+		fixture.connectAndHello();
+		const auto unsupported = fixture.waitState([](const State& state) { return state.outcome == Protocol::Outcome::UnsupportedInterface; });
+		require(unsupported.ownerState == OwnerState::Competing && unsupported.uniqueOwner == ":1.42" &&
+			!unsupported.acknowledgedGeneration,
+			"a competing owner is reported and cannot be reclassified as acknowledged convergence");
 		fixture.stop();
 	}
 	std::cout << "ok - both startup orders, unavailable recovery, no context, and drift converge correctly\n";

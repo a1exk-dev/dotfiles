@@ -728,8 +728,10 @@ Inspection SdBusControllerTransport::inspect() noexcept {
 	Snapshot snapshot;
 	std::string owner;
 	int result = m_impl->resolveOwner(owner);
-	if (result < 0)
-		return {.status = statusFromError(result), .snapshot = {}, .diagnostic = "Fcitx has no available unique owner"};
+	if (result < 0) {
+		snapshot.identity.ownerEpoch = m_impl->ownerEpoch;
+		return {.status = statusFromError(result), .snapshot = std::move(snapshot), .diagnostic = "Fcitx has no available unique owner"};
+	}
 	snapshot.identity = {
 		.uniqueOwner = owner,
 		.ownerEpoch = m_impl->ownerEpoch,

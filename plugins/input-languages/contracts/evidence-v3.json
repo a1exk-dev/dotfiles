@@ -25,6 +25,7 @@
 		"digest": {"type": "string", "pattern": "^[0-9a-f]{64}$"},
 		"empty-or-owned-method": {"type": "string", "enum": ["", "keyboard-us", "keyboard-ru"]},
 		"integer": {"type": "integer", "minimum": 0},
+		"input-group": {"type": "integer", "enum": [0, 1]},
 		"integer-or-null": {"type": ["integer", "null"], "minimum": 0},
 		"language": {"type": "string", "enum": ["US", "Russian"]},
 		"managed-group-or-null": {"one_of": [{"object_ref": "managed_group"}, {"type": "null"}]},
@@ -53,7 +54,7 @@
 		},
 		"device_group": {
 			"keys": ["device", "group"],
-			"references": {"device": "string", "group": "integer"}
+			"references": {"device": "string", "group": "input-group"}
 		},
 		"integration_artifact": {
 			"keys": ["source_id", "build_id", "artifact", "artifact_sha256", "helper_sha256", "widget_sha256", "protocol_identity", "controller_identity", "health_identity", "unit_identity", "compatibility_hash", "compiler", "compiler_warning", "dependencies", "inventory"],

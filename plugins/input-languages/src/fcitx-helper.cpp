@@ -348,8 +348,11 @@ class ControllerWorker {
 struct Transition {
 	uint64_t acceptedGeneration = 0;
 	std::optional<uint64_t> acknowledgedGeneration;
+	Protocol::OwnerState ownerState = Protocol::OwnerState::Absent;
+	std::optional<std::string> uniqueOwner;
 	uint64_t ownerEpoch = 0;
 	Protocol::ManagedGroupState managedGroupState = Protocol::ManagedGroupState::Unknown;
+	std::optional<std::string> currentGroup;
 	std::string observedMethod;
 	Protocol::Outcome outcome = Protocol::Outcome::Pending;
 	Protocol::RetryPhase retryPhase = Protocol::RetryPhase::None;
@@ -667,8 +670,11 @@ int Helper::run(int listenerFd) noexcept {
 			.reportSequence = ++reportSequence,
 			.acceptedGeneration = transition.acceptedGeneration,
 			.acknowledgedGeneration = transition.acknowledgedGeneration,
+			.ownerState = transition.ownerState,
+			.uniqueOwner = transition.uniqueOwner,
 			.ownerEpoch = transition.ownerEpoch,
 			.managedGroupState = transition.managedGroupState,
+			.currentGroup = transition.currentGroup,
 			.observedMethod = boundedText(transition.observedMethod),
 			.outcome = transition.outcome,
 			.retryPhase = transition.retryPhase,
@@ -681,8 +687,8 @@ int Helper::run(int listenerFd) noexcept {
 		return true;
 	};
 
-	if (!publish({.acceptedGeneration = target.generation, .acknowledgedGeneration = {}, .ownerEpoch = 0,
-		.managedGroupState = Protocol::ManagedGroupState::Unknown, .observedMethod = {},
+	if (!publish({.acceptedGeneration = target.generation, .acknowledgedGeneration = {}, .ownerState = Protocol::OwnerState::Absent,
+		.uniqueOwner = {}, .ownerEpoch = 0, .managedGroupState = Protocol::ManagedGroupState::Unknown, .currentGroup = {}, .observedMethod = {},
 		.outcome = Protocol::Outcome::Pending, .retryPhase = Protocol::RetryPhase::Write, .diagnostic = {}})) {
 		close(authority);
 		return 0;
@@ -745,8 +751,9 @@ int Helper::run(int listenerFd) noexcept {
 					break;
 				}
 				if (!packet.frame || !std::holds_alternative<Protocol::Target>(*packet.frame)) {
-					publish({.acceptedGeneration = target.generation, .acknowledgedGeneration = {}, .ownerEpoch = lastOwnerEpoch,
-						.managedGroupState = Protocol::ManagedGroupState::Unknown, .observedMethod = {},
+					publish({.acceptedGeneration = target.generation, .acknowledgedGeneration = {}, .ownerState = Protocol::OwnerState::Absent,
+						.uniqueOwner = {}, .ownerEpoch = lastOwnerEpoch, .managedGroupState = Protocol::ManagedGroupState::Unknown,
+						.currentGroup = {}, .observedMethod = {},
 						.outcome = Protocol::Outcome::ProtocolError, .retryPhase = Protocol::RetryPhase::None,
 						.diagnostic = "invalid TARGET frame"});
 					stopAfterPublish = true;
@@ -755,8 +762,9 @@ int Helper::run(int listenerFd) noexcept {
 				auto offered = std::get<Protocol::Target>(std::move(*packet.frame));
 				if (offered.authoritySession != hello->authoritySession || offered.generation < target.generation ||
 					(offered.generation == target.generation && offered.language != target.language)) {
-					publish({.acceptedGeneration = target.generation, .acknowledgedGeneration = {}, .ownerEpoch = lastOwnerEpoch,
-						.managedGroupState = Protocol::ManagedGroupState::Unknown, .observedMethod = {},
+					publish({.acceptedGeneration = target.generation, .acknowledgedGeneration = {}, .ownerState = Protocol::OwnerState::Absent,
+						.uniqueOwner = {}, .ownerEpoch = lastOwnerEpoch, .managedGroupState = Protocol::ManagedGroupState::Unknown,
+						.currentGroup = {}, .observedMethod = {},
 						.outcome = Protocol::Outcome::ProtocolError, .retryPhase = Protocol::RetryPhase::None,
 						.diagnostic = "stale, conflicting, or foreign-session target"});
 					stopAfterPublish = true;
@@ -766,8 +774,9 @@ int Helper::run(int listenerFd) noexcept {
 					target = offered;
 					worker.supersede(target.generation);
 					nextRepair = Clock::now();
-					if (!publish({.acceptedGeneration = target.generation, .acknowledgedGeneration = {}, .ownerEpoch = lastOwnerEpoch,
-						.managedGroupState = Protocol::ManagedGroupState::Unknown, .observedMethod = {},
+					if (!publish({.acceptedGeneration = target.generation, .acknowledgedGeneration = {}, .ownerState = Protocol::OwnerState::Absent,
+						.uniqueOwner = {}, .ownerEpoch = lastOwnerEpoch, .managedGroupState = Protocol::ManagedGroupState::Unknown,
+						.currentGroup = {}, .observedMethod = {},
 						.outcome = Protocol::Outcome::Pending, .retryPhase = Protocol::RetryPhase::Write, .diagnostic = {}}))
 						stopAfterPublish = true;
 				}
@@ -785,7 +794,9 @@ int Helper::run(int listenerFd) noexcept {
 				if (managed == Protocol::ManagedGroupState::Missing || managed == Protocol::ManagedGroupState::Foreign)
 					outcome = Protocol::Outcome::ConfigurationConflict;
 				const auto desiredMethod = target.language == Protocol::Language::Us ? std::string_view(US_METHOD) : std::string_view(RUSSIAN_METHOD);
-				if (!completion->job.converge && managed == Protocol::ManagedGroupState::Exact &&
+				if (!completion->job.converge &&
+					(result.outcome == Fcitx::Outcome::Converged || result.outcome == Fcitx::Outcome::IdleNoContext || result.outcome == Fcitx::Outcome::Drift) &&
+					managed == Protocol::ManagedGroupState::Exact &&
 					result.snapshot.currentGroup == MANAGED_GROUP_NAME) {
 					if (result.snapshot.currentMethod.empty())
 						outcome = Protocol::Outcome::IdleNoContext;
@@ -798,16 +809,26 @@ int Helper::run(int listenerFd) noexcept {
 					result.snapshot.identity.ownerEpoch != lastOwnerEpoch;
 				if (result.snapshot.identity.ownerEpoch != 0)
 					lastOwnerEpoch = result.snapshot.identity.ownerEpoch;
+				const auto ownerState = result.snapshot.identity.uniqueOwner.empty() ? Protocol::OwnerState::Absent :
+					(result.snapshot.identity.supervised ? Protocol::OwnerState::Present : Protocol::OwnerState::Competing);
+				const auto uniqueOwner = result.snapshot.identity.uniqueOwner.empty() ? std::optional<std::string>{} :
+					std::optional<std::string>{result.snapshot.identity.uniqueOwner};
+				const auto currentGroup = result.snapshot.currentGroup.empty() ? std::optional<std::string>{} :
+					std::optional<std::string>{result.snapshot.currentGroup};
 				std::optional<uint64_t> acknowledged;
-				if (outcome == Protocol::Outcome::Converged && !result.snapshot.currentMethod.empty() &&
-					result.snapshot.currentMethod == desiredMethod && result.snapshot.identity.ownerEpoch == lastOwnerEpoch)
+				if (outcome == Protocol::Outcome::Converged && ownerState == Protocol::OwnerState::Present &&
+					result.snapshot.identity.ownerEpoch != 0 && managed == Protocol::ManagedGroupState::Exact &&
+					result.snapshot.currentGroup == MANAGED_GROUP_NAME && result.snapshot.currentMethod == desiredMethod)
 					acknowledged = target.generation;
 				const auto phase = result.retryAfterSeconds > 0 ? Protocol::RetryPhase::Backoff : Protocol::RetryPhase::None;
 				if (!publish({
 						.acceptedGeneration = target.generation,
 						.acknowledgedGeneration = acknowledged,
+						.ownerState = ownerState,
+						.uniqueOwner = uniqueOwner,
 						.ownerEpoch = lastOwnerEpoch,
 						.managedGroupState = managed,
+						.currentGroup = currentGroup,
 						.observedMethod = result.snapshot.currentMethod,
 						.outcome = outcome,
 						.retryPhase = phase,
