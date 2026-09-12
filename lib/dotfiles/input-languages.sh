@@ -35,7 +35,7 @@ input_languages_integration_contract_expected_digest() {
 	case $1 in
 		active-fixtures.json) printf '%s\n' c8135a04fb250bf523831709f13905a1fbfef513855e4443d906d82c3b64599f ;;
 		authority.json) printf '%s\n' 3c7670889f080f5b03c26a51b77a402267c6cb566f7727631717fc33de3f4526 ;;
-		evidence-v3.json) printf '%s\n' b5c4b6b28acd8e85119929826495b2a911ae05041ea0fe604d69df77ed32a21f ;;
+		evidence-v3.json) printf '%s\n' c645c7a66becd531e13786cc7842caf9d2334f59ff6cc17e1db258aa3548a5e6 ;;
 		fcitx.json) printf '%s\n' 113df77363f2d4d1552eacad65170f11bc6c66f842b7369941dc830336e92315 ;;
 		health.json) printf '%s\n' 7444c1a034fd595f5d93fd14c15389efccc6cc892755b0c77174758d2daad193 ;;
 		manifest.json) printf '%s\n' 84714ebf5bb3d3b2d49c13b72a692da66fea91d896199ea668af384b4eebaaa8 ;;

@@ -307,7 +307,7 @@ jq -e '
 jq -e '
 	. as $root |
 	.version == 3 and .version_2.immutable and
-	(.objects | keys | sort) == (["active","addon_state","device_group","direct_ancestry","expected_state","fcitx_group","fcitx_item","fcitx_semantic_snapshot","helper_edge","helper_ownership","hyprland_ownership","integration_artifact","integration_cleanup","managed_group","operation_start","pending","profile_evidence","recovery_required","remove_cleanup","restoration","runtime_edge","runtime_identity","service_snapshot","widget_ownership"] | sort) and
+	(.objects | keys | sort) == (["active","addon_state","device_group","direct_ancestry","expected_state","fcitx_group","fcitx_item","fcitx_semantic_snapshot","helper_edge","helper_ownership","hyprland_ownership","integration_artifact","integration_cleanup","managed_group","operation_start","pending","profile_diagnostic","profile_evidence","recovery_required","remove_cleanup","restoration","runtime_edge","runtime_identity","service_snapshot","widget_ownership"] | sort) and
 	all(.objects[]; (.keys | sort) == (((.references // {}) + (.constants // {}) + (.enums // {})) | keys | sort)) and
 	all(.objects[].references[]; . as $ref | ($root.types | has($ref)) or ($root.objects | has($ref))) and
 	.version_2.exact_keys.active == ["version","operation","transaction_id","backup_transaction_id","source_id","build_id","artifact","artifact_sha256","widget_sha256","compatibility_hash","compiler","compiler_warning","dependencies","backup","backup_digest","backup_existed","widget_source","widget_section","widget_index","widget_entry","prior_stock_present","prior_stock_section","prior_stock_index","prior_stock_entry"] and

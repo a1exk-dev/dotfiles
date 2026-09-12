@@ -49,8 +49,9 @@
 	},
 	"objects": {
 		"direct_ancestry": {
-			"keys": ["receipt", "receipt_digest", "backup_transaction_id", "backup", "backup_digest", "backup_existed"],
-			"references": {"receipt": "path", "receipt_digest": "digest", "backup_transaction_id": "string", "backup": "path", "backup_digest": "digest", "backup_existed": "boolean"}
+			"keys": ["entry", "receipt", "receipt_digest", "pointer", "pointer_digest", "backup_transaction_id", "backup", "backup_digest", "backup_existed"],
+			"references": {"receipt": "nullable_path", "receipt_digest": "nullable_digest", "pointer": "nullable_path", "pointer_digest": "nullable_digest", "backup_transaction_id": "string", "backup": "path", "backup_digest": "digest", "backup_existed": "boolean"},
+			"enums": {"entry": ["fresh", "version-2"]}
 		},
 		"device_group": {
 			"keys": ["device", "group"],
@@ -63,6 +64,10 @@
 		"profile_evidence": {
 			"keys": ["path", "type", "uid", "mode", "digest"],
 			"references": {"path": "path", "type": "regular", "uid": "integer", "mode": "mode-0600", "digest": "digest"}
+		},
+		"profile_diagnostic": {
+			"keys": ["path", "digest"],
+			"references": {"path": "path", "digest": "digest"}
 		},
 		"service_snapshot": {
 			"keys": ["unit", "fragment_path", "fragment_digest", "active_state", "sub_state", "main_pid", "unique_owner"],
@@ -107,7 +112,7 @@
 		},
 		"hyprland_ownership": {
 			"keys": ["tree_state", "source_id", "active_artifact_pointer", "autoreload", "canonical_language", "physical_groups"],
-			"references": {"tree_state": "string", "source_id": "digest", "active_artifact_pointer": "path", "autoreload": "boolean", "canonical_language": "language", "physical_groups": "array-device-group"}
+			"references": {"tree_state": "string", "source_id": "nullable_digest", "active_artifact_pointer": "nullable_path", "autoreload": "boolean", "canonical_language": "language", "physical_groups": "array-device-group"}
 		},
 		"widget_ownership": {
 			"keys": ["source", "source_digest", "live_link", "section", "index", "entry", "prior_stock_present", "prior_stock_section", "prior_stock_index", "prior_stock_entry"],
@@ -126,13 +131,13 @@
 			"references": {"phase": "phase", "direct_digest": "nullable_digest", "fcitx_semantic_digest": "nullable_digest", "helper_digest": "nullable_digest", "receipt_digest": "nullable_digest"}
 		},
 		"active": {
-			"keys": ["version", "operation", "transaction_id", "direct_ancestry", "integration_artifact", "fcitx_before", "managed_group", "helper_ownership", "hyprland_ownership", "widget_ownership", "operation_start", "restoration"],
-			"references": {"transaction_id": "string", "direct_ancestry": "direct_ancestry", "integration_artifact": "integration_artifact", "fcitx_before": "fcitx_semantic_snapshot", "managed_group": "managed_group", "helper_ownership": "helper_ownership", "hyprland_ownership": "hyprland_ownership", "widget_ownership": "widget_ownership", "operation_start": "operation_start", "restoration": "restoration"},
+			"keys": ["version", "operation", "transaction_id", "direct_ancestry", "integration_artifact", "fcitx_before", "profile_diagnostic", "managed_group", "helper_ownership", "hyprland_ownership", "widget_ownership", "operation_start", "restoration"],
+			"references": {"transaction_id": "string", "direct_ancestry": "direct_ancestry", "integration_artifact": "integration_artifact", "fcitx_before": "fcitx_semantic_snapshot", "profile_diagnostic": "profile_diagnostic", "managed_group": "managed_group", "helper_ownership": "helper_ownership", "hyprland_ownership": "hyprland_ownership", "widget_ownership": "widget_ownership", "operation_start": "operation_start", "restoration": "restoration"},
 			"constants": {"version": 3, "operation": "active"}
 		},
 		"pending": {
-			"keys": ["version", "operation", "transaction_id", "phase", "prior_active", "prior_active_digest", "direct_ancestry", "integration_artifact", "fcitx_before", "managed_group_before", "managed_group_target", "helper_before", "helper_target", "hyprland_before", "widget_before", "operation_start", "expected_states", "restoration"],
-			"references": {"transaction_id": "string", "phase": "phase", "prior_active": "nullable_path", "prior_active_digest": "nullable_digest", "direct_ancestry": "direct_ancestry", "integration_artifact": "integration_artifact", "fcitx_before": "fcitx_semantic_snapshot", "managed_group_before": "managed-group-or-null", "managed_group_target": "managed-group-or-null", "helper_before": "helper_ownership", "helper_target": "helper_ownership", "hyprland_before": "hyprland_ownership", "widget_before": "widget_ownership", "operation_start": "operation_start", "expected_states": "ordered-array-expected_state", "restoration": "restoration"},
+			"keys": ["version", "operation", "transaction_id", "phase", "prior_active", "prior_active_digest", "direct_ancestry", "integration_artifact", "fcitx_before", "profile_diagnostic", "managed_group_before", "managed_group_target", "helper_before", "helper_target", "hyprland_before", "widget_before", "operation_start", "expected_states", "restoration"],
+			"references": {"transaction_id": "string", "phase": "phase", "prior_active": "nullable_path", "prior_active_digest": "nullable_digest", "direct_ancestry": "direct_ancestry", "integration_artifact": "integration_artifact", "fcitx_before": "fcitx_semantic_snapshot", "profile_diagnostic": "profile_diagnostic", "managed_group_before": "managed-group-or-null", "managed_group_target": "managed-group-or-null", "helper_before": "helper_ownership", "helper_target": "helper_ownership", "hyprland_before": "hyprland_ownership", "widget_before": "widget_ownership", "operation_start": "operation_start", "expected_states": "ordered-array-expected_state", "restoration": "restoration"},
 			"constants": {"version": 3},
 			"enums": {"operation": ["apply", "remove"]}
 		},

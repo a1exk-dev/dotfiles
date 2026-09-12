@@ -120,6 +120,18 @@ version_3_receipt_projects_and_matches_complete_artifact_identity() {
 	done
 }
 
+retained_artifact_validates_without_current_sources() (
+	prepare_artifact_fixture || return 1
+	local artifact receipt
+	artifact=$INPUT_LANGUAGES_INTEGRATION_ARTIFACT_DIR
+	receipt=$(input_languages_v3_integration_artifact "$artifact") || return 1
+	INPUT_LANGUAGES_PLUGIN_SOURCE=$ARTIFACT_FIXTURE/missing-plugin-source
+	INPUT_LANGUAGES_SOURCE=$ARTIFACT_FIXTURE/missing-hyprland-source
+	INPUT_LANGUAGES_WIDGET_SOURCE=$ARTIFACT_FIXTURE/missing-widget-source
+	input_languages_validate_integration_artifact_self "$artifact" || return 1
+	input_languages_v3_integration_artifact_matches "$receipt" "$artifact"
+)
+
 incomplete_or_changed_artifact_is_rejected_without_repair() {
 	prepare_artifact_fixture || return 1
 	local artifact=$INPUT_LANGUAGES_INTEGRATION_ARTIFACT_DIR backup=$ARTIFACT_FIXTURE/member.backup
@@ -199,6 +211,7 @@ run_test incomplete_or_changed_artifact_is_rejected_without_repair 'incomplete a
 run_test internally_inconsistent_artifact_is_rejected 'internally inconsistent immutable integration artifacts are rejected'
 run_test explicit_identity_tampering_is_rejected 'all explicit immutable artifact identities are validated'
 run_test version_3_receipt_projects_and_matches_complete_artifact_identity 'version 3 receipts project and match the complete artifact identity'
+run_test retained_artifact_validates_without_current_sources 'retained immutable artifacts validate without current repository sources'
 run_test stale_compatibility_is_rejected 'stale compatibility input is rejected before artifact reuse or build'
 
 finish_tests

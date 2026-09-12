@@ -216,7 +216,9 @@ runtime_cleanup_preserves_replaced_private_directory() (
 
 direct_v2_expands_to_v3() (
 	set -euo pipefail
-	local lifecycle_mode=$1 root home transaction backup_transaction build source artifact_sha widget_sha artifact_dir backup digest profile_digest
+	local lifecycle_mode=$1 root home transaction backup_transaction build source artifact_sha widget_sha artifact_dir backup digest profile_digest fresh_entry=false
+	[[ $lifecycle_mode != fresh && $lifecycle_mode != fresh-rollback && $lifecycle_mode != fresh-post-reset-rollback &&
+		$lifecycle_mode != fresh-cancel && $lifecycle_mode != fresh-archive-recovery ]] || fresh_entry=true
 	root=$(mktemp -d)
 	trap 'chmod -R u+w -- "$root" 2>/dev/null || true; rm -rf -- "$root"' EXIT
 	home=$root/home
@@ -231,8 +233,16 @@ direct_v2_expands_to_v3() (
 	printf 'profile\n' >"$XDG_CONFIG_HOME/fcitx5/profile"
 	chmod 600 "$XDG_CONFIG_HOME/fcitx5/profile"
 	profile_digest=$(sha256sum "$XDG_CONFIG_HOME/fcitx5/profile" | cut -d' ' -f1)
-	printf '%s\n' '{"version":1,"bar":{"layout":{"left":[],"center":[],"right":[{"id":"dotfiles.keyboard-layout"}]}}}' >"$XDG_CONFIG_HOME/omarchy/shell.json"
-	/usr/bin/stow --no-folding --dir "$SOURCE_REPO/config" --target "$HOME" hyprland
+	REPOSITORY_ROOT=$SOURCE_REPO
+	source "$SOURCE_REPO/lib/dotfiles/core.sh"
+	source "$SOURCE_REPO/lib/dotfiles/input-languages.sh"
+	source "$SOURCE_REPO/lib/dotfiles/packages.sh"
+	input_languages_set_paths
+	if [[ $fresh_entry == true ]]; then
+		printf '%s\n' '{"version":1,"bar":{"layout":{"left":[],"center":[],"right":[{"id":"omarchy.keyboard-layout","instanceId":"stock"}]}}}' >"$XDG_CONFIG_HOME/omarchy/shell.json"
+	else
+		printf '%s\n' '{"version":1,"bar":{"layout":{"left":[],"center":[],"right":[{"id":"dotfiles.keyboard-layout"}]}}}' >"$XDG_CONFIG_HOME/omarchy/shell.json"
+		/usr/bin/stow --no-folding --dir "$SOURCE_REPO/config" --target "$HOME" hyprland
 
 	# A complete valid version-2 direct installation is the immutable expansion ancestry.
 	transaction=20260910T100000.000000000Z-1000-abcd
@@ -248,7 +258,7 @@ direct_v2_expands_to_v3() (
 	mkdir -p "$artifact_dir"
 	cp "$root/plugin" "$artifact_dir/input-languages.so"
 	cp -a "$SOURCE_REPO/plugins/input-languages/widget/dotfiles.keyboard-layout" "$artifact_dir/dotfiles.keyboard-layout"
-	widget_sha=$(source "$SOURCE_REPO/lib/dotfiles/core.sh"; source "$SOURCE_REPO/lib/dotfiles/input-languages.sh"; input_languages_widget_digest "$artifact_dir/dotfiles.keyboard-layout")
+	widget_sha=$(input_languages_widget_digest "$artifact_dir/dotfiles.keyboard-layout")
 	jq -n --arg build "$build" --arg source "$source" --arg sha "$artifact_sha" --arg widget "$widget_sha" \
 		'{version:1,build_id:$build,source_id:$source,compatibility_hash:"test-compat",compiler:"test-compiler",dependencies:"test-dependencies",artifact_sha256:$sha,widget_sha256:$widget,exports:["pluginAPIVersion","pluginExit","pluginInit"]}' \
 		>"$artifact_dir/build.json"
@@ -258,11 +268,7 @@ direct_v2_expands_to_v3() (
 	ln -s "$artifact_dir/dotfiles.keyboard-layout" "$XDG_CONFIG_HOME/omarchy/plugins/dotfiles.keyboard-layout"
 	printf 'return "%s"\n' "$artifact_dir/input-languages.so" >"$XDG_DATA_HOME/dotfiles/input-languages/active-artifact.lua"
 	chmod 600 "$XDG_DATA_HOME/dotfiles/input-languages/active-artifact.lua"
-	REPOSITORY_ROOT=$SOURCE_REPO
-	source "$SOURCE_REPO/lib/dotfiles/core.sh"
-	source "$SOURCE_REPO/lib/dotfiles/input-languages.sh"
-	source "$SOURCE_REPO/lib/dotfiles/packages.sh"
-	input_languages_set_paths
+	cp "$XDG_DATA_HOME/dotfiles/input-languages/active-artifact.lua" "$root/original-pointer.lua"
 	digest=$(input_languages_tree_digest "$backup")
 	jq -n --arg transaction "$transaction" --arg backup_transaction "$backup_transaction" --arg source "$source" --arg build "$build" \
 		--arg artifact "$artifact_dir/input-languages.so" --arg sha "$artifact_sha" --arg widget "$widget_sha" --arg backup "$backup" --arg backup_digest "$digest" \
@@ -273,7 +279,9 @@ direct_v2_expands_to_v3() (
 		>"$XDG_STATE_HOME/dotfiles/input-languages/active.json"
 	chmod 600 "$XDG_STATE_HOME/dotfiles/input-languages/active.json"
 	cp "$XDG_STATE_HOME/dotfiles/input-languages/active.json" "$root/original-v2.json"
-	printf '1\n' >"$root/group"
+	fi
+	if [[ $fresh_entry == true ]]; then printf '0\n' >"$root/group"; else printf '1\n' >"$root/group"; fi
+	printf '1\n' >"$root/second-group"
 	printf 'inactive\n' >"$root/socket-state"
 	printf 'inactive\n' >"$root/service-state"
 	if [[ $lifecycle_mode == quiesce-failure ]]; then
@@ -284,7 +292,7 @@ direct_v2_expands_to_v3() (
 		printf 'deactivating\n' >"$root/service-state"
 	fi
 	printf 'false\n' >"$root/autoreload"
-	printf 'active\n' >"$root/plugin-state"
+	if [[ $fresh_entry == true ]]; then printf 'inactive\n' >"$root/plugin-state"; else printf 'active\n' >"$root/plugin-state"; fi
 	: >"$root/calls"
 
 	jq -n --arg profile "$XDG_CONFIG_HOME/fcitx5/profile" --arg digest "$profile_digest" --arg method "$([[ $lifecycle_mode == idle ]] && printf '' || printf keyboard-ru)" '
@@ -302,11 +310,18 @@ direct_v2_expands_to_v3() (
 				else printf '%s\n' '[]'; fi
 				;;
 			'plugin disable dotfiles.keyboard-layout')
-				jq '.bar.layout.right |= map(select(.id != "dotfiles.keyboard-layout"))' "$XDG_CONFIG_HOME/omarchy/shell.json" >"$root/shell.next"
+				if [[ $fresh_entry == true ]]; then
+					jq '(.bar.layout.right[] | select(.id == "dotfiles.keyboard-layout")).id = "omarchy.keyboard-layout"' "$XDG_CONFIG_HOME/omarchy/shell.json" >"$root/shell.next"
+				else
+					jq '.bar.layout.right |= map(select(.id != "dotfiles.keyboard-layout"))' "$XDG_CONFIG_HOME/omarchy/shell.json" >"$root/shell.next"
+				fi
 				mv "$root/shell.next" "$XDG_CONFIG_HOME/omarchy/shell.json"
 				;;
 			'plugin enable dotfiles.keyboard-layout --section right --index 0')
-				jq '.bar.layout.right = ([{"id":"dotfiles.keyboard-layout"}] + [.bar.layout.right[] | select(.id != "dotfiles.keyboard-layout")])' "$XDG_CONFIG_HOME/omarchy/shell.json" >"$root/shell.next"
+				jq '.bar.layout.right = (([.bar.layout.right[] | select(.id == "omarchy.keyboard-layout") | .id="dotfiles.keyboard-layout"] +
+					[.bar.layout.right[] | select(.id != "omarchy.keyboard-layout" and .id != "dotfiles.keyboard-layout")]) as $entries |
+					if any($entries[]; .id == "dotfiles.keyboard-layout") then $entries else [{"id":"dotfiles.keyboard-layout"}] + $entries end)' \
+					"$XDG_CONFIG_HOME/omarchy/shell.json" >"$root/shell.next"
 				mv "$root/shell.next" "$XDG_CONFIG_HOME/omarchy/shell.json"
 				;;
 			'shell shell ping') printf 'ok\n' ;;
@@ -328,7 +343,7 @@ direct_v2_expands_to_v3() (
 		case "$*" in
 			'-j inputlanguages')
 				local pointer current group method
-				pointer=$(cut -d'"' -f2 "$XDG_DATA_HOME/dotfiles/input-languages/active-artifact.lua")
+				pointer=$(cut -d'"' -f2 "$XDG_DATA_HOME/dotfiles/input-languages/active-artifact.lua" 2>/dev/null || true)
 				group=$(<"$root/group")
 				if [[ $pointer == *'/integration-test/input-languages.so' ]]; then
 					if [[ $lifecycle_mode == idle ]]; then method=''; else method=$([[ $group == 0 ]] && printf keyboard-us || printf keyboard-ru); fi
@@ -336,7 +351,14 @@ direct_v2_expands_to_v3() (
 				else
 					jq -n --argjson group "$group" --arg build "$build" --arg source "$source" '{healthy:true,build_id:$build,source_id:$source,compatibility_hash:"test-compat",canonical_group:$group,physical_keyboards:["test-keyboard"],excluded_keyboards:[]}'
 				fi ;;
-			'-j devices') jq -n --argjson group "$(<"$root/group")" '{keyboards:[{name:"test-keyboard",layout:"us,ru",variant:",",active_layout_index:$group,active_keymap:(if $group == 0 then "English (US)" else "Russian" end)}]}' ;;
+			'-j devices')
+				if [[ $lifecycle_mode == fresh-rollback ]]; then
+					jq -n --argjson group "$(<"$root/group")" --argjson second "$(<"$root/second-group")" \
+						'{keyboards:[{name:"test-keyboard",layout:"us,ru",variant:",",active_layout_index:$group,active_keymap:(if $group == 0 then "English (US)" else "Russian" end)},{name:"second-keyboard",layout:"us,ru",variant:",",active_layout_index:$second,active_keymap:(if $second == 0 then "English (US)" else "Russian" end)}]}'
+				else
+					jq -n --argjson group "$(<"$root/group")" '{keyboards:[{name:"test-keyboard",layout:"us,ru",variant:",",active_layout_index:$group,active_keymap:(if $group == 0 then "English (US)" else "Russian" end)}]}'
+				fi
+				;;
 			'-j inputlanguagesreset 0')
 				printf '0\n' >"$root/group"
 				if [[ $lifecycle_mode != idle ]]; then jq '.observed_method="keyboard-us"' "$root/controller.json" >"$root/controller.next" && mv "$root/controller.next" "$root/controller.json"; fi
@@ -345,6 +367,10 @@ direct_v2_expands_to_v3() (
 				printf '1\n' >"$root/group"
 				if [[ $lifecycle_mode != idle ]]; then jq '.observed_method="keyboard-ru"' "$root/controller.json" >"$root/controller.next" && mv "$root/controller.next" "$root/controller.json"; fi
 				printf '%s\n' '{"ok":true,"canonical_group":1}' ;;
+			switchxkblayout\ test-keyboard\ 0) printf '0\n' >"$root/group" ;;
+			switchxkblayout\ test-keyboard\ 1) printf '1\n' >"$root/group" ;;
+			switchxkblayout\ second-keyboard\ 0) printf '0\n' >"$root/second-group" ;;
+			switchxkblayout\ second-keyboard\ 1) printf '1\n' >"$root/second-group" ;;
 			'-j getoption misc:disable_autoreload') jq -n --argjson value "$(<"$root/autoreload")" '{bool:$value}' ;;
 			'-j plugin list')
 				if [[ $(<"$root/plugin-state") == active ]]; then printf '%s\n' '[{"name":"Input Languages","author":"dotfiles","version":"test"}]'; else printf '%s\n' '[]'; fi
@@ -441,7 +467,7 @@ direct_v2_expands_to_v3() (
 				jq -n --arg unit "$2" --arg state "$state" '{unit:$unit,load_state:"loaded",fragment_path:"/usr/lib/systemd/user/omarchy-fcitx5.service",active_state:$state,sub_state:(if $state == "active" then "running" else "dead" end),main_pid:(if $state == "inactive" then 0 else 42 end)}'
 				;;
 			start)
-				if [[ $lifecycle_mode == rollback || $lifecycle_mode == recovery || $lifecycle_mode == recovery-environment-changed || $lifecycle_mode == corrupt-recovery || $lifecycle_mode == semantic-phase-drift ]]; then
+				if [[ $lifecycle_mode == rollback || $lifecycle_mode == fresh-rollback || $lifecycle_mode == recovery || $lifecycle_mode == recovery-environment-changed || $lifecycle_mode == corrupt-recovery || $lifecycle_mode == semantic-phase-drift ]]; then
 					if [[ $lifecycle_mode == semantic-phase-drift ]]; then
 						: >"$root/semantic-failure"
 						jq '.groups |= map(if .name == "Default" then .properties={foreign:true} else . end)' "$root/controller.json" >"$root/controller.next"
@@ -503,6 +529,27 @@ direct_v2_expands_to_v3() (
 		input_languages_write_json_atomic "$INPUT_LANGUAGES_PENDING" "$content" pending
 	}
 	input_languages_v3_runtime_ownership_identical() { return 0; }
+	if [[ $lifecycle_mode == fresh-post-reset-rollback ]]; then
+		printf '1\n' >"$root/group"
+		input_languages_v3_publish_active() {
+			jq '.groups += [{name:"Unrelated",default_layout:"de",default_im:"keyboard-de",properties:{},items:[{method:"keyboard-de",layout_override:"",display_name:"German",native_name:"Deutsch",language_code:"de",addon:"keyboard",configurable:true,variant:null,properties:{}}]}]' "$root/controller.json" >"$root/controller.next"
+			mv "$root/controller.next" "$root/controller.json"
+			return 1
+		}
+	fi
+	if [[ $lifecycle_mode == fresh-cancel ]]; then
+		local controller_before shell_before group_before output
+		controller_before=$(sha256sum "$root/controller.json" | cut -d' ' -f1)
+		shell_before=$(sha256sum "$XDG_CONFIG_HOME/omarchy/shell.json" | cut -d' ' -f1)
+		group_before=$(<"$root/group")
+		output=$(apply_input_languages --packages-prepared </dev/null) || return 1
+		grep -Fq 'Apply canceled; no changes made.' <<<"$output" || return 1
+		[[ ! -e $INPUT_LANGUAGES_ACTIVE && ! -e $INPUT_LANGUAGES_PENDING && ! -e $INPUT_LANGUAGES_RECOVERY ]] || return 1
+		[[ $(sha256sum "$root/controller.json" | cut -d' ' -f1) == "$controller_before" ]] || return 1
+		[[ $(sha256sum "$XDG_CONFIG_HOME/omarchy/shell.json" | cut -d' ' -f1) == "$shell_before" && $(<"$root/group") == "$group_before" ]] || return 1
+		! grep -Eq '^(controller execute|systemctl (start|stop|daemon-reload)|hyprctl (-j inputlanguagesreset|reload|keyword)|omarchy (restart|shell shell rescanPlugins))' "$root/calls"
+		return
+	fi
 	if [[ $lifecycle_mode == runtime-invalid ]]; then
 		unset XDG_RUNTIME_DIR
 		if apply_input_languages --yes --packages-prepared >/dev/null 2>&1; then return 1; fi
@@ -690,21 +737,32 @@ direct_v2_expands_to_v3() (
 		[[ ! -e $XDG_CONFIG_HOME/systemd/user/dotfiles-input-languages-fcitx.socket && ! -e $XDG_CONFIG_HOME/systemd/user/dotfiles-input-languages-fcitx.service ]] || return 1
 		return 0
 	fi
-	if [[ $lifecycle_mode == archive-recovery ]]; then
+	if [[ $lifecycle_mode == archive-recovery || $lifecycle_mode == fresh-archive-recovery ]]; then
 		local archive_definition transaction_id
 		archive_definition=$(declare -f input_languages_v3_archive_apply_evidence)
-		input_languages_v3_archive_apply_evidence() { return 1; }
+		if [[ $lifecycle_mode == fresh-archive-recovery ]]; then
+			archive_definition=${archive_definition/input_languages_v3_archive_apply_evidence /input_languages_v3_archive_apply_evidence_real }
+			eval "$archive_definition"
+			input_languages_v3_archive_apply_evidence() { input_languages_v3_archive_apply_evidence_real "$@" || return 1; return 1; }
+		else
+			input_languages_v3_archive_apply_evidence() { return 1; }
+		fi
 		if apply_input_languages --yes --packages-prepared >/dev/null 2>&1; then return 1; fi
 		[[ $(jq -r .version "$INPUT_LANGUAGES_ACTIVE") == 3 && $(jq -r .phase "$INPUT_LANGUAGES_PENDING") == active-published ]] || return 1
 		transaction_id=$(jq -r .transaction_id "$INPUT_LANGUAGES_ACTIVE")
-		eval "$archive_definition"
+		if [[ $lifecycle_mode == archive-recovery ]]; then eval "$archive_definition"; fi
 		apply_input_languages --recovery-approved >/dev/null || return 1
 		[[ ! -e $INPUT_LANGUAGES_PENDING && ! -e $INPUT_LANGUAGES_RECOVERY ]] || return 1
-		[[ -f $INPUT_LANGUAGES_STATE/archive/$transaction_id-apply/prior-active-v2.json && -f $INPUT_LANGUAGES_STATE/archive/$transaction_id-apply/pending.json ]] || return 1
+		[[ -f $INPUT_LANGUAGES_STATE/archive/$transaction_id-apply/pending.json ]] || return 1
+		if [[ $fresh_entry == true ]]; then
+			[[ ! -e $INPUT_LANGUAGES_STATE/archive/$transaction_id-apply/prior-active-v2.json ]] || return 1
+		else
+			[[ -f $INPUT_LANGUAGES_STATE/archive/$transaction_id-apply/prior-active-v2.json ]] || return 1
+		fi
 		return 0
 	fi
 
-	if [[ $lifecycle_mode == rollback || $lifecycle_mode == recovery || $lifecycle_mode == recovery-environment-changed ]]; then
+	if [[ $lifecycle_mode == rollback || $lifecycle_mode == fresh-rollback || $lifecycle_mode == fresh-post-reset-rollback || $lifecycle_mode == recovery || $lifecycle_mode == recovery-environment-changed ]]; then
 		if apply_input_languages --yes --packages-prepared >/dev/null 2>&1; then return 1; fi
 		if [[ $lifecycle_mode == recovery || $lifecycle_mode == recovery-environment-changed ]]; then
 			input_languages_validate_pending_file_v3 "$INPUT_LANGUAGES_PENDING" || return 1
@@ -716,12 +774,16 @@ direct_v2_expands_to_v3() (
 			unset INPUT_LANGUAGES_INTEGRATION_ARTIFACT_DIR INPUT_LANGUAGES_INTEGRATION_ARTIFACT INPUT_LANGUAGES_INTEGRATION_HELPER INPUT_LANGUAGES_INTEGRATION_BUILD_ID
 			apply_input_languages --recovery-approved >/dev/null || return 1
 		fi
-		cmp -s "$INPUT_LANGUAGES_ACTIVE" "$root/original-v2.json" || return 1
+		if [[ $fresh_entry == true ]]; then
+			[[ ! -e $INPUT_LANGUAGES_ACTIVE && ! -e $XDG_CONFIG_HOME/hypr && ! -e $XDG_DATA_HOME/dotfiles/input-languages/active-artifact.lua && ! -e $XDG_CONFIG_HOME/omarchy/plugins/dotfiles.keyboard-layout ]] || return 1
+			jq -e '.bar.layout.right == [{id:"omarchy.keyboard-layout",instanceId:"stock"}]' "$XDG_CONFIG_HOME/omarchy/shell.json" >/dev/null || return 1
+		else cmp -s "$INPUT_LANGUAGES_ACTIVE" "$root/original-v2.json" || return 1; fi
 		jq -e '[.groups[].name] == ["Default","Unrelated"] and .current_group == "Default" and .observed_method == "keyboard-ru"' "$root/controller.json" >/dev/null || return 1
 		[[ ! -e $INPUT_LANGUAGES_PENDING && ! -e $INPUT_LANGUAGES_RECOVERY ]] || return 1
 		[[ ! -e $XDG_CONFIG_HOME/systemd/user/dotfiles-input-languages-fcitx.socket && ! -e $XDG_CONFIG_HOME/systemd/user/dotfiles-input-languages-fcitx.service ]] || return 1
 		if [[ -d $root/other-runtime ]]; then [[ ! -e $root/other-runtime/dotfiles-input-languages ]] || return 1; fi
-		[[ $(<"$root/group") == 1 ]] || return 1
+		[[ $(<"$root/group") == "$([[ $lifecycle_mode == fresh-rollback ]] && printf 0 || printf 1)" ]] || return 1
+		if [[ $lifecycle_mode == fresh-rollback ]]; then [[ $(<"$root/second-group") == 1 ]] || return 1; fi
 		local direct_restore_line fcitx_restore_line
 		direct_restore_line=$(grep -n '^hyprctl reload$' "$root/calls" | cut -d: -f1 | { read -r line; printf '%s\n' "$line"; })
 		fcitx_restore_line=$(grep -n 'controller execute .* switch-group Default$' "$root/calls" | cut -d: -f1 | { read -r line; printf '%s\n' "$line"; })
@@ -737,8 +799,14 @@ direct_v2_expands_to_v3() (
 		apply_input_languages --yes --packages-prepared >/dev/null || return 1
 	fi
 	[[ $(grep -c '^verify package requirements$' "$root/calls") == 2 ]] || return 1
-	[[ $(grep -c '^stow --no-folding --simulate .* hyprland$' "$root/calls") == 3 ]] || return 1
+	if [[ $fresh_entry == true ]]; then [[ $(grep -c '^stow --no-folding --simulate .* hyprland$' "$root/calls") -ge 2 ]] || return 1
+	else [[ $(grep -c '^stow --no-folding --simulate .* hyprland$' "$root/calls") == 3 ]] || return 1; fi
 	input_languages_validate_active_file_v3 "$INPUT_LANGUAGES_ACTIVE" artifact
+	if [[ $fresh_entry == true ]]; then
+		jq -e '.version == 3 and .direct_ancestry.entry == "fresh" and .direct_ancestry.receipt == null and .direct_ancestry.pointer == null and
+			.operation_start.canonical_language == "US" and .widget_ownership.prior_stock_entry == {id:"omarchy.keyboard-layout",instanceId:"stock"}' "$INPUT_LANGUAGES_ACTIVE" >/dev/null || return 1
+		[[ -d $(jq -r .direct_ancestry.backup "$INPUT_LANGUAGES_ACTIVE") ]] || return 1
+	else
 	jq -e --arg backup "$backup" '
 		.version == 3 and .operation == "active" and .direct_ancestry.backup == $backup and
 		.managed_group.name == "Dotfiles Input Languages" and .operation_start.canonical_language == "Russian" and
@@ -748,6 +816,11 @@ direct_v2_expands_to_v3() (
 	ancestry=$(jq -r .direct_ancestry.receipt "$INPUT_LANGUAGES_ACTIVE")
 	cmp -s "$ancestry" "$root/original-v2.json"
 	[[ $(sha256sum "$ancestry" | cut -d' ' -f1) == "$(jq -r .direct_ancestry.receipt_digest "$INPUT_LANGUAGES_ACTIVE")" ]]
+	cmp -s "$(jq -r .direct_ancestry.pointer "$INPUT_LANGUAGES_ACTIVE")" "$root/original-pointer.lua" || return 1
+	[[ $(sha256sum "$(jq -r .direct_ancestry.pointer "$INPUT_LANGUAGES_ACTIVE")" | cut -d' ' -f1) == "$(jq -r .direct_ancestry.pointer_digest "$INPUT_LANGUAGES_ACTIVE")" ]] || return 1
+	fi
+	cmp -s "$(jq -r .profile_diagnostic.path "$INPUT_LANGUAGES_ACTIVE")" "$XDG_CONFIG_HOME/fcitx5/profile" || return 1
+	[[ $(jq -r .profile_diagnostic.digest "$INPUT_LANGUAGES_ACTIVE") == "$profile_digest" ]] || return 1
 	jq -e --arg method "$([[ $lifecycle_mode == idle ]] && printf '' || printf keyboard-us)" '[.groups[].name] == ["Dotfiles Input Languages","Default"] and .current_group == "Dotfiles Input Languages" and .observed_method == $method' "$root/controller.json" >/dev/null
 	[[ -L $XDG_CONFIG_HOME/systemd/user/dotfiles-input-languages-fcitx.socket ]]
 	[[ -L $XDG_CONFIG_HOME/systemd/user/dotfiles-input-languages-fcitx.service ]]
@@ -764,8 +837,8 @@ direct_v2_expands_to_v3() (
 	[[ -n $pause_line && -n $shell_line && -n $restore_autoreload_line && -n $reload_line &&
 		$pause_line -lt $shell_line && $shell_line -lt $restore_autoreload_line && $restore_autoreload_line -lt $reload_line ]]
 	local apply_archive=$INPUT_LANGUAGES_STATE/archive/$(jq -r .transaction_id "$INPUT_LANGUAGES_ACTIVE")-apply
-	[[ -f $apply_archive/prior-active-v2.json && -f $apply_archive/pending.json ]]
-	cmp -s "$apply_archive/prior-active-v2.json" "$root/original-v2.json"
+	[[ -f $apply_archive/pending.json ]] || return 1
+	if [[ $lifecycle_mode != fresh ]]; then [[ -f $apply_archive/prior-active-v2.json ]] && cmp -s "$apply_archive/prior-active-v2.json" "$root/original-v2.json" || return 1; fi
 	jq -e '
 		.phase == "active-published" and
 		[.expected_states[].phase] == ["prepared","prior-helper-quiesced","managed-group-created","managed-group-populated","managed-group-selected","managed-group-saved","units-published","manager-reloaded","socket-started","pointer-published","hyprland-transitioned","hyprland-reloaded","helper-ready","reset-issued","verified","active-published"] and
@@ -773,6 +846,15 @@ direct_v2_expands_to_v3() (
 		([.expected_states[] | select(.phase | startswith("managed-group")) | .fcitx_semantic_digest] | all(. != null)) and
 		.expected_states[-1].receipt_digest != null
 	' "$apply_archive/pending.json" >/dev/null
+	local plugin_source=$INPUT_LANGUAGES_PLUGIN_SOURCE hyprland_source=$INPUT_LANGUAGES_SOURCE widget_source=$INPUT_LANGUAGES_WIDGET_SOURCE
+	INPUT_LANGUAGES_PLUGIN_SOURCE=$root/missing-plugin-source
+	INPUT_LANGUAGES_SOURCE=$root/missing-hyprland-source
+	INPUT_LANGUAGES_WIDGET_SOURCE=$root/missing-widget-source
+	input_languages_validate_active_file_v3 "$INPUT_LANGUAGES_ACTIVE" artifact || return 1
+	input_languages_validate_pending_file_v3 "$apply_archive/pending.json" || return 1
+	INPUT_LANGUAGES_PLUGIN_SOURCE=$plugin_source
+	INPUT_LANGUAGES_SOURCE=$hyprland_source
+	INPUT_LANGUAGES_WIDGET_SOURCE=$widget_source
 	if [[ $lifecycle_mode == pending-ancestry ]]; then
 		local alternate_prior=$root/alternate-prior-v2.json
 		cp "$root/original-v2.json" "$alternate_prior"
@@ -798,10 +880,18 @@ direct_v2_expands_to_v3() (
 		jq '.groups |= map(if .name == "Dotfiles Input Languages" then .default_im="keyboard-us" else . end)' "$root/controller.json" >"$root/controller.next"
 		mv "$root/controller.next" "$root/controller.json"
 	fi
-	local active_before controller_before profile_before mutation_calls_before mutation_calls_after
+	local active_before artifact_before controller_before profile_before diagnostics_before shell_before group_before plugin_before service_before socket_before mutation_calls_before mutation_calls_after noop_output delivery
 	active_before=$(sha256sum "$INPUT_LANGUAGES_ACTIVE" | cut -d' ' -f1)
+	artifact_before=$(input_languages_tree_digest "$(dirname -- "$(jq -r .integration_artifact.artifact "$INPUT_LANGUAGES_ACTIVE")")")
 	controller_before=$(sha256sum "$root/controller.json" | cut -d' ' -f1)
 	profile_before=$(sha256sum "$XDG_CONFIG_HOME/fcitx5/profile" | cut -d' ' -f1)
+	diagnostics_before=$(find "$XDG_STATE_HOME/dotfiles/input-languages/diagnostics" -maxdepth 1 -type f \
+		-printf '%f|%m|%U|%G|%s|%T@|' -exec sha256sum {} \; | LC_ALL=C sort)
+	shell_before=$(sha256sum "$XDG_CONFIG_HOME/omarchy/shell.json" | cut -d' ' -f1)
+	group_before=$(<"$root/group")
+	plugin_before=$(<"$root/plugin-state")
+	service_before=$(<"$root/service-state")
+	socket_before=$(<"$root/socket-state")
 	mutation_calls_before=$(grep -Ec '^(systemctl (start|stop|daemon-reload)|controller execute|hyprctl (-j inputlanguagesreset|reload|keyword)|omarchy (restart|shell shell rescanPlugins))' "$root/calls" || true)
 	if [[ $lifecycle_mode == noop-runtime-invalid || $lifecycle_mode == status-runtime-invalid ]]; then
 		mkdir -m 0700 "$root/other-runtime"
@@ -823,11 +913,22 @@ direct_v2_expands_to_v3() (
 		[[ $(sha256sum "$INPUT_LANGUAGES_ACTIVE" | cut -d' ' -f1) == "$active_before" && ! -e $INPUT_LANGUAGES_PENDING ]] || return 1
 		return 0
 	fi
-	apply_input_languages --yes --packages-prepared >/dev/null
+	if [[ $lifecycle_mode == remove-defaultim-drift ]]; then
+		if apply_input_languages --yes --packages-prepared >/dev/null 2>&1; then return 1; fi
+	else
+		noop_output=$(apply_input_languages --yes --packages-prepared)
+		delivery=$([[ $lifecycle_mode == idle ]] && printf pending || printf converged)
+		[[ $noop_output == "Exact no-op: Fcitx delivery is $delivery; active language preserved; no confirmation or mutation required." ]] || return 1
+	fi
 	mutation_calls_after=$(grep -Ec '^(systemctl (start|stop|daemon-reload)|controller execute|hyprctl (-j inputlanguagesreset|reload|keyword)|omarchy (restart|shell shell rescanPlugins))' "$root/calls" || true)
 	[[ $(sha256sum "$INPUT_LANGUAGES_ACTIVE" | cut -d' ' -f1) == "$active_before" ]]
+	[[ $(input_languages_tree_digest "$(dirname -- "$(jq -r .integration_artifact.artifact "$INPUT_LANGUAGES_ACTIVE")")") == "$artifact_before" ]]
 	[[ $(sha256sum "$root/controller.json" | cut -d' ' -f1) == "$controller_before" ]]
 	[[ $(sha256sum "$XDG_CONFIG_HOME/fcitx5/profile" | cut -d' ' -f1) == "$profile_before" ]]
+	[[ $(find "$XDG_STATE_HOME/dotfiles/input-languages/diagnostics" -maxdepth 1 -type f \
+		-printf '%f|%m|%U|%G|%s|%T@|' -exec sha256sum {} \; | LC_ALL=C sort) == "$diagnostics_before" ]]
+	[[ $(sha256sum "$XDG_CONFIG_HOME/omarchy/shell.json" | cut -d' ' -f1) == "$shell_before" && $(<"$root/group") == "$group_before" ]]
+	[[ $(<"$root/plugin-state") == "$plugin_before" && $(<"$root/service-state") == "$service_before" && $(<"$root/socket-state") == "$socket_before" ]]
 	[[ $mutation_calls_after -eq $mutation_calls_before && ! -e $INPUT_LANGUAGES_PENDING ]]
 
 	if [[ $lifecycle_mode == remove-runtime-replaced ]]; then
@@ -898,6 +999,10 @@ direct_v2_expands_to_v3() (
 )
 
 direct_v2_expands_to_acknowledged_v3() { direct_v2_expands_to_v3 acknowledged; }
+fresh_install_reaches_acknowledged_v3() { direct_v2_expands_to_v3 fresh; }
+fresh_install_failure_restores_original_state() { direct_v2_expands_to_v3 fresh-rollback; }
+fresh_install_post_reset_failure_restores_original_state() { direct_v2_expands_to_v3 fresh-post-reset-rollback; }
+fresh_install_cancellation_is_pre_mutation() { direct_v2_expands_to_v3 fresh-cancel; }
 direct_v2_expands_to_v3_with_package_preparation() { direct_v2_expands_to_v3 package-preparation; }
 direct_v2_expands_to_idle_v3() { direct_v2_expands_to_v3 idle; }
 direct_v2_failure_rolls_back() { direct_v2_expands_to_v3 rollback; }
@@ -906,6 +1011,7 @@ direct_v2_recovery_uses_saved_runtime() { direct_v2_expands_to_v3 recovery-envir
 direct_v2_stale_build_input_blocks() { direct_v2_expands_to_v3 stale-build-input; }
 direct_v2_partial_helper_publication_rolls_back() { direct_v2_expands_to_v3 partial-helper; }
 direct_v3_active_publication_recovers_archive() { direct_v2_expands_to_v3 archive-recovery; }
+fresh_v3_active_publication_recovers_existing_archive() { direct_v2_expands_to_v3 fresh-archive-recovery; }
 direct_v3_removes_transactionally() { direct_v2_expands_to_v3 remove; }
 direct_v3_failed_remove_reconstructs() { direct_v2_expands_to_v3 remove-rollback; }
 direct_v3_remove_uses_restoration_gate() { direct_v2_expands_to_v3 remove-unsupported; }
@@ -937,6 +1043,10 @@ direct_v3_status_classifies_runtime_read_only() { direct_v2_expands_to_v3 status
 direct_v3_replaced_runtime_requires_recovery() { direct_v2_expands_to_v3 remove-runtime-replaced; }
 
 run_test direct_v2_expands_to_acknowledged_v3 'healthy direct-v2 installation expands transactionally to acknowledged version 3 and exact no-op'
+run_test fresh_install_reaches_acknowledged_v3 'one confirmed fresh Apply installs acknowledged version 3 directly and exact reapply is a no-op'
+run_test fresh_install_failure_restores_original_state 'failed fresh Apply restores original direct, indicator, Fcitx, helper, and language state'
+run_test fresh_install_post_reset_failure_restores_original_state 'post-reset fresh Apply failure restores the operation-start language'
+run_test fresh_install_cancellation_is_pre_mutation 'fresh version-3 Apply cancellation leaves live state untouched'
 run_test direct_v2_expands_to_v3_with_package_preparation 'standalone version-3 Apply plans, delegates, and verifies missing packages'
 run_test direct_v2_expands_to_idle_v3 'idle-no-context direct-v2 installation expands transactionally and remains an exact no-op'
 run_test direct_v2_failure_rolls_back 'reachable expansion failure restores direct-v2 state and preserves an unrelated Fcitx group'
@@ -945,13 +1055,14 @@ run_test direct_v2_recovery_uses_saved_runtime 'recovery uses receipt-saved runt
 run_test direct_v2_stale_build_input_blocks 'confirmed version-3 Apply rechecks build inputs before pending evidence or mutation'
 run_test direct_v2_partial_helper_publication_rolls_back 'partial helper publication rolls back every owned edge'
 run_test direct_v3_active_publication_recovers_archive 'interrupted active publication archives retained Apply evidence during recovery'
+run_test fresh_v3_active_publication_recovers_existing_archive 'fresh active publication finalizes from its existing ancestry-free archive'
 run_test direct_v3_removes_transactionally 'version-3 Remove restores direct and Fcitx ancestry and archives the receipt last'
 run_test direct_v3_failed_remove_reconstructs 'failed version-3 Remove reconstructs the installed integration and Remove-start language'
 run_test direct_v3_remove_uses_restoration_gate 'receipt-backed Remove uses the narrow Controller restoration gate'
 run_test direct_v2_invalid_evidence_blocks 'invalid version-3 lifecycle evidence blocks Apply without mutation'
 run_test direct_v3_pending_ancestry_is_bound 'version-3 pending evidence is bound to its validated prior receipt'
 run_test direct_v3_remove_preserves_unrelated_edits 'version-3 Remove preserves unrelated group edits made after Apply'
-run_test direct_v3_defaultim_drift_remains_owned 'mutable managed-group DefaultIM preserves exact no-op and receipt-backed Remove'
+run_test direct_v3_defaultim_drift_remains_owned 'managed-group DefaultIM drift blocks exact no-op while preserving receipt-backed Remove'
 run_test direct_v2_indeterminate_write_stops 'indeterminate Controller write records recovery without another write'
 run_test direct_v2_unproved_quiescence_stops 'unproved helper quiescence records recovery before Controller mutation'
 run_test direct_v2_ambiguous_phase_stops 'unrecorded durable-state drift records recovery without rollback mutation'

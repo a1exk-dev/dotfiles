@@ -3,7 +3,7 @@
 readonly INPUT_LANGUAGES_V3_MANAGED_GROUP='Dotfiles Input Languages'
 readonly INPUT_LANGUAGES_V3_SOCKET_UNIT='dotfiles-input-languages-fcitx.socket'
 readonly INPUT_LANGUAGES_V3_SERVICE_UNIT='dotfiles-input-languages-fcitx.service'
-readonly INPUT_LANGUAGES_V3_RESTORE_DIRECT='Restore the exact retained version-2 receipt, immutable artifact pointer, Hyprland tree, widget ownership, and original backup ancestry.'
+readonly INPUT_LANGUAGES_V3_RESTORE_DIRECT='Restore the exact recorded direct receipt, artifact pointer, Hyprland tree, widget ownership, and original backup ancestry or absence.'
 readonly INPUT_LANGUAGES_V3_RESTORE_FCITX='Reverse only the managed-group semantic delta and restore the prior current group and still-valid nonempty method without writing profile bytes.'
 readonly INPUT_LANGUAGES_V3_RESTORE_HELPER='Quiesce authority, then restore only the exact prior helper unit, enablement, pointer, runtime, and activation edges.'
 readonly INPUT_LANGUAGES_V3_RESTORE_LANGUAGE='Publish the operation-start language as one new explicit target after direct authority restoration.'
@@ -264,8 +264,9 @@ input_languages_v3_delivery_state() {
 input_languages_v3_hyprland_ownership_valid() {
 	jq -e '
 		(keys | sort) == (["tree_state","source_id","active_artifact_pointer","autoreload","canonical_language","physical_groups"] | sort) and
-		(.tree_state | type == "string" and length > 0) and (.source_id | test("^[0-9a-f]{64}$")) and
-		(.active_artifact_pointer | type == "string" and startswith("/")) and (.autoreload | type == "boolean") and
+		(.tree_state | IN("linked","migratable","uninstalled")) and
+		(if .tree_state == "linked" then (.source_id | test("^[0-9a-f]{64}$")) and (.active_artifact_pointer | type == "string" and startswith("/"))
+		 else .source_id == null and .active_artifact_pointer == null end) and (.autoreload | type == "boolean") and
 		(.canonical_language | IN("US","Russian")) and
 		(.physical_groups | type == "array" and all(.[];
 			(keys | sort) == (["device","group"] | sort) and (.device | type == "string" and length > 0) and
@@ -364,9 +365,12 @@ input_languages_v3_common_receipt_valid() {
 	operation_start=$(jq -c .operation_start "$file") || return 1
 	restoration=$(jq -c .restoration "$file") || return 1
 	jq -e '
-		(keys | sort) == (["receipt","receipt_digest","backup_transaction_id","backup","backup_digest","backup_existed"] | sort) and
-		([.receipt,.backup] | all(type == "string" and startswith("/"))) and
-		([.receipt_digest,.backup_digest] | all(test("^[0-9a-f]{64}$"))) and
+		(keys | sort) == (["entry","receipt","receipt_digest","pointer","pointer_digest","backup_transaction_id","backup","backup_digest","backup_existed"] | sort) and
+		(.entry | IN("fresh","version-2")) and (.backup | type == "string" and startswith("/")) and
+		([.backup_digest] | all(test("^[0-9a-f]{64}$"))) and
+		(if .entry == "version-2" then
+			([.receipt,.pointer] | all(type == "string" and startswith("/"))) and ([.receipt_digest,.pointer_digest] | all(test("^[0-9a-f]{64}$")))
+		 else .receipt == null and .receipt_digest == null and .pointer == null and .pointer_digest == null end) and
 		(.backup_transaction_id | type == "string" and length > 0) and (.backup_existed | type == "boolean")
 	' <<<"$direct" >/dev/null || return 1
 	jq -e '
@@ -380,6 +384,7 @@ input_languages_v3_common_receipt_valid() {
 	artifact_root=$(jq -r .artifact <<<"$artifact"); artifact_root=${artifact_root%/*}
 	input_languages_v3_integration_artifact_matches "$artifact" "$artifact_root" || return 1
 	input_languages_v3_semantics_valid "$fcitx" || return 1
+	jq -e '.profile_diagnostic | (keys | sort) == (["path","digest"] | sort) and (.path | startswith("/")) and (.digest | test("^[0-9a-f]{64}$"))' "$file" >/dev/null || return 1
 	jq -e '
 		(keys | sort) == (["canonical_language","physical_groups","fcitx_method"] | sort) and
 		(.canonical_language | IN("US","Russian")) and (.physical_groups | type == "array" and all(.[]; (keys | sort) == (["device","group"] | sort) and (.device | type == "string" and length > 0) and (.group == 0 or .group == 1))) and
@@ -390,17 +395,25 @@ input_languages_v3_common_receipt_valid() {
 		(keys | sort) == (["direct","fcitx","helper","language"] | sort) and
 		. == {direct:$direct,fcitx:$fcitx,helper:$helper,language:$language}
 	' <<<"$restoration" >/dev/null || return 1
-	local receipt receipt_digest backup backup_transaction backup_digest backup_existed actual
+	local receipt receipt_digest pointer pointer_digest backup backup_transaction backup_digest backup_existed actual
 	receipt=$(jq -r .receipt <<<"$direct")
 	receipt_digest=$(jq -r .receipt_digest <<<"$direct")
+	pointer=$(jq -r .pointer <<<"$direct")
+	pointer_digest=$(jq -r .pointer_digest <<<"$direct")
 	backup=$(jq -r .backup <<<"$direct")
 	backup_transaction=$(jq -r .backup_transaction_id <<<"$direct")
 	backup_digest=$(jq -r .backup_digest <<<"$direct")
 	backup_existed=$(jq -r .backup_existed <<<"$direct")
-	input_languages_file_metadata_safe "$receipt" 600 || return 1
-	input_languages_validate_active_evidence_file_v2 "$receipt" || return 1
-	actual=$(sha256sum "$receipt") || return 1
-	[[ ${actual%% *} == "$receipt_digest" ]] || return 1
+	if [[ $(jq -r .entry <<<"$direct") == version-2 ]]; then
+		input_languages_file_metadata_safe "$receipt" 600 || return 1
+		input_languages_validate_active_evidence_file_v2 "$receipt" || return 1
+		actual=$(sha256sum "$receipt") || return 1
+		[[ ${actual%% *} == "$receipt_digest" ]] || return 1
+		input_languages_file_metadata_safe "$pointer" 600 || return 1
+		actual=$(sha256sum "$pointer") || return 1
+		[[ ${actual%% *} == "$pointer_digest" ]] || return 1
+		input_languages_pointer_file_matches "$pointer" "$(jq -r .artifact "$receipt")" || return 1
+	fi
 	input_languages_backup_valid "$backup" "$backup_transaction" "$backup_existed" "$backup_digest"
 }
 
@@ -408,7 +421,7 @@ input_languages_validate_active_file_v3() {
 	local file=$1 mode=${2-artifact} artifact widget_source widget_digest
 	input_languages_file_metadata_safe "$file" 600 || return 1
 	input_languages_v3_exact_keys "$file" '
-		(keys | sort) == (["version","operation","transaction_id","direct_ancestry","integration_artifact","fcitx_before","managed_group","helper_ownership","hyprland_ownership","widget_ownership","operation_start","restoration"] | sort) and
+		(keys | sort) == (["version","operation","transaction_id","direct_ancestry","integration_artifact","fcitx_before","profile_diagnostic","managed_group","helper_ownership","hyprland_ownership","widget_ownership","operation_start","restoration"] | sort) and
 		.version == 3 and .operation == "active" and (.transaction_id | type == "string" and length > 0) and
 		(.hyprland_ownership | (keys | sort) == (["tree_state","source_id","active_artifact_pointer","autoreload","canonical_language","physical_groups"] | sort)) and
 		(.widget_ownership | (keys | sort) == (["source","source_digest","live_link","section","index","entry","prior_stock_present","prior_stock_section","prior_stock_index","prior_stock_entry"] | sort))
@@ -432,9 +445,10 @@ input_languages_validate_pending_file_v3() {
 	local file=$1 operation phase prior prior_digest actual artifact
 	input_languages_file_metadata_safe "$file" 600 || return 1
 	input_languages_v3_exact_keys "$file" '
-		(keys | sort) == (["version","operation","transaction_id","phase","prior_active","prior_active_digest","direct_ancestry","integration_artifact","fcitx_before","managed_group_before","managed_group_target","helper_before","helper_target","hyprland_before","widget_before","operation_start","expected_states","restoration"] | sort) and
+		(keys | sort) == (["version","operation","transaction_id","phase","prior_active","prior_active_digest","direct_ancestry","integration_artifact","fcitx_before","profile_diagnostic","managed_group_before","managed_group_target","helper_before","helper_target","hyprland_before","widget_before","operation_start","expected_states","restoration"] | sort) and
 		.version == 3 and (.operation | IN("apply","remove")) and (.transaction_id | type == "string" and length > 0) and
-		(.prior_active | type == "string" and startswith("/")) and (.prior_active_digest | test("^[0-9a-f]{64}$")) and
+		((.prior_active == null and .prior_active_digest == null) or
+		 ((.prior_active | type == "string" and startswith("/")) and (.prior_active_digest | test("^[0-9a-f]{64}$")))) and
 		(.expected_states | type == "array" and length > 0 and all(.[]; (keys | sort) == (["phase","direct_digest","fcitx_semantic_digest","helper_digest","receipt_digest"] | sort)))
 	' || return 1
 	input_languages_v3_common_receipt_valid "$file" || return 1
@@ -464,12 +478,18 @@ input_languages_validate_pending_file_v3() {
 	esac
 	prior=$(jq -r .prior_active "$file")
 	prior_digest=$(jq -r .prior_active_digest "$file")
-	input_languages_file_metadata_safe "$prior" 600 || return 1
-	actual=$(sha256sum "$prior") || return 1
-	[[ ${actual%% *} == "$prior_digest" ]] || return 1
+	if [[ $prior != null ]]; then
+		input_languages_file_metadata_safe "$prior" 600 || return 1
+		actual=$(sha256sum "$prior") || return 1
+		[[ ${actual%% *} == "$prior_digest" ]] || return 1
+	fi
 	if [[ $operation == apply ]]; then
-		[[ $prior == "$(jq -r .direct_ancestry.receipt "$file")" ]] || return 1
-		input_languages_validate_active_evidence_file_v2 "$prior"
+		if [[ $(jq -r .direct_ancestry.entry "$file") == version-2 ]]; then
+			[[ $prior == "$(jq -r .direct_ancestry.receipt "$file")" ]] || return 1
+			input_languages_validate_active_evidence_file_v2 "$prior"
+		else
+			[[ $prior == null && $prior_digest == null ]]
+		fi
 	else
 		input_languages_validate_active_file_v3 "$prior" evidence
 	fi
@@ -707,7 +727,11 @@ input_languages_v3_apply_plan_matches() {
 	[[ $(jq -cS .snapshot <<<"$INPUT_LANGUAGES_V3_CONTROLLER_RESPONSE") == "$(jq -cS .snapshot <<<"$planned_controller")" ]] || return 1
 	current=$(input_languages_v3_helper_ownership) || return 1
 	[[ $(jq -cS . <<<"$current") == "$(jq -cS . <<<"$planned_helper")" ]] || return 1
-	current=$(input_languages_v3_hyprland_ownership "$INPUT_LANGUAGES_PLUGIN_HEALTH") || return 1
+	if [[ $(jq -r .tree_state <<<"$planned_hyprland") == linked ]]; then
+		current=$(input_languages_v3_hyprland_ownership "$INPUT_LANGUAGES_PLUGIN_HEALTH") || return 1
+	else
+		current=$(input_languages_v3_fresh_hyprland_ownership) || return 1
+	fi
 	[[ $(jq -cS . <<<"$current") == "$(jq -cS . <<<"$planned_hyprland")" ]]
 }
 
@@ -733,10 +757,21 @@ input_languages_v3_hyprland_ownership() {
 		'{tree_state:$tree,source_id:$source,active_artifact_pointer:$pointer,autoreload:$autoreload,canonical_language:$language,physical_groups:$groups}'
 }
 
+input_languages_v3_fresh_hyprland_ownership() {
+	local devices groups start_group=0 autoreload
+	devices=$(hyprctl -j devices) || return 1
+	groups=$(jq -c '[.keyboards[] | select(.active_layout_index == 0 or .active_layout_index == 1) | {device:.name,group:.active_layout_index}]' <<<"$devices") || return 1
+	if [[ $(jq -r 'length' <<<"$groups") -gt 0 ]]; then start_group=$(jq -r '.[0].group' <<<"$groups"); fi
+	autoreload=$(input_languages_current_autoreload) || return 1
+	jq -cn --arg tree "$INPUT_LANGUAGES_TREE_STATE" --argjson autoreload "$autoreload" \
+		--arg language "$([[ $start_group == 0 ]] && printf US || printf Russian)" --argjson groups "$groups" \
+		'{tree_state:$tree,source_id:null,active_artifact_pointer:null,autoreload:$autoreload,canonical_language:$language,physical_groups:$groups}'
+}
+
 input_languages_v3_widget_ownership() {
-	local source=$1 digest=$2 prior=$3
-	jq -cn --arg source "$source" --arg digest "$digest" --arg live "$INPUT_LANGUAGES_WIDGET_LIVE" --arg section "$INPUT_LANGUAGES_WIDGET_SECTION" \
-		--argjson index "${INPUT_LANGUAGES_WIDGET_INDEX:-0}" --argjson entry "$INPUT_LANGUAGES_WIDGET_ENTRY" --argjson prior "$prior" '
+	local source=$1 digest=$2 prior=$3 section=${4-$INPUT_LANGUAGES_WIDGET_SECTION} index=${5-${INPUT_LANGUAGES_WIDGET_INDEX:-0}} entry=${6-$INPUT_LANGUAGES_WIDGET_ENTRY}
+	jq -cn --arg source "$source" --arg digest "$digest" --arg live "$INPUT_LANGUAGES_WIDGET_LIVE" --arg section "$section" \
+		--argjson index "$index" --argjson entry "$entry" --argjson prior "$prior" '
 		{source:$source,source_digest:$digest,live_link:$live,section:$section,index:$index,entry:$entry,
 		prior_stock_present:$prior.prior_stock_present,prior_stock_section:$prior.prior_stock_section,prior_stock_index:$prior.prior_stock_index,prior_stock_entry:$prior.prior_stock_entry}'
 }
@@ -874,6 +909,31 @@ input_languages_v3_managed_group_owned() {
 	' <<<"$1" >/dev/null 2>&1
 }
 
+input_languages_v3_profile_diagnostic() {
+	local transaction=$1 fcitx=$2 source target digest temporary
+	source=$(jq -r .profile_evidence.path <<<"$fcitx") || return 1
+	digest=$(jq -r .profile_evidence.digest <<<"$fcitx") || return 1
+	target=$INPUT_LANGUAGES_STATE/diagnostics/$transaction-fcitx-profile.raw
+	jq -cn --arg path "$target" --arg digest "$digest" '{path:$path,digest:$digest}'
+}
+
+input_languages_v3_capture_profile_diagnostic() {
+	local evidence=$1 source target expected actual temporary
+	source=$(jq -r .fcitx_before.profile_evidence.path "$INPUT_LANGUAGES_PENDING") || return 1
+	target=$(jq -r .path <<<"$evidence") || return 1
+	expected=$(jq -r .digest <<<"$evidence") || return 1
+	input_languages_file_metadata_safe "$source" 600 || return 1
+	actual=$(sha256sum "$source" | cut -d' ' -f1) || return 1
+	[[ $actual == "$expected" && ! -e $target && ! -L $target ]] || return 1
+	temporary=$(mktemp "${target%/*}/.${target##*/}.XXXXXX") || return 1
+	if ! cp --no-dereference --preserve=mode,timestamps -- "$source" "$temporary" || ! chmod 600 "$temporary" ||
+		! mv -T "$temporary" "$target"; then
+		rm -f -- "$temporary"
+		return 1
+	fi
+	input_languages_file_metadata_safe "$target" 600 && [[ $(sha256sum "$target" | cut -d' ' -f1) == "$expected" ]]
+}
+
 input_languages_exact_noop_v3() {
 	input_languages_v3_require_runtime true || return 1
 	[[ $INPUT_LANGUAGES_TREE_STATE == linked && $INPUT_LANGUAGES_ACTIVE_STATE == valid &&
@@ -893,7 +953,7 @@ input_languages_exact_noop_v3() {
 	input_languages_v3_health_matches_controller "$INPUT_LANGUAGES_PLUGIN_HEALTH" "$controller" || return 1
 	managed=$(input_languages_v3_observed_managed_group "$controller") || return 1
 	expected=$(jq -c .managed_group "$INPUT_LANGUAGES_ACTIVE") || return 1
-	input_languages_v3_managed_group_owned "$managed" "$expected" || return 1
+	[[ $(jq -cS . <<<"$managed") == "$(jq -cS . <<<"$expected")" ]] || return 1
 	[[ $(jq -r .snapshot.current_group <<<"$controller") == "$INPUT_LANGUAGES_V3_MANAGED_GROUP" ]] || return 1
 	jq -e '.snapshot.observed_method == "" or .snapshot.observed_method == null or (.snapshot.observed_method | IN("keyboard-us","keyboard-ru"))' <<<"$controller" >/dev/null 2>&1 || return 1
 	helper_current=$(input_languages_v3_helper_ownership) || return 1
@@ -982,7 +1042,8 @@ input_languages_v3_quiesce_helper() {
 input_languages_v3_managed_state_reconcilable() {
 	local controller=$1 expected=$2 observed
 	observed=$(input_languages_v3_observed_managed_group "$controller") || return 1
-	[[ $observed == null || $observed == "$expected" ]] && return 0
+	[[ $observed == null ]] && return 0
+	input_languages_v3_managed_group_owned "$observed" "$expected" && return 0
 	jq -e --arg name "$INPUT_LANGUAGES_V3_MANAGED_GROUP" '
 		.name == $name and (.default_layout | type == "string" and length > 0) and .default_im == "" and .items == []
 	' <<<"$observed" >/dev/null 2>&1
@@ -1074,7 +1135,7 @@ input_languages_v3_remove_state_exact() {
 }
 
 input_languages_v3_verify_apply_rollback() {
-	local prior=$1 response helper_before helper_current helper runtime_root
+	local prior=$1 response helper_before helper_current helper runtime_root devices expected_groups
 	helper=$(jq -r .integration_artifact.artifact "$INPUT_LANGUAGES_PENDING"); helper=${helper%/*}/input-languages-fcitx-helper
 	input_languages_v3_controller_inspect "$helper" || return 1
 	response=$INPUT_LANGUAGES_V3_CONTROLLER_RESPONSE
@@ -1083,13 +1144,28 @@ input_languages_v3_verify_apply_rollback() {
 	runtime_root=$(input_languages_v3_runtime_root_from_ownership "$helper_before") || return 1
 	helper_current=$(input_languages_v3_helper_ownership "$runtime_root") || return 1
 	[[ $(jq -cS . <<<"$helper_current") == "$(jq -cS . <<<"$helper_before")" ]] || return 1
-	cmp -s "$prior" "$INPUT_LANGUAGES_ACTIVE" || return 1
-	input_languages_validate_active_file_v2 "$INPUT_LANGUAGES_ACTIVE" || return 1
 	input_languages_inspect_tree
-	[[ $INPUT_LANGUAGES_TREE_STATE == linked ]] || return 1
-	input_languages_pointer_matches "$(jq -r .artifact "$prior")" || return 1
-	input_languages_widget_link_matches "$(jq -r .widget_source "$prior")" || return 1
-	[[ $(jq -r .canonical_group <<<"$(hyprctl -j inputlanguages)") == "$([[ $(jq -r .operation_start.canonical_language "$INPUT_LANGUAGES_PENDING") == US ]] && printf 0 || printf 1)" ]]
+	if [[ $(jq -r .direct_ancestry.entry "$INPUT_LANGUAGES_PENDING") == version-2 ]]; then
+		cmp -s "$prior" "$INPUT_LANGUAGES_ACTIVE" || return 1
+		input_languages_validate_active_file_v2 "$INPUT_LANGUAGES_ACTIVE" || return 1
+		[[ $INPUT_LANGUAGES_TREE_STATE == linked ]] || return 1
+		input_languages_pointer_matches "$(jq -r .artifact "$prior")" || return 1
+		input_languages_widget_link_matches "$(jq -r .widget_source "$prior")" || return 1
+	else
+		[[ ! -e $INPUT_LANGUAGES_ACTIVE && ! -L $INPUT_LANGUAGES_ACTIVE ]] || return 1
+		if [[ $(jq -r .direct_ancestry.backup_existed "$INPUT_LANGUAGES_PENDING") == true ]]; then
+			[[ $INPUT_LANGUAGES_TREE_STATE == migratable && $(input_languages_tree_digest "$INPUT_LANGUAGES_LIVE") == "$(jq -r .direct_ancestry.backup_digest "$INPUT_LANGUAGES_PENDING")" ]] || return 1
+		else [[ $INPUT_LANGUAGES_TREE_STATE == uninstalled ]] || return 1; fi
+		input_languages_stock_widget_matches "$(jq -r .widget_before.prior_stock_present "$INPUT_LANGUAGES_PENDING")" \
+			"$(jq -r '.widget_before.prior_stock_section // empty' "$INPUT_LANGUAGES_PENDING")" \
+			"$(jq -r '.widget_before.prior_stock_index // empty' "$INPUT_LANGUAGES_PENDING")" "$(jq -c .widget_before.prior_stock_entry "$INPUT_LANGUAGES_PENDING")" || return 1
+		[[ ! -e $INPUT_LANGUAGES_POINTER && ! -L $INPUT_LANGUAGES_POINTER && ! -e $INPUT_LANGUAGES_WIDGET_LIVE && ! -L $INPUT_LANGUAGES_WIDGET_LIVE ]] || return 1
+	fi
+	devices=$(hyprctl -j devices) || return 1
+	expected_groups=$(jq -c .operation_start.physical_groups "$INPUT_LANGUAGES_PENDING") || return 1
+	jq -e --argjson expected "$expected_groups" '
+		. as $devices | all($expected[]; . as $group | any($devices.keyboards[]; .name == $group.device and .active_layout_index == $group.group))
+	' <<<"$devices" >/dev/null 2>&1
 }
 
 input_languages_v3_wait_for_health() {
@@ -1135,9 +1211,9 @@ input_languages_v3_publish_active() {
 	widget=$(input_languages_v3_widget_ownership "$INPUT_LANGUAGES_INTEGRATION_ARTIFACT_DIR/$INPUT_LANGUAGES_WIDGET" "$(jq -r .widget_sha256 "$metadata")" "$prior") || return 1
 	input_languages_v3_indicator_valid "$widget" "$health" || return 1
 	content=$(jq -cn --arg transaction "$transaction" --argjson direct "$(jq -c .direct_ancestry "$pending")" --argjson artifact "$artifact" \
-		--argjson fcitx "$fcitx" --argjson managed "$managed" --argjson helper "$helper_ownership" --argjson hypr "$hypr" --argjson widget "$widget" \
+		--argjson fcitx "$fcitx" --argjson diagnostic "$(jq -c .profile_diagnostic "$pending")" --argjson managed "$managed" --argjson helper "$helper_ownership" --argjson hypr "$hypr" --argjson widget "$widget" \
 		--argjson operation_start "$(jq -c .operation_start "$pending")" --argjson restoration "$(jq -c .restoration "$pending")" '
-		{version:3,operation:"active",transaction_id:$transaction,direct_ancestry:$direct,integration_artifact:$artifact,fcitx_before:$fcitx,
+		{version:3,operation:"active",transaction_id:$transaction,direct_ancestry:$direct,integration_artifact:$artifact,fcitx_before:$fcitx,profile_diagnostic:$diagnostic,
 		managed_group:$managed,helper_ownership:$helper,hyprland_ownership:$hypr,widget_ownership:$widget,operation_start:$operation_start,restoration:$restoration}') || return 1
 	input_languages_write_json_atomic "$INPUT_LANGUAGES_ACTIVE" "$content" active
 }
@@ -1149,14 +1225,14 @@ input_languages_v3_archive_apply_evidence() {
 	final=$archive_root/$transaction-apply
 	[[ ! -e $stage && ! -L $stage && ! -e $final && ! -L $final ]] || return 1
 	mkdir -m 0700 "$stage" || return 1
-	cp -a "$prior" "$stage/prior-active-v2.json" || return 1
+	if [[ $prior != null ]]; then cp -a "$prior" "$stage/prior-active-v2.json" || return 1; fi
 	cp -a "$INPUT_LANGUAGES_PENDING" "$stage/pending.json" || return 1
-	chmod 600 "$stage/prior-active-v2.json" "$stage/pending.json" || return 1
-	prior_digest=$(sha256sum "$stage/prior-active-v2.json" | cut -d' ' -f1) || return 1
+	chmod 600 "$stage"/*.json || return 1
+	if [[ $prior != null ]]; then prior_digest=$(sha256sum "$stage/prior-active-v2.json" | cut -d' ' -f1) || return 1; fi
 	pending_digest=$(sha256sum "$stage/pending.json" | cut -d' ' -f1) || return 1
-	[[ $prior_digest == "$(jq -r .prior_active_digest "$stage/pending.json")" ]] || return 1
+	if [[ $prior != null ]]; then [[ $prior_digest == "$(jq -r .prior_active_digest "$stage/pending.json")" ]] || return 1; fi
 	[[ $pending_digest =~ ^[0-9a-f]{64}$ ]] || return 1
-	input_languages_validate_active_evidence_file_v2 "$stage/prior-active-v2.json" || return 1
+	if [[ $prior != null ]]; then input_languages_validate_active_evidence_file_v2 "$stage/prior-active-v2.json" || return 1; fi
 	input_languages_validate_pending_file_v3 "$stage/pending.json" || return 1
 	mv "$stage" "$final" || return 1
 	[[ -d $final && ! -L $final ]]
@@ -1164,16 +1240,22 @@ input_languages_v3_archive_apply_evidence() {
 
 input_languages_apply_v3() {
 	local INPUT_LANGUAGES_V3_WRITE_INDETERMINATE=false
-	local approved=false packages_prepared=false expect_noop=false option transaction transaction_root prior_receipt prior_digest direct artifact controller fcitx_before active_digest
-	local helper_before helper_target health hypr_before widget_before operation_start expected restoration managed_target pending_content failed='' prior_widget source_changed=true planned_runtime
+	local approved=false packages_prepared=false expect_noop=false option transaction transaction_root prior_receipt=null prior_digest=null prior_pointer=null prior_pointer_digest=null direct artifact controller fcitx_before profile_diagnostic active_digest=absent
+	local helper_before helper_target health hypr_before widget_before operation_start expected restoration managed_target pending_content failed='' prior_widget target_widget source_changed=true planned_runtime entry
 	for option in "$@"; do case $option in --yes) approved=true ;; --packages-prepared) packages_prepared=true ;; --expect-noop) expect_noop=true ;; --recovery-approved) ;; *) return 2 ;; esac; done
 	input_languages_inspect
-	[[ $INPUT_LANGUAGES_ACTIVE_STATE == valid && $(jq -r .version "$INPUT_LANGUAGES_ACTIVE") == 2 && $INPUT_LANGUAGES_TREE_STATE == linked ]] || return 1
+	if [[ $INPUT_LANGUAGES_ACTIVE_STATE == valid && $(jq -r .version "$INPUT_LANGUAGES_ACTIVE") == 2 && $INPUT_LANGUAGES_TREE_STATE == linked ]]; then
+		entry=version-2
+	elif [[ $INPUT_LANGUAGES_ACTIVE_STATE == absent && ( $INPUT_LANGUAGES_TREE_STATE == uninstalled || $INPUT_LANGUAGES_TREE_STATE == migratable ) ]]; then
+		entry=fresh
+	else
+		return 1
+	fi
 	if [[ $expect_noop == true ]]; then
 		printf 'Apply blocked: Input Languages changed after its exact no-op was inspected; review a new complete plan.\n' >&2
 		return 1
 	fi
-	input_languages_validate_active_file_v2 "$INPUT_LANGUAGES_ACTIVE" || { printf 'Apply blocked: the direct version-2 ancestry is not exact.\n' >&2; return 1; }
+	if [[ $entry == version-2 ]]; then input_languages_validate_active_file_v2 "$INPUT_LANGUAGES_ACTIVE" || { printf 'Apply blocked: the direct version-2 ancestry is not exact.\n' >&2; return 1; }; fi
 	input_languages_paths_are_safe || return 1
 	[[ $INPUT_LANGUAGES_SUPPORTED == true ]] || return 1
 	input_languages_v3_require_runtime false || { printf 'Apply blocked: the Input Languages runtime contract is not satisfied.\n' >&2; return 1; }
@@ -1184,7 +1266,11 @@ input_languages_apply_v3() {
 		plan_arch_packages hyprland
 		print_arch_package_plan
 	fi
-	printf 'Plan: expand the exact version-2 Input Languages installation through one version-3 Fcitx and helper transaction.\n'
+	if [[ $entry == version-2 ]]; then
+		printf 'Plan: expand the exact version-2 Input Languages installation through one version-3 Fcitx and helper transaction.\n'
+	else
+		printf 'Plan: install Input Languages version 3 directly with one Hyprland, indicator, Fcitx, and helper transaction.\n'
+	fi
 	if [[ $approved != true ]] && ! wizard_confirm 'Apply this complete Input Languages expansion plan?'; then printf 'Apply canceled; no changes made.\n'; return 0; fi
 	if [[ $packages_prepared != true ]]; then
 		install_missing_arch_packages 'Settings -> Input Languages -> Apply' || return 1
@@ -1209,19 +1295,33 @@ input_languages_apply_v3() {
 	helper_before=$(input_languages_v3_helper_ownership) || return 1
 	helper_target=$(input_languages_v3_target_helper_ownership "$INPUT_LANGUAGES_INTEGRATION_ARTIFACT_DIR") || return 1
 	health=$INPUT_LANGUAGES_PLUGIN_HEALTH
-	hypr_before=$(input_languages_v3_hyprland_ownership "$health") || return 1
-	prior_widget=$(jq -c '{prior_stock_present,prior_stock_section,prior_stock_index,prior_stock_entry}' "$INPUT_LANGUAGES_ACTIVE")
-	widget_before=$(input_languages_v3_widget_ownership "$(jq -r .widget_source "$INPUT_LANGUAGES_ACTIVE")" "$(jq -r .widget_sha256 "$INPUT_LANGUAGES_ACTIVE")" "$prior_widget") || return 1
+	if [[ $entry == version-2 ]]; then
+		hypr_before=$(input_languages_v3_hyprland_ownership "$health") || return 1
+		prior_widget=$(jq -c '{prior_stock_present,prior_stock_section,prior_stock_index,prior_stock_entry}' "$INPUT_LANGUAGES_ACTIVE")
+		widget_before=$(input_languages_v3_widget_ownership "$(jq -r .widget_source "$INPUT_LANGUAGES_ACTIVE")" "$(jq -r .widget_sha256 "$INPUT_LANGUAGES_ACTIVE")" "$prior_widget") || return 1
+	else
+		hypr_before=$(input_languages_v3_fresh_hyprland_ownership) || return 1
+		prior_widget=$(jq -cn --argjson present "$INPUT_LANGUAGES_STOCK_WIDGET_PRESENT" --arg section "$INPUT_LANGUAGES_STOCK_WIDGET_SECTION" --arg index "${INPUT_LANGUAGES_STOCK_WIDGET_INDEX:-0}" --argjson entry "$INPUT_LANGUAGES_STOCK_WIDGET_ENTRY" \
+			'{prior_stock_present:$present,prior_stock_section:(if $present then $section else null end),prior_stock_index:(if $present then ($index|tonumber) else null end),prior_stock_entry:(if $present then $entry else null end)}')
+		if [[ $INPUT_LANGUAGES_STOCK_WIDGET_PRESENT == true ]]; then target_widget=$(jq -c --arg id "$INPUT_LANGUAGES_WIDGET" '.id=$id' <<<"$INPUT_LANGUAGES_STOCK_WIDGET_ENTRY")
+		else target_widget=$(jq -cn --arg id "$INPUT_LANGUAGES_WIDGET" '{id:$id}'); fi
+		widget_before=$(input_languages_v3_widget_ownership "$INPUT_LANGUAGES_INTEGRATION_ARTIFACT_DIR/$INPUT_LANGUAGES_WIDGET" "$(jq -r .widget_sha256 "$INPUT_LANGUAGES_INTEGRATION_ARTIFACT_DIR/build.json")" "$prior_widget" right 0 "$target_widget") || return 1
+		health=$(jq -cn --arg language "$(jq -r .canonical_language <<<"$hypr_before")" --argjson groups "$(jq -c .physical_groups <<<"$hypr_before")" \
+			'{canonical_group:(if $language == "US" then 0 else 1 end),physical_keyboards:[$groups[].device]}')
+	fi
 	operation_start=$(jq -cn --arg language "$(jq -r 'if .canonical_group == 0 then "US" else "Russian" end' <<<"$health")" \
-		--argjson groups "$(jq -c '[.physical_keyboards[] as $device | {device:$device,group:.canonical_group}]' <<<"$health")" \
+		--argjson groups "$([[ $entry == fresh ]] && jq -c .physical_groups <<<"$hypr_before" || jq -c '[.physical_keyboards[] as $device | {device:$device,group:.canonical_group}]' <<<"$health")" \
 		--arg method "$(jq -r .snapshot.observed_method <<<"$controller")" '{canonical_language:$language,physical_groups:$groups,fcitx_method:$method}')
 	managed_target=$(input_languages_v3_managed_group "$([[ $(jq -r .canonical_language <<<"$operation_start") == US ]] && printf keyboard-us || printf keyboard-ru)") || return 1
 	restoration=$(input_languages_v3_restoration)
-	active_digest=$(sha256sum "$INPUT_LANGUAGES_ACTIVE" | cut -d' ' -f1) || return 1
+	if [[ $entry == version-2 ]]; then active_digest=$(sha256sum "$INPUT_LANGUAGES_ACTIVE" | cut -d' ' -f1) || return 1; fi
 	input_languages_acquire_lock Apply || return 1
 	input_languages_inspect
-	[[ $INPUT_LANGUAGES_ACTIVE_STATE == valid && $(jq -r .version "$INPUT_LANGUAGES_ACTIVE") == 2 && $INPUT_LANGUAGES_TREE_STATE == linked &&
-		$(sha256sum "$INPUT_LANGUAGES_ACTIVE" | cut -d' ' -f1) == "$active_digest" ]] || { input_languages_unlock || true; return 1; }
+	if [[ $entry == version-2 ]]; then
+		[[ $INPUT_LANGUAGES_ACTIVE_STATE == valid && $(jq -r .version "$INPUT_LANGUAGES_ACTIVE") == 2 && $INPUT_LANGUAGES_TREE_STATE == linked && $(sha256sum "$INPUT_LANGUAGES_ACTIVE" | cut -d' ' -f1) == "$active_digest" ]] || { input_languages_unlock || true; return 1; }
+	else
+		[[ $INPUT_LANGUAGES_ACTIVE_STATE == absent && ( $INPUT_LANGUAGES_TREE_STATE == uninstalled || $INPUT_LANGUAGES_TREE_STATE == migratable ) ]] || { input_languages_unlock || true; return 1; }
+	fi
 	input_languages_v3_require_runtime false && [[ $INPUT_LANGUAGES_V3_RUNTIME_ROOT == "$planned_runtime" ]] || { printf 'Apply blocked: the runtime root changed after confirmation.\n' >&2; input_languages_unlock || true; return 1; }
 	input_languages_verify_package_requirements || { input_languages_unlock || true; return 1; }
 	input_languages_static_preflight || { input_languages_unlock || true; return 1; }
@@ -1230,22 +1330,33 @@ input_languages_apply_v3() {
 	input_languages_v3_apply_plan_matches "$INPUT_LANGUAGES_INTEGRATION_HELPER" "$controller" "$helper_before" "$hypr_before" || { printf 'Apply blocked: the confirmed runtime plan changed before pending evidence.\n' >&2; input_languages_unlock || true; return 1; }
 	transaction=$(input_languages_new_transaction) || { input_languages_unlock || true; return 1; }
 	transaction_root=$INPUT_LANGUAGES_STATE/backups/$transaction
-	mkdir -m 0700 "$transaction_root" || { input_languages_unlock || true; return 1; }
-	prior_receipt=$transaction_root/prior-active-v2.json
-	input_languages_copy_atomic "$INPUT_LANGUAGES_ACTIVE" "$prior_receipt" || { input_languages_unlock || true; return 1; }
-	prior_digest=$(sha256sum "$prior_receipt" | cut -d' ' -f1)
-	direct=$(jq -cn --arg receipt "$prior_receipt" --arg receipt_digest "$prior_digest" --arg backup_transaction_id "$(jq -r .backup_transaction_id "$prior_receipt")" \
-		--arg backup "$(jq -r .backup "$prior_receipt")" --arg backup_digest "$(jq -r .backup_digest "$prior_receipt")" --argjson backup_existed "$(jq -r .backup_existed "$prior_receipt")" \
-		'{receipt:$receipt,receipt_digest:$receipt_digest,backup_transaction_id:$backup_transaction_id,backup:$backup,backup_digest:$backup_digest,backup_existed:$backup_existed}')
+	if [[ $entry == version-2 ]]; then
+		mkdir -m 0700 "$transaction_root" || { input_languages_unlock || true; return 1; }
+		prior_receipt=$transaction_root/prior-active-v2.json
+		input_languages_copy_atomic "$INPUT_LANGUAGES_ACTIVE" "$prior_receipt" || { input_languages_unlock || true; return 1; }
+		prior_digest=$(sha256sum "$prior_receipt" | cut -d' ' -f1)
+		prior_pointer=$transaction_root/prior-pointer-v2.lua
+		input_languages_copy_atomic "$INPUT_LANGUAGES_POINTER" "$prior_pointer" || { input_languages_unlock || true; return 1; }
+		prior_pointer_digest=$(sha256sum "$prior_pointer" | cut -d' ' -f1)
+		INPUT_LANGUAGES_BACKUP_TRANSACTION=$(jq -r .backup_transaction_id "$prior_receipt") INPUT_LANGUAGES_BACKUP=$(jq -r .backup "$prior_receipt") INPUT_LANGUAGES_BACKUP_DIGEST=$(jq -r .backup_digest "$prior_receipt") INPUT_LANGUAGES_BACKUP_EXISTED=$(jq -r .backup_existed "$prior_receipt")
+	else
+		input_languages_create_backup "$transaction" || { input_languages_unlock || true; return 1; }
+	fi
+	direct=$(jq -cn --arg entry "$entry" --argjson receipt "$([[ $prior_receipt == null ]] && printf null || jq -Rn --arg value "$prior_receipt" '$value')" --argjson receipt_digest "$([[ $prior_digest == null ]] && printf null || jq -Rn --arg value "$prior_digest" '$value')" \
+		--argjson pointer "$([[ $prior_pointer == null ]] && printf null || jq -Rn --arg value "$prior_pointer" '$value')" --argjson pointer_digest "$([[ $prior_pointer_digest == null ]] && printf null || jq -Rn --arg value "$prior_pointer_digest" '$value')" \
+		--arg backup_transaction_id "$INPUT_LANGUAGES_BACKUP_TRANSACTION" --arg backup "$INPUT_LANGUAGES_BACKUP" --arg backup_digest "$INPUT_LANGUAGES_BACKUP_DIGEST" --argjson backup_existed "$INPUT_LANGUAGES_BACKUP_EXISTED" \
+		'{entry:$entry,receipt:$receipt,receipt_digest:$receipt_digest,pointer:$pointer,pointer_digest:$pointer_digest,backup_transaction_id:$backup_transaction_id,backup:$backup,backup_digest:$backup_digest,backup_existed:$backup_existed}')
 	artifact=$(input_languages_v3_integration_artifact "$INPUT_LANGUAGES_INTEGRATION_ARTIFACT_DIR") || { input_languages_unlock || true; return 1; }
+	profile_diagnostic=$(input_languages_v3_profile_diagnostic "$transaction" "$fcitx_before") || { input_languages_unlock || true; return 1; }
 	expected=$(input_languages_v3_expected_states apply)
 	pending_content=$(jq -cn --arg transaction "$transaction" --arg prior "$prior_receipt" --arg prior_digest "$prior_digest" --argjson direct "$direct" --argjson artifact "$artifact" \
-		--argjson fcitx "$fcitx_before" --argjson managed "$managed_target" --argjson helper_before "$helper_before" --argjson helper_target "$helper_target" \
+		--argjson fcitx "$fcitx_before" --argjson diagnostic "$profile_diagnostic" --argjson managed "$managed_target" --argjson helper_before "$helper_before" --argjson helper_target "$helper_target" \
 		--argjson hypr "$hypr_before" --argjson widget "$widget_before" --argjson operation_start "$operation_start" --argjson expected "$expected" --argjson restoration "$restoration" '
-		{version:3,operation:"apply",transaction_id:$transaction,phase:"prepared",prior_active:$prior,prior_active_digest:$prior_digest,direct_ancestry:$direct,
-		integration_artifact:$artifact,fcitx_before:$fcitx,managed_group_before:null,managed_group_target:$managed,helper_before:$helper_before,
+		{version:3,operation:"apply",transaction_id:$transaction,phase:"prepared",prior_active:(if $prior == "null" then null else $prior end),prior_active_digest:(if $prior_digest == "null" then null else $prior_digest end),direct_ancestry:$direct,
+		integration_artifact:$artifact,fcitx_before:$fcitx,profile_diagnostic:$diagnostic,managed_group_before:null,managed_group_target:$managed,helper_before:$helper_before,
 		helper_target:$helper_target,hyprland_before:$hypr,widget_before:$widget,operation_start:$operation_start,expected_states:$expected,restoration:$restoration}') || { input_languages_unlock || true; return 1; }
 	input_languages_write_json_atomic "$INPUT_LANGUAGES_PENDING" "$pending_content" pending || { input_languages_unlock || true; return 1; }
+	input_languages_v3_capture_profile_diagnostic "$profile_diagnostic" || { input_languages_unlock || true; return 1; }
 	input_languages_v3_update_pending prepared "$(jq -c .snapshot <<<"$controller")" || { input_languages_unlock || true; return 1; }
 	input_languages_v3_quiesce_helper || failed=quiesce-helper
 	if [[ -z $failed ]]; then input_languages_v3_update_pending prior-helper-quiesced || failed=record-quiesce; fi
@@ -1272,8 +1383,13 @@ input_languages_apply_v3() {
 	if [[ -z $failed ]]; then hyprctl keyword misc:disable_autoreload true >/dev/null || failed=pause-autoreload; fi
 	if [[ -z $failed ]]; then input_languages_v3_update_pending pointer-published || failed=record-pointer; fi
 	prior_widget=$(jq -r .widget_before.source "$INPUT_LANGUAGES_PENDING")
+	if [[ -z $failed && $(jq -r .direct_ancestry.entry "$INPUT_LANGUAGES_PENDING") == fresh ]]; then
+		input_languages_clear_transaction_tree "$(jq -r .direct_ancestry.backup "$INPUT_LANGUAGES_PENDING")" "$(jq -r .direct_ancestry.backup_existed "$INPUT_LANGUAGES_PENDING")" || failed=clear-hyprland
+	fi
+	if [[ -z $failed && $(jq -r .direct_ancestry.entry "$INPUT_LANGUAGES_PENDING") == fresh ]]; then input_languages_link_package || failed=link-hyprland; fi
 	if [[ -z $failed ]]; then input_languages_publish_widget_link "$INPUT_LANGUAGES_INTEGRATION_ARTIFACT_DIR/$INPUT_LANGUAGES_WIDGET" "$prior_widget" || failed=publish-widget; fi
 	if [[ -z $failed ]]; then input_languages_reload_widget_registry "$source_changed" || failed=reload-shell; fi
+	if [[ -z $failed && $(jq -r .direct_ancestry.entry "$INPUT_LANGUAGES_PENDING") == fresh ]]; then input_languages_activate_widget "$(jq -c .widget_before.entry "$INPUT_LANGUAGES_PENDING")" || failed=activate-widget; fi
 	if [[ -z $failed ]]; then input_languages_v3_update_pending hyprland-transitioned || failed=record-transition; fi
 	if [[ -z $failed ]]; then hyprctl keyword misc:disable_autoreload "$(jq -r .hyprland_before.autoreload "$INPUT_LANGUAGES_PENDING")" >/dev/null || failed=restore-autoreload; fi
 	if [[ -z $failed ]]; then hyprctl reload >/dev/null || failed=reload-hyprland; fi
@@ -1303,7 +1419,7 @@ input_languages_apply_v3() {
 			input_languages_unlock || true
 			return 1
 		fi
-		printf 'Apply failed at %s; restoring the verified direct version-2 state.\n' "$failed" >&2
+		printf 'Apply failed at %s; restoring the verified direct ancestry.\n' "$failed" >&2
 		input_languages_rollback_pending_v3 || true
 		input_languages_unlock || true
 		return 1
@@ -1496,11 +1612,11 @@ input_languages_remove_v3() {
 	helper_before=$(input_languages_v3_helper_ownership "$runtime_root") || { input_languages_unlock || true; return 1; }
 	pending_content=$(jq -cn --arg transaction "$transaction" --arg prior "$prior_active" --arg prior_digest "$prior_digest" \
 		--argjson direct "$(jq -c .direct_ancestry "$prior_active")" --argjson artifact "$(jq -c .integration_artifact "$prior_active")" \
-		--argjson fcitx "$fcitx_start" --argjson managed "$managed" --argjson helper_before "$helper_before" \
+		--argjson fcitx "$fcitx_start" --argjson diagnostic "$(jq -c .profile_diagnostic "$prior_active")" --argjson managed "$managed" --argjson helper_before "$helper_before" \
 		--argjson helper_target "$helper_target" --argjson hypr "$(jq -c .hyprland_ownership "$prior_active")" --argjson widget "$(jq -c .widget_ownership "$prior_active")" \
 		--argjson operation_start "$operation_start" --argjson expected "$(input_languages_v3_expected_states remove)" --argjson restoration "$(jq -c .restoration "$prior_active")" '
 		{version:3,operation:"remove",transaction_id:$transaction,phase:"prepared",prior_active:$prior,prior_active_digest:$prior_digest,direct_ancestry:$direct,
-		integration_artifact:$artifact,fcitx_before:$fcitx,managed_group_before:$managed,managed_group_target:null,helper_before:$helper_before,
+		integration_artifact:$artifact,fcitx_before:$fcitx,profile_diagnostic:$diagnostic,managed_group_before:$managed,managed_group_target:null,helper_before:$helper_before,
 		helper_target:$helper_target,hyprland_before:$hypr,widget_before:$widget,operation_start:$operation_start,expected_states:$expected,restoration:$restoration}') || { input_languages_unlock || true; return 1; }
 	input_languages_write_json_atomic "$INPUT_LANGUAGES_PENDING" "$pending_content" pending || { input_languages_unlock || true; return 1; }
 	input_languages_v3_update_pending prepared "$(jq -c .snapshot <<<"$controller")" || { input_languages_unlock || true; return 1; }
@@ -1598,14 +1714,67 @@ input_languages_v3_helper_state_between() {
 }
 
 input_languages_v3_apply_rollback_direct_safe() {
-	local prior=$1 current_widget=$2 target_artifact
+	local prior=$1 current_widget=$2 target_artifact prior_present prior_section prior_index prior_entry
 	target_artifact=$(jq -r .integration_artifact.artifact "$INPUT_LANGUAGES_PENDING")
+	if [[ $(jq -r .direct_ancestry.entry "$INPUT_LANGUAGES_PENDING") == fresh ]]; then
+		[[ ! -e $INPUT_LANGUAGES_ACTIVE && ! -L $INPUT_LANGUAGES_ACTIVE ]] || return 1
+		if [[ -e $INPUT_LANGUAGES_POINTER || -L $INPUT_LANGUAGES_POINTER ]]; then input_languages_pointer_matches "$target_artifact" || return 1; fi
+		if [[ -e $INPUT_LANGUAGES_WIDGET_LIVE || -L $INPUT_LANGUAGES_WIDGET_LIVE ]]; then input_languages_widget_link_matches "$current_widget" || return 1; fi
+		input_languages_inspect_tree
+		if [[ $INPUT_LANGUAGES_TREE_STATE != linked ]]; then
+			if [[ $(jq -r .direct_ancestry.backup_existed "$INPUT_LANGUAGES_PENDING") == true ]]; then
+				[[ $INPUT_LANGUAGES_TREE_STATE == migratable && $(input_languages_tree_digest "$INPUT_LANGUAGES_LIVE") == "$(jq -r .direct_ancestry.backup_digest "$INPUT_LANGUAGES_PENDING")" ]] || return 1
+			else [[ $INPUT_LANGUAGES_TREE_STATE == uninstalled ]] || return 1; fi
+		fi
+		prior_present=$(jq -r .widget_before.prior_stock_present "$INPUT_LANGUAGES_PENDING")
+		prior_section=$(jq -r '.widget_before.prior_stock_section // empty' "$INPUT_LANGUAGES_PENDING")
+		prior_index=$(jq -r '.widget_before.prior_stock_index // empty' "$INPUT_LANGUAGES_PENDING")
+		prior_entry=$(jq -c .widget_before.prior_stock_entry "$INPUT_LANGUAGES_PENDING")
+		input_languages_inspect_widget
+		input_languages_stock_widget_matches "$prior_present" "$prior_section" "$prior_index" "$prior_entry" ||
+			input_languages_widget_matches true "$(jq -r .widget_before.section "$INPUT_LANGUAGES_PENDING")" "$(jq -r .widget_before.index "$INPUT_LANGUAGES_PENDING")" "$(jq -c .widget_before.entry "$INPUT_LANGUAGES_PENDING")"
+		return
+	fi
 	cmp -s "$prior" "$INPUT_LANGUAGES_ACTIVE" || return 1
 	input_languages_inspect_tree
 	[[ $INPUT_LANGUAGES_TREE_STATE == linked ]] || return 1
 	input_languages_widget_matches true "$(jq -r .widget_before.section "$INPUT_LANGUAGES_PENDING")" "$(jq -r .widget_before.index "$INPUT_LANGUAGES_PENDING")" "$(jq -c .widget_before.entry "$INPUT_LANGUAGES_PENDING")" || return 1
 	input_languages_pointer_matches "$(jq -r .artifact "$prior")" || input_languages_pointer_matches "$target_artifact" || return 1
 	input_languages_widget_link_matches "$(jq -r .widget_source "$prior")" || input_languages_widget_link_matches "$current_widget"
+}
+
+input_languages_v3_restore_fresh_direct() {
+	local artifact widget_source prior_present prior_section prior_index prior_entry backup transaction existed digest autoreload
+	artifact=$(jq -r .integration_artifact.artifact "$INPUT_LANGUAGES_PENDING")
+	widget_source=${artifact%/*}/$INPUT_LANGUAGES_WIDGET
+	prior_present=$(jq -r .widget_before.prior_stock_present "$INPUT_LANGUAGES_PENDING")
+	prior_section=$(jq -r '.widget_before.prior_stock_section // empty' "$INPUT_LANGUAGES_PENDING")
+	prior_index=$(jq -r '.widget_before.prior_stock_index // empty' "$INPUT_LANGUAGES_PENDING")
+	prior_entry=$(jq -c .widget_before.prior_stock_entry "$INPUT_LANGUAGES_PENDING")
+	backup=$(jq -r .direct_ancestry.backup "$INPUT_LANGUAGES_PENDING")
+	transaction=$(jq -r .direct_ancestry.backup_transaction_id "$INPUT_LANGUAGES_PENDING")
+	existed=$(jq -r .direct_ancestry.backup_existed "$INPUT_LANGUAGES_PENDING")
+	digest=$(jq -r .direct_ancestry.backup_digest "$INPUT_LANGUAGES_PENDING")
+	autoreload=$(jq -r .hyprland_before.autoreload "$INPUT_LANGUAGES_PENDING")
+	hyprctl keyword misc:disable_autoreload true >/dev/null || return 1
+	if ! input_languages_plugin_unloaded; then hyprctl plugin unload "$artifact" >/dev/null || return 1; input_languages_plugin_unloaded || return 1; fi
+	if [[ -e $INPUT_LANGUAGES_POINTER || -L $INPUT_LANGUAGES_POINTER ]]; then input_languages_pointer_matches "$artifact" && input_languages_remove_file_verified "$INPUT_LANGUAGES_POINTER" || return 1; fi
+	input_languages_restore_stock_widget "$prior_present" "$prior_section" "$prior_index" "$prior_entry" || return 1
+	if [[ -e $INPUT_LANGUAGES_WIDGET_LIVE || -L $INPUT_LANGUAGES_WIDGET_LIVE ]]; then input_languages_remove_widget_link "$widget_source" || return 1; fi
+	input_languages_reload_widget_registry false || return 1
+	input_languages_wait_for_custom_plugin absent || return 1
+	input_languages_inspect_tree
+	if [[ $INPUT_LANGUAGES_TREE_STATE == linked ]]; then input_languages_unlink_package || return 1; fi
+	input_languages_restore_backup "$backup" "$existed" "$digest" "$transaction" || return 1
+	hyprctl keyword misc:disable_autoreload "$autoreload" >/dev/null || return 1
+	hyprctl reload >/dev/null
+}
+
+input_languages_v3_restore_fresh_language() {
+	local device group
+	while IFS=$'\t' read -r device group; do
+		hyprctl switchxkblayout "$device" "$group" >/dev/null || return 1
+	done < <(jq -r '.operation_start.physical_groups[] | [.device,.group] | @tsv' "$INPUT_LANGUAGES_PENDING")
 }
 
 input_languages_v3_remove_rollback_direct_safe() {
@@ -1646,12 +1815,16 @@ input_languages_rollback_apply_pending_v3() {
 	fi
 	if [[ -z $failed ]]; then input_languages_v3_helper_state_between "$(jq -c .helper_before "$INPUT_LANGUAGES_PENDING")" "$(jq -c .helper_target "$INPUT_LANGUAGES_PENDING")" || failed=foreign-helper-state; fi
 	if [[ -z $failed ]]; then input_languages_v3_apply_rollback_direct_safe "$prior" "$current_widget" || failed=foreign-direct-state; fi
-	if [[ -z $failed ]]; then input_languages_publish_pointer "$(jq -r .artifact "$prior")" || failed=restore-pointer; fi
-	if [[ -z $failed ]]; then input_languages_publish_widget_link "$(jq -r .widget_source "$prior")" "$current_widget" || failed=restore-widget-link; fi
-	if [[ -z $failed ]]; then input_languages_reload_widget_registry true || failed=reload-shell; fi
-	if [[ -z $failed ]]; then hyprctl keyword misc:disable_autoreload "$(jq -r .hyprland_before.autoreload "$INPUT_LANGUAGES_PENDING")" >/dev/null || failed=restore-autoreload; fi
-	if [[ -z $failed ]]; then hyprctl reload >/dev/null || failed=reload-hyprland; fi
-	if [[ -z $failed ]]; then input_languages_copy_atomic "$prior" "$INPUT_LANGUAGES_ACTIVE" || failed=restore-receipt; fi
+	if [[ -z $failed && $(jq -r .direct_ancestry.entry "$INPUT_LANGUAGES_PENDING") == fresh ]]; then
+		input_languages_v3_restore_fresh_direct || failed=restore-direct
+	else
+		if [[ -z $failed ]]; then input_languages_publish_pointer "$(jq -r .artifact "$prior")" || failed=restore-pointer; fi
+		if [[ -z $failed ]]; then input_languages_publish_widget_link "$(jq -r .widget_source "$prior")" "$current_widget" || failed=restore-widget-link; fi
+		if [[ -z $failed ]]; then input_languages_reload_widget_registry true || failed=reload-shell; fi
+		if [[ -z $failed ]]; then hyprctl keyword misc:disable_autoreload "$(jq -r .hyprland_before.autoreload "$INPUT_LANGUAGES_PENDING")" >/dev/null || failed=restore-autoreload; fi
+		if [[ -z $failed ]]; then hyprctl reload >/dev/null || failed=reload-hyprland; fi
+		if [[ -z $failed ]]; then input_languages_copy_atomic "$prior" "$INPUT_LANGUAGES_ACTIVE" || failed=restore-receipt; fi
+	fi
 	if [[ -z $failed ]]; then
 		if jq -e --arg name "$INPUT_LANGUAGES_V3_MANAGED_GROUP" 'any(.snapshot.groups[]; .name == $name)' <<<"$response" >/dev/null; then
 			if [[ $(jq -r .snapshot.current_group <<<"$response") != "$prior_group" ]]; then input_languages_v3_controller_execute "$helper" switch-group "$prior_group" || failed=restore-group; fi
@@ -1664,7 +1837,10 @@ input_languages_rollback_apply_pending_v3() {
 	fi
 	if [[ -z $failed ]]; then input_languages_v3_remove_helper_edges "$(jq -c .helper_target "$INPUT_LANGUAGES_PENDING")" || failed=remove-helper-edges; fi
 	if [[ -z $failed ]]; then input_languages_v3_remove_runtime_edges "$(jq -c .helper_target "$INPUT_LANGUAGES_PENDING")" || failed=remove-helper-edges; fi
-	if [[ -z $failed ]]; then input_languages_reset_group "$([[ $(jq -r .operation_start.canonical_language "$INPUT_LANGUAGES_PENDING") == US ]] && printf 0 || printf 1)" || failed=restore-language; fi
+	if [[ -z $failed ]]; then
+		if [[ $(jq -r .direct_ancestry.entry "$INPUT_LANGUAGES_PENDING") == fresh ]]; then input_languages_v3_restore_fresh_language || failed=restore-language
+		else input_languages_reset_group "$([[ $(jq -r .operation_start.canonical_language "$INPUT_LANGUAGES_PENDING") == US ]] && printf 0 || printf 1)" || failed=restore-language; fi
+	fi
 	if [[ -z $failed ]]; then input_languages_v3_verify_apply_rollback "$prior" || failed=verify-restoration; fi
 	if [[ -z $failed && ( -e $INPUT_LANGUAGES_RECOVERY || -L $INPUT_LANGUAGES_RECOVERY ) ]]; then input_languages_remove_file_verified "$INPUT_LANGUAGES_RECOVERY" || failed=remove-recovery; fi
 	if [[ -z $failed ]]; then input_languages_remove_file_verified "$INPUT_LANGUAGES_PENDING" || failed=remove-pending; fi
@@ -1764,7 +1940,7 @@ input_languages_v3_recorded_phase_matches_direct_state() {
 }
 
 input_languages_reconcile_pending_v3() {
-	local approved=${1-false} transaction operation archive prior result
+	local approved=${1-false} transaction operation archive prior entry result
 	input_languages_validate_pending_file_v3 "$INPUT_LANGUAGES_PENDING" || return 1
 	transaction=$(jq -r .transaction_id "$INPUT_LANGUAGES_PENDING")
 	operation=$(jq -r .operation "$INPUT_LANGUAGES_PENDING")
@@ -1775,11 +1951,17 @@ input_languages_reconcile_pending_v3() {
 		[[ $(jq -r '.version == 3 and .transaction_id == $transaction' --arg transaction "$transaction" "$INPUT_LANGUAGES_ACTIVE") == true ]] || { input_languages_unlock || true; return 1; }
 		archive=$INPUT_LANGUAGES_STATE/archive/$transaction-apply
 		prior=$(jq -r .prior_active "$INPUT_LANGUAGES_PENDING")
+		entry=$(jq -r .direct_ancestry.entry "$INPUT_LANGUAGES_PENDING")
 		if [[ ! -e $archive && ! -L $archive ]]; then
 			input_languages_v3_archive_apply_evidence "$transaction" "$prior" || { input_languages_unlock || true; return 1; }
 		else
-			[[ -d $archive && ! -L $archive && -f $archive/prior-active-v2.json && -f $archive/pending.json ]] || { input_languages_unlock || true; return 1; }
-			cmp -s "$archive/prior-active-v2.json" "$prior" && cmp -s "$archive/pending.json" "$INPUT_LANGUAGES_PENDING" || { input_languages_unlock || true; return 1; }
+			[[ -d $archive && ! -L $archive && -f $archive/pending.json ]] || { input_languages_unlock || true; return 1; }
+			if [[ $entry == version-2 ]]; then
+				[[ -f $archive/prior-active-v2.json ]] && cmp -s "$archive/prior-active-v2.json" "$prior" || { input_languages_unlock || true; return 1; }
+			else
+				[[ $entry == fresh && ! -e $archive/prior-active-v2.json && ! -L $archive/prior-active-v2.json ]] || { input_languages_unlock || true; return 1; }
+			fi
+			cmp -s "$archive/pending.json" "$INPUT_LANGUAGES_PENDING" || { input_languages_unlock || true; return 1; }
 		fi
 		if [[ -e $INPUT_LANGUAGES_RECOVERY || -L $INPUT_LANGUAGES_RECOVERY ]]; then input_languages_remove_file_verified "$INPUT_LANGUAGES_RECOVERY" || { input_languages_unlock || true; return 1; }; fi
 		input_languages_remove_file_verified "$INPUT_LANGUAGES_PENDING"
@@ -1853,12 +2035,16 @@ apply_input_languages() {
 	if [[ $INPUT_LANGUAGES_ACTIVE_STATE == valid && $(jq -r .version "$INPUT_LANGUAGES_ACTIVE") == 3 ]]; then
 		local expect_noop=false option
 		for option in "$@"; do [[ $option != --expect-noop ]] || expect_noop=true; done
-		if input_languages_exact_noop_v3; then printf 'Exact no-op: Portable input language setup is healthy; active language preserved.\n'; return 0; fi
+		if input_languages_exact_noop_v3; then
+			printf 'Exact no-op: Fcitx delivery is %s; active language preserved; no confirmation or mutation required.\n' "$(input_languages_v3_delivery_state "$INPUT_LANGUAGES_PLUGIN_HEALTH")"
+			return 0
+		fi
 		if [[ $expect_noop == true ]]; then printf 'Apply blocked: Input Languages changed after its exact no-op was inspected; review a new complete plan.\n' >&2; return 1; fi
 		printf 'Apply blocked: the version-3 installation is not exact; preserve evidence and resolve the conflict before mutation.\n' >&2
 		return 1
 	fi
-	if [[ $INPUT_LANGUAGES_ACTIVE_STATE == valid && $(jq -r .version "$INPUT_LANGUAGES_ACTIVE") == 2 && $INPUT_LANGUAGES_TREE_STATE == linked ]]; then input_languages_apply_v3 "$@"; return; fi
+	if [[ ( $INPUT_LANGUAGES_ACTIVE_STATE == valid && $(jq -r .version "$INPUT_LANGUAGES_ACTIVE") == 2 && $INPUT_LANGUAGES_TREE_STATE == linked ) ||
+		( $INPUT_LANGUAGES_ACTIVE_STATE == absent && ( $INPUT_LANGUAGES_TREE_STATE == uninstalled || $INPUT_LANGUAGES_TREE_STATE == migratable ) ) ]]; then input_languages_apply_v3 "$@"; return; fi
 	apply_input_languages_v2 "$@"
 }
 

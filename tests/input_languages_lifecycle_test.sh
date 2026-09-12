@@ -334,7 +334,7 @@ apply_cancellation_is_pre_mutation() (
 	source "$SOURCE_REPO/lib/dotfiles/input-languages.sh"
 	source "$SOURCE_REPO/lib/dotfiles/packages.sh"
 	before=$(input_languages_tree_digest "$HOME/.config/hypr")
-	output=$(apply_input_languages </dev/null) || return 1
+	output=$(apply_input_languages_v2 </dev/null) || return 1
 	after=$(input_languages_tree_digest "$HOME/.config/hypr")
 	[[ $before == "$after" && ! -e $XDG_STATE_HOME/dotfiles/input-languages && ! -e $XDG_DATA_HOME/dotfiles/input-languages ]] || return 1
 	grep -Fq "Inspected: Hyprland tree=migratable; active receipt=absent; widget=valid; widget link=absent; target=right[0]." <<<"$output" || return 1
@@ -533,7 +533,7 @@ transaction_failure_case() (
 		[[ $(input_languages_tree_digest "$HOME/.config/hypr") == "$baseline" ]] || return 1
 		return 0
 	fi
-	if apply_input_languages --yes >/dev/null 2>&1; then return 1; fi
+	if apply_input_languages_v2 --yes >/dev/null 2>&1; then return 1; fi
 	after=$(input_languages_tree_digest "$HOME/.config/hypr")
 	[[ $after == "$baseline" && $(<"$root/autoreload") == false ]] || return 1
 	case $mode in
@@ -717,12 +717,12 @@ foreign_and_competing_clones_block_apply() (
 	source "$SOURCE_REPO/lib/dotfiles/core.sh"
 	source "$SOURCE_REPO/lib/dotfiles/input-languages.sh"
 	source "$SOURCE_REPO/lib/dotfiles/packages.sh"
-	if apply_input_languages --yes >"$root/foreign.out" 2>&1; then return 1; fi
+	if apply_input_languages_v2 --yes >"$root/foreign.out" 2>&1; then return 1; fi
 	grep -Fq 'foreign or partial' "$root/foreign.out" || return 1
 	rm "$XDG_CONFIG_HOME/omarchy/plugins/dotfiles.keyboard-layout"
 	mkdir "$XDG_CONFIG_HOME/omarchy/plugins/other.keyboard"
 	printf '%s\n' '{"schemaVersion":1,"id":"other.keyboard","omarchy":{"clonedFrom":"omarchy.keyboard-layout"}}' >"$XDG_CONFIG_HOME/omarchy/plugins/other.keyboard/manifest.json"
-	if apply_input_languages --yes >"$root/competing.out" 2>&1; then return 1; fi
+	if apply_input_languages_v2 --yes >"$root/competing.out" 2>&1; then return 1; fi
 	grep -Fq 'competing keyboard-layout clones' "$root/competing.out"
 )
 
@@ -751,7 +751,7 @@ complete_package_and_toolchain_requirements_are_verified() (
 )
 
 run_test apply_noop_remove_round_trip 'version-2 Apply, exact no-op, and receipt-backed Remove round trip'
-run_test apply_cancellation_is_pre_mutation 'Apply cancellation occurs after read-only preparation and before mutation'
+run_test apply_cancellation_is_pre_mutation 'version-2 Apply cancellation occurs after read-only preparation and before mutation'
 run_test invalid_paths_and_dangling_evidence_are_nonmutating 'noncanonical paths and dangling lifecycle evidence block without mutation'
 run_test pending_write_failure_precedes_live_mutation 'pending evidence publication failure precedes every live mutation'
 run_test source_drift_during_build_precedes_live_mutation 'source drift during artifact build precedes every live mutation'
