@@ -48,6 +48,7 @@ complete_immutable_integration_artifact_is_published_inertly() {
 	jq -e '
 		.version == 1 and .integration == "dotfiles-input-languages-fcitx-v1" and
 		(.source_id | test("^[0-9a-f]{64}$")) and (.build_id | test("^[0-9a-f]{64}$")) and
+		([.package_identity,.library_identity,.generated_files_identity,.inventory_identity] | all(type == "string" and length > 0)) and
 		(.dependencies | contains("fcitx-upstream=5.1.21")) and
 		(.dependencies | contains("libsystemd=")) and (.dependencies | contains("libcrypto=")) and
 		(.linker | startswith("GNU ld ")) and
@@ -58,6 +59,65 @@ complete_immutable_integration_artifact_is_published_inertly() {
 	grep -Fq 'ExecStart=:"' "$INPUT_LANGUAGES_INTEGRATION_ARTIFACT_DIR/systemd/dotfiles-input-languages-fcitx.service" || return 1
 	[[ ! -e $INPUT_LANGUAGES_POINTER && ! -e $INPUT_LANGUAGES_ACTIVE && ! -e $INPUT_LANGUAGES_PENDING &&
 		! -e $INPUT_LANGUAGES_RECOVERY && ! -e $INPUT_LANGUAGES_CLEANUP && ! -e $XDG_CONFIG_HOME/systemd/user ]]
+}
+
+all_explicit_inputs_change_the_build_identity() {
+	local baseline changed index inputs
+	local -a identities=(
+		integration runtime unit health protocol controller package compiler linker library source generated_files inventory compatibility
+	)
+	inputs=$(jq -cn '$ARGS.named' \
+		--arg integration integration --arg runtime runtime --arg unit unit --arg health health --arg protocol protocol --arg controller controller \
+		--arg package package --arg compiler compiler --arg linker linker --arg library library --arg source source --arg generated_files generated \
+		--arg inventory inventory --arg compatibility compatibility) || return 1
+	baseline=$(input_languages_integration_build_identity "$inputs") || return 1
+	for index in "${!identities[@]}"; do
+		changed=$(input_languages_integration_build_identity "$(jq --arg field "${identities[$index]}" '.[$field] += "-changed"' <<<"$inputs")") || return 1
+		[[ $changed != "$baseline" ]] || return 1
+	done
+}
+
+generated_identity_tracks_renderer_and_ignores_ambient_pkg_config() (
+	local source_inventory generated_before generated_after library_before library_after
+	source_inventory=$(input_languages_integration_source_inventory_from "$INPUT_LANGUAGES_PLUGIN_SOURCE" "$INPUT_LANGUAGES_SOURCE") || return 1
+	generated_before=$(input_languages_integration_generated_files_identity "$source_inventory") || return 1
+	input_languages_render_integration_service() { printf 'changed renderer\n'; }
+	generated_after=$(input_languages_integration_generated_files_identity "$source_inventory") || return 1
+	[[ $generated_after != "$generated_before" ]] || return 1
+	library_before=$(input_languages_integration_library_identity) || return 1
+	PKG_CONFIG_PATH=/foreign/pkgconfig PKG_CONFIG_LIBDIR=/foreign/lib/pkgconfig library_after=$(input_languages_integration_library_identity) || return 1
+	[[ $library_after == "$library_before" ]]
+)
+
+explicit_identity_tampering_is_rejected() {
+	prepare_artifact_fixture || return 1
+	local artifact=$INPUT_LANGUAGES_INTEGRATION_ARTIFACT_DIR metadata=$INPUT_LANGUAGES_INTEGRATION_ARTIFACT_DIR/build.json original field changed
+	original=$(<"$metadata")
+	for field in integration runtime_identity unit_identity health_identity protocol_identity controller_identity package_identity compiler linker library_identity source_id generated_files_identity inventory_identity; do
+		changed=$(jq --arg field "$field" '.[$field] = "foreign-identity"' <<<"$original") || return 1
+		chmod u+w "$metadata"
+		printf '%s\n' "$changed" >"$metadata"
+		chmod 444 "$metadata"
+		! input_languages_validate_integration_artifact_self "$artifact" || return 1
+	done
+	chmod u+w "$metadata"
+	printf '%s\n' "$original" >"$metadata"
+	chmod 444 "$metadata"
+	input_languages_validate_integration_artifact_self "$artifact"
+}
+
+version_3_receipt_projects_and_matches_complete_artifact_identity() {
+	prepare_artifact_fixture || return 1
+	local artifact receipt field
+	artifact=$(input_languages_v3_integration_artifact "$INPUT_LANGUAGES_INTEGRATION_ARTIFACT_DIR") || return 1
+	jq -e '
+		(keys | sort) == (["source_id","build_id","artifact","artifact_sha256","helper_sha256","widget_sha256","protocol_identity","controller_identity","health_identity","unit_identity","runtime_identity","integration_identity","package_identity","compiler_identity","linker_identity","library_identity","generated_files_identity","inventory_identity","compatibility_hash","compiler_warning","dependencies","inventory"] | sort)
+	' <<<"$artifact" >/dev/null || return 1
+	input_languages_v3_build_inputs_match "$INPUT_LANGUAGES_INTEGRATION_ARTIFACT_DIR" || return 1
+	for field in runtime_identity integration_identity unit_identity health_identity protocol_identity controller_identity package_identity compiler_identity linker_identity library_identity source_id generated_files_identity inventory_identity; do
+		receipt=$(jq --arg field "$field" '.[$field] = "foreign-identity"' <<<"$artifact") || return 1
+		! input_languages_v3_integration_artifact_matches "$receipt" "$INPUT_LANGUAGES_INTEGRATION_ARTIFACT_DIR" || return 1
+	done
 }
 
 incomplete_or_changed_artifact_is_rejected_without_repair() {
@@ -133,8 +193,12 @@ stale_compatibility_is_rejected() {
 }
 
 run_test complete_immutable_integration_artifact_is_published_inertly 'complete immutable integration artifact is published without live selection'
+run_test all_explicit_inputs_change_the_build_identity 'all explicit artifact inputs participate in rebuild identity'
+run_test generated_identity_tracks_renderer_and_ignores_ambient_pkg_config 'generated and library identities match the exact build environment'
 run_test incomplete_or_changed_artifact_is_rejected_without_repair 'incomplete and changed immutable integration artifacts are rejected without repair'
 run_test internally_inconsistent_artifact_is_rejected 'internally inconsistent immutable integration artifacts are rejected'
+run_test explicit_identity_tampering_is_rejected 'all explicit immutable artifact identities are validated'
+run_test version_3_receipt_projects_and_matches_complete_artifact_identity 'version 3 receipts project and match the complete artifact identity'
 run_test stale_compatibility_is_rejected 'stale compatibility input is rejected before artifact reuse or build'
 
 finish_tests

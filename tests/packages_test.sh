@@ -888,6 +888,35 @@ test_input_languages_noop_skips_its_mutation_plan() {
 	fi
 }
 
+test_input_languages_only_apply_uses_shared_arch_package_flow() {
+	new_fixture
+	add_package hyprland
+	set_package_arch_packages hyprland hyprland fcitx5 systemd-libs openssl
+	set_installed_arch_packages hyprland
+	printf '%s\n' \
+		'input_languages_prepare_apply() { printf "prepare input languages\n" >>"$DOTFILES_TEST_CALL_LOG"; INPUT_LANGUAGES_PREPARED_RESULT=change; }' \
+		'input_languages_apply_plan() { printf "Plan: Input Languages mutation.\n"; }' \
+		'apply_input_languages() { printf "apply input languages %s\n" "$*" >>"$DOTFILES_TEST_CALL_LOG"; }' \
+		>>"$FIXTURE_REPO/lib/dotfiles/input-languages.sh"
+	DOTFILES_TEST_INPUT='y\n' run_operation "$FIXTURE_ROOT" apply_packages hyprland
+
+	assert_eq 0 "$COMMAND_STATUS" 'Input Languages-only Apply should use the aggregate package flow' || return 1
+	assert_contains "$COMMAND_OUTPUT" 'fcitx5 (required by hyprland): will install' \
+		'the complete package plan should precede confirmation' || return 1
+	assert_contains "$COMMAND_OUTPUT" 'systemd-libs (required by hyprland): will install' \
+		'the complete package plan should include helper build libraries' || return 1
+	assert_contains "$COMMAND_OUTPUT" 'openssl (required by hyprland): will install' \
+		'the complete package plan should include crypto build libraries' || return 1
+	assert_eq 1 "$(awk '/^pkg add / { count++ } END { print count + 0 }' "$CALL_LOG")" \
+		'missing Input Languages packages should use one delegated install' || return 1
+	assert_contains "$(<"$CALL_LOG")" 'pkg add fcitx5 systemd-libs openssl' \
+		'the delegated install should preserve catalog order and omit installed packages' || return 1
+	assert_contains "$(<"$CALL_LOG")" 'apply input languages --yes --packages-prepared' \
+		'the package route should invoke the shared lifecycle backend with prepared packages' || return 1
+	assert_eq 2 "$(awk '/^prepare input languages$/ { count++ } END { print count + 0 }' "$CALL_LOG")" \
+		'Input Languages should be reinspected after package preparation and before mutation'
+}
+
 test_remove_blocks_retained_linked_dependents_and_names_each() {
 	new_fixture
 	add_package base
@@ -1531,6 +1560,7 @@ run_test test_apply_stops_after_failure_and_preserves_prior_success 'apply stops
 run_test test_input_languages_rejects_generic_package_backends 'Input Languages rejects generic package backends'
 run_test test_mixed_apply_runs_input_languages_preflight_before_confirmation_or_mutation 'mixed apply runs Input Languages preflight before confirmation or mutation'
 run_test test_input_languages_noop_skips_its_mutation_plan 'Input Languages no-op skips standalone and mixed mutation plans'
+run_test test_input_languages_only_apply_uses_shared_arch_package_flow 'Input Languages-only Apply uses shared Arch package preparation'
 run_test test_remove_blocks_retained_linked_dependents_and_names_each 'remove blocks retained linked dependents and names each'
 run_test test_remove_simulates_unlinks_verifies_and_reports_retained_leftovers 'remove simulates, unlinks, verifies, and reports retained leftovers'
 run_test test_stow_lifecycle_and_relocation_preserve_wallpaper_domains 'Stow lifecycle and relocation preserve Wallpaper domains'

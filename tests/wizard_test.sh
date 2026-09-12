@@ -72,6 +72,9 @@ EOF
 
 stub_input_languages_backend() {
 	cat >>"$FIXTURE_REPO/lib/dotfiles/wizard.sh" <<'EOF'
+input_languages_prepare_apply() { INPUT_LANGUAGES_PREPARED_RESULT=change; }
+input_languages_apply_plan() { printf 'Stub Input Languages plan\n'; }
+plan_arch_packages() { ARCH_PACKAGE_ORDER=(); MISSING_ARCH_PACKAGES=(); ARCH_PACKAGE_OWNERS=(); ARCH_PACKAGE_STATUS=(); }
 apply_input_languages() { printf 'Stub Input Languages Apply: %s\n' "$*"; }
 EOF
 }
@@ -549,10 +552,10 @@ test_guided_setup_reuses_input_languages_backend_in_stow_phase() {
 	seed_current_global_skills
 	stub_guided_brave_apply 11
 	stub_input_languages_backend
-	DOTFILES_TEST_INPUT='0\n\n9\n' run_operation "$FIXTURE_ROOT" guided_setup
+	DOTFILES_TEST_INPUT='0\n\n9\ny\n' run_operation "$FIXTURE_ROOT" guided_setup
 
 	assert_eq 0 "$COMMAND_STATUS" 'Guided setup should apply a selected hyprland package through its existing Stow phase' || return 1
-	assert_eq 1 "$(grep -c '^Stub Input Languages Apply:' <<<"$COMMAND_OUTPUT")" 'Guided setup should invoke the shared backend exactly once' || return 1
+	assert_eq 1 "$(grep -o 'Stub Input Languages Apply:' <<<"$COMMAND_OUTPUT" | wc -l)" 'Guided setup should invoke the shared backend exactly once' || return 1
 	assert_contains "$COMMAND_OUTPUT" 'Guided phase 5: Stow application' 'Input Languages should remain in the existing Stow phase' || return 1
 	if [[ $COMMAND_OUTPUT == *'Guided phase 6: Input Languages'* ]]; then
 		printf '  Input Languages must not add a Guided setup phase\n' >&2

@@ -163,6 +163,7 @@ JSON
 	# public version dispatch and expansion are covered by the version-3 suite.
 	apply_input_languages() { apply_input_languages_v2 "$@"; }
 	remove_input_languages() { remove_input_languages_v2 "$@"; }
+	input_languages_verify_package_requirements() { return 0; }
 
 	baseline_digest=$(input_languages_tree_digest "$HOME/.config/hypr")
 	apply_input_languages --yes >/dev/null || return 1
@@ -739,6 +740,16 @@ changed_widget_source_uses_shell_restart() (
 	[[ $(<"$root/calls") == 'restart shell' ]]
 )
 
+complete_package_and_toolchain_requirements_are_verified() (
+	set -euo pipefail
+	source "$SOURCE_REPO/lib/dotfiles/core.sh"
+	source "$SOURCE_REPO/lib/dotfiles/input-languages.sh"
+	local packages
+	packages=$(input_languages_declared_arch_packages | paste -sd ' ')
+	[[ $packages == 'hyprland gcc make pkgconf binutils lua fcitx5 systemd-libs openssl' ]] || return 1
+	input_languages_verify_package_requirements
+)
+
 run_test apply_noop_remove_round_trip 'version-2 Apply, exact no-op, and receipt-backed Remove round trip'
 run_test apply_cancellation_is_pre_mutation 'Apply cancellation occurs after read-only preparation and before mutation'
 run_test invalid_paths_and_dangling_evidence_are_nonmutating 'noncanonical paths and dangling lifecycle evidence block without mutation'
@@ -758,5 +769,6 @@ run_test effective_shell_state_is_validated 'effective Shell fallback is inspect
 run_test absent_stock_is_restored_as_absent 'Remove restores absence when the stock keyboard-layout widget was absent'
 run_test foreign_and_competing_clones_block_apply 'foreign live links and competing keyboard-layout clones block Apply'
 run_test changed_widget_source_uses_shell_restart 'changed active widget source uses a full Shell restart'
+run_test complete_package_and_toolchain_requirements_are_verified 'complete Input Languages package and toolchain requirements are verified exactly'
 
 finish_tests

@@ -57,8 +57,8 @@
 			"references": {"device": "string", "group": "input-group"}
 		},
 		"integration_artifact": {
-			"keys": ["source_id", "build_id", "artifact", "artifact_sha256", "helper_sha256", "widget_sha256", "protocol_identity", "controller_identity", "health_identity", "unit_identity", "compatibility_hash", "compiler", "compiler_warning", "dependencies", "inventory"],
-			"references": {"source_id": "digest", "build_id": "digest", "artifact": "path", "artifact_sha256": "digest", "helper_sha256": "digest", "widget_sha256": "digest", "protocol_identity": "string", "controller_identity": "string", "health_identity": "string", "unit_identity": "string", "compatibility_hash": "string", "compiler": "string", "compiler_warning": "nullable_string", "dependencies": "string", "inventory": "array-string"}
+			"keys": ["source_id", "build_id", "artifact", "artifact_sha256", "helper_sha256", "widget_sha256", "protocol_identity", "controller_identity", "health_identity", "unit_identity", "runtime_identity", "integration_identity", "package_identity", "compiler_identity", "linker_identity", "library_identity", "generated_files_identity", "inventory_identity", "compatibility_hash", "compiler_warning", "dependencies", "inventory"],
+			"references": {"source_id": "digest", "build_id": "digest", "artifact": "path", "artifact_sha256": "digest", "helper_sha256": "digest", "widget_sha256": "digest", "protocol_identity": "string", "controller_identity": "string", "health_identity": "string", "unit_identity": "string", "runtime_identity": "digest", "integration_identity": "string", "package_identity": "digest", "compiler_identity": "string", "linker_identity": "string", "library_identity": "digest", "generated_files_identity": "digest", "inventory_identity": "digest", "compatibility_hash": "string", "compiler_warning": "nullable_string", "dependencies": "string", "inventory": "array-string"}
 		},
 		"profile_evidence": {
 			"keys": ["path", "type", "uid", "mode", "digest"],

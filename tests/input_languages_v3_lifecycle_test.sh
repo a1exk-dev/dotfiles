@@ -261,6 +261,7 @@ direct_v2_expands_to_v3() (
 	REPOSITORY_ROOT=$SOURCE_REPO
 	source "$SOURCE_REPO/lib/dotfiles/core.sh"
 	source "$SOURCE_REPO/lib/dotfiles/input-languages.sh"
+	source "$SOURCE_REPO/lib/dotfiles/packages.sh"
 	input_languages_set_paths
 	digest=$(input_languages_tree_digest "$backup")
 	jq -n --arg transaction "$transaction" --arg backup_transaction "$backup_transaction" --arg source "$source" --arg build "$build" \
@@ -311,7 +312,15 @@ direct_v2_expands_to_v3() (
 			'shell shell ping') printf 'ok\n' ;;
 			'shell shell debugBarGeometry') printf '%s\n' '[{"id":"dotfiles.keyboard-layout","width":24,"height":24,"itemWidth":24,"itemHeight":24,"visible":true,"itemVisible":true}]' ;;
 			'restart shell'|'shell shell rescanPlugins') return 0 ;;
-			*) case ${1-} in version) printf '4.0.2-1\n' ;; pkg) return 0 ;; *) return 0 ;; esac ;;
+			*) case ${1-} in
+				version) printf '4.0.2-1\n' ;;
+				pkg)
+					if [[ $lifecycle_mode == package-preparation && ${2-} == present && ${3-} == fcitx5 && ! -e $root/fcitx5-installed ]]; then return 1; fi
+					if [[ $lifecycle_mode == package-preparation && ${2-} == add ]]; then : >"$root/fcitx5-installed"; fi
+					return 0
+					;;
+				*) return 0 ;;
+			esac ;;
 		esac
 	}
 	hyprctl() {
@@ -351,13 +360,23 @@ direct_v2_expands_to_v3() (
 			*) return 0 ;;
 		esac
 	}
-	stow() { command /usr/bin/stow "$@"; }
+	stow() { printf 'stow %s\n' "$*" >>"$root/calls"; command /usr/bin/stow "$@"; }
 	export -f omarchy hyprctl stow
 
 	input_languages_static_preflight() { return 0; }
+	input_languages_verify_package_requirements() {
+		printf 'verify package requirements\n' >>"$root/calls"
+		[[ $lifecycle_mode != package-preparation || -e $root/fcitx5-installed ]]
+	}
 	input_languages_stack_identity() { INPUT_LANGUAGES_RUNNING_HASH=test-compat INPUT_LANGUAGES_HEADER_HASH=test-compat INPUT_LANGUAGES_COMPILER=test-compiler INPUT_LANGUAGES_COMPILER_WARNING=''; }
 	input_languages_integration_source_identity() { printf c%.0s {1..64}; printf '\n'; }
 	input_languages_integration_dependency_identity() { printf 'test-dependencies\n'; }
+	input_languages_integration_package_identity() { printf a%.0s {1..64}; printf '\n'; }
+	input_languages_integration_library_identity() { printf f%.0s {1..64}; printf '\n'; }
+	input_languages_integration_runtime_identity() { printf d%.0s {1..64}; printf '\n'; }
+	input_languages_integration_inventory_identity() { printf e%.0s {1..64}; printf '\n'; }
+	input_languages_integration_unit_build_identity() { printf a%.0s {1..64}; printf '\n'; }
+	input_languages_integration_generated_files_identity() { printf a%.0s {1..64}; printf '\n'; }
 	input_languages_linker_identity() { printf 'test-linker\n'; }
 	input_languages_build_integration_artifact() {
 		local widget_sha
@@ -373,7 +392,7 @@ direct_v2_expands_to_v3() (
 		printf 'socket\n' >"$INPUT_LANGUAGES_INTEGRATION_ARTIFACT_DIR/systemd/dotfiles-input-languages-fcitx.socket"
 		printf 'service\n' >"$INPUT_LANGUAGES_INTEGRATION_ARTIFACT_DIR/systemd/dotfiles-input-languages-fcitx.service"
 		widget_sha=$(input_languages_widget_digest "$INPUT_LANGUAGES_INTEGRATION_ARTIFACT_DIR/dotfiles.keyboard-layout")
-		jq -n --arg widget_sha "$widget_sha" '{version:1,integration:"dotfiles-input-languages-fcitx-v1",source_id:("c"*64),build_id:("b"*64),compatibility_hash:"test-compat",compiler:"test-compiler",linker:"test-linker",dependencies:"test-dependencies",artifact_sha256:("d"*64),helper_sha256:("e"*64),widget_sha256:$widget_sha,protocol_identity:"dotfiles-input-languages-fcitx-seqpacket-v1",controller_identity:"dotfiles-input-languages-fcitx-controller-v1",health_identity:"dotfiles-input-languages-health-v1",unit_identity:"dotfiles-input-languages-fcitx-systemd-v1",inventory:["test"]}' >"$INPUT_LANGUAGES_INTEGRATION_ARTIFACT_DIR/build.json"
+		jq -n --arg widget_sha "$widget_sha" '{version:1,integration:"dotfiles-input-languages-fcitx-v1",runtime_identity:("d"*64),source_id:("c"*64),build_id:("b"*64),compatibility_hash:"test-compat",package_identity:("a"*64),compiler:"test-compiler",linker:"test-linker",library_identity:("f"*64),dependencies:"test-dependencies",artifact_sha256:("d"*64),helper_sha256:("e"*64),widget_sha256:$widget_sha,unit_build_identity:("a"*64),generated_files_identity:("a"*64),inventory_identity:("e"*64),protocol_identity:"dotfiles-input-languages-fcitx-seqpacket-v1",controller_identity:"dotfiles-input-languages-fcitx-controller-v1",health_identity:"dotfiles-input-languages-health-v1",unit_identity:"dotfiles-input-languages-fcitx-systemd-v1",inventory:["test"]}' >"$INPUT_LANGUAGES_INTEGRATION_ARTIFACT_DIR/build.json"
 		chmod 555 "$INPUT_LANGUAGES_INTEGRATION_ARTIFACT_DIR/dotfiles.keyboard-layout"
 		chmod 444 "$INPUT_LANGUAGES_INTEGRATION_ARTIFACT_DIR/dotfiles.keyboard-layout"/*
 	}
@@ -622,6 +641,17 @@ direct_v2_expands_to_v3() (
 	fi
 	if [[ $lifecycle_mode == stale-helper || $lifecycle_mode == stale-controller || $lifecycle_mode == stale-runtime ]]; then
 		input_languages_v3_set_paths
+		if [[ $lifecycle_mode == stale-controller ]]; then
+			local acquire_definition
+			acquire_definition=$(declare -f input_languages_acquire_lock)
+			acquire_definition=${acquire_definition/input_languages_acquire_lock /input_languages_acquire_lock_recorded }
+			eval "$acquire_definition"
+			input_languages_acquire_lock() {
+				input_languages_acquire_lock_recorded "$@" || return 1
+				jq '.groups[0].properties={concurrent:true}' "$root/controller.json" >"$root/controller.next"
+				mv "$root/controller.next" "$root/controller.json"
+			}
+		fi
 		wizard_confirm() {
 			if [[ $lifecycle_mode == stale-helper ]]; then
 				mkdir -p "${INPUT_LANGUAGES_V3_SOCKET_PATH%/*}"
@@ -629,9 +659,6 @@ direct_v2_expands_to_v3() (
 			elif [[ $lifecycle_mode == stale-runtime ]]; then
 				mkdir -m 0700 "$root/other-runtime"
 				XDG_RUNTIME_DIR=$root/other-runtime
-			else
-				jq '.groups[0].properties={concurrent:true}' "$root/controller.json" >"$root/controller.next"
-				mv "$root/controller.next" "$root/controller.json"
 			fi
 			return 0
 		}
@@ -702,7 +729,15 @@ direct_v2_expands_to_v3() (
 		return 0
 	fi
 
-	apply_input_languages --yes --packages-prepared >/dev/null || return 1
+	if [[ $lifecycle_mode == package-preparation ]]; then
+		apply_input_languages --yes >"$root/package-apply.out" || return 1
+		grep -Fq 'fcitx5 (required by hyprland): will install' "$root/package-apply.out" || return 1
+		[[ $(grep -c '^omarchy pkg add fcitx5$' "$root/calls") == 1 ]] || return 1
+	else
+		apply_input_languages --yes --packages-prepared >/dev/null || return 1
+	fi
+	[[ $(grep -c '^verify package requirements$' "$root/calls") == 2 ]] || return 1
+	[[ $(grep -c '^stow --no-folding --simulate .* hyprland$' "$root/calls") == 3 ]] || return 1
 	input_languages_validate_active_file_v3 "$INPUT_LANGUAGES_ACTIVE" artifact
 	jq -e --arg backup "$backup" '
 		.version == 3 and .operation == "active" and .direct_ancestry.backup == $backup and
@@ -748,9 +783,12 @@ direct_v2_expands_to_v3() (
 		jq '.helper_target.socket_unit.path="/tmp/foreign-input-languages.socket"' "$apply_archive/pending.json" >"$INPUT_LANGUAGES_PENDING"
 		chmod 600 "$INPUT_LANGUAGES_PENDING"
 		! input_languages_validate_pending_file_v3 "$INPUT_LANGUAGES_PENDING" || return 1
-		jq '.integration_artifact.protocol_identity="foreign-protocol"' "$apply_archive/pending.json" >"$INPUT_LANGUAGES_PENDING"
-		chmod 600 "$INPUT_LANGUAGES_PENDING"
-		! input_languages_validate_pending_file_v3 "$INPUT_LANGUAGES_PENDING" || return 1
+		local identity_field
+		for identity_field in runtime_identity integration_identity unit_identity health_identity protocol_identity controller_identity package_identity compiler_identity linker_identity library_identity source_id generated_files_identity inventory_identity; do
+			jq --arg field "$identity_field" '.integration_artifact[$field]="foreign-identity"' "$apply_archive/pending.json" >"$INPUT_LANGUAGES_PENDING"
+			chmod 600 "$INPUT_LANGUAGES_PENDING"
+			! input_languages_validate_pending_file_v3 "$INPUT_LANGUAGES_PENDING" || return 1
+		done
 		return 0
 	fi
 
@@ -777,6 +815,12 @@ direct_v2_expands_to_v3() (
 		fi
 		mutation_calls_after=$(grep -Ec '^(systemctl (start|stop|daemon-reload)|controller execute|hyprctl (-j inputlanguagesreset|reload|keyword)|omarchy (restart|shell shell rescanPlugins))' "$root/calls" || true)
 		[[ $(sha256sum "$INPUT_LANGUAGES_ACTIVE" | cut -d' ' -f1) == "$active_before" && $mutation_calls_after -eq $mutation_calls_before && ! -e $INPUT_LANGUAGES_PENDING ]] || return 1
+		return 0
+	fi
+	if [[ $lifecycle_mode == noop-package-drift ]]; then
+		input_languages_integration_package_identity() { printf 9%.0s {1..64}; printf '\n'; }
+		if apply_input_languages --yes --packages-prepared >/dev/null 2>&1; then return 1; fi
+		[[ $(sha256sum "$INPUT_LANGUAGES_ACTIVE" | cut -d' ' -f1) == "$active_before" && ! -e $INPUT_LANGUAGES_PENDING ]] || return 1
 		return 0
 	fi
 	apply_input_languages --yes --packages-prepared >/dev/null
@@ -837,6 +881,7 @@ direct_v2_expands_to_v3() (
 			return 0
 		fi
 		remove_input_languages --yes >/dev/null || return 1
+		! grep -q '^omarchy pkg drop ' "$root/calls" || return 1
 		[[ ! -e $INPUT_LANGUAGES_ACTIVE && ! -e $INPUT_LANGUAGES_PENDING && ! -e $INPUT_LANGUAGES_RECOVERY ]] || return 1
 		jq -e '[.groups[].name] == ["Default"] and .current_group == "Default" and .observed_method == "keyboard-ru"' "$root/controller.json" >/dev/null || return 1
 		if [[ $lifecycle_mode == remove-unrelated-edit ]]; then jq -e '.groups[0].properties == {user_note:"retained"}' "$root/controller.json" >/dev/null || return 1; fi
@@ -853,6 +898,7 @@ direct_v2_expands_to_v3() (
 )
 
 direct_v2_expands_to_acknowledged_v3() { direct_v2_expands_to_v3 acknowledged; }
+direct_v2_expands_to_v3_with_package_preparation() { direct_v2_expands_to_v3 package-preparation; }
 direct_v2_expands_to_idle_v3() { direct_v2_expands_to_v3 idle; }
 direct_v2_failure_rolls_back() { direct_v2_expands_to_v3 rollback; }
 direct_v2_failed_rollback_recovers() { direct_v2_expands_to_v3 recovery; }
@@ -886,10 +932,12 @@ direct_v2_invalid_runtime_blocks_before_mutation() { direct_v2_expands_to_v3 run
 direct_v2_changed_runtime_plan_blocks() { direct_v2_expands_to_v3 stale-runtime; }
 direct_v3_remove_uses_saved_runtime() { direct_v2_expands_to_v3 remove-environment-changed; }
 direct_v3_noop_rejects_invalid_runtime() { direct_v2_expands_to_v3 noop-runtime-invalid; }
+direct_v3_noop_rejects_package_drift() { direct_v2_expands_to_v3 noop-package-drift; }
 direct_v3_status_classifies_runtime_read_only() { direct_v2_expands_to_v3 status-runtime-invalid; }
 direct_v3_replaced_runtime_requires_recovery() { direct_v2_expands_to_v3 remove-runtime-replaced; }
 
 run_test direct_v2_expands_to_acknowledged_v3 'healthy direct-v2 installation expands transactionally to acknowledged version 3 and exact no-op'
+run_test direct_v2_expands_to_v3_with_package_preparation 'standalone version-3 Apply plans, delegates, and verifies missing packages'
 run_test direct_v2_expands_to_idle_v3 'idle-no-context direct-v2 installation expands transactionally and remains an exact no-op'
 run_test direct_v2_failure_rolls_back 'reachable expansion failure restores direct-v2 state and preserves an unrelated Fcitx group'
 run_test direct_v2_failed_rollback_recovers 'failed semantic rollback records recovery-required and retries from retained evidence'
@@ -918,6 +966,7 @@ run_test direct_v2_invalid_runtime_blocks_before_mutation 'invalid runtime block
 run_test direct_v2_changed_runtime_plan_blocks 'Apply reinspects the runtime root before pending evidence'
 run_test direct_v3_remove_uses_saved_runtime 'Remove uses the receipt-saved runtime after environment changes'
 run_test direct_v3_noop_rejects_invalid_runtime 'a proposed exact no-op rejects an invalid current runtime without mutation'
+run_test direct_v3_noop_rejects_package_drift 'a proposed exact no-op rejects package identity drift without mutation'
 run_test direct_v3_status_classifies_runtime_read_only 'Status classifies runtime conflict without lifecycle mutation'
 run_test direct_v3_replaced_runtime_requires_recovery 'Remove retains foreign runtime state and records recovery after post-quiescence replacement'
 run_test health_contract_rejects_inconsistent_snapshots 'version-3 health accepts only exact internally consistent cached snapshots'

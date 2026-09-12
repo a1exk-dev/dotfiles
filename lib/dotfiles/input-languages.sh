@@ -35,7 +35,7 @@ input_languages_integration_contract_expected_digest() {
 	case $1 in
 		active-fixtures.json) printf '%s\n' c8135a04fb250bf523831709f13905a1fbfef513855e4443d906d82c3b64599f ;;
 		authority.json) printf '%s\n' 3c7670889f080f5b03c26a51b77a402267c6cb566f7727631717fc33de3f4526 ;;
-		evidence-v3.json) printf '%s\n' 79d5e2c42e5c8d7ea79ecc935013f138003af0b9c920a80dfea07306d2c75341 ;;
+		evidence-v3.json) printf '%s\n' b5c4b6b28acd8e85119929826495b2a911ae05041ea0fe604d69df77ed32a21f ;;
 		fcitx.json) printf '%s\n' 113df77363f2d4d1552eacad65170f11bc6c66f842b7369941dc830336e92315 ;;
 		health.json) printf '%s\n' 7444c1a034fd595f5d93fd14c15389efccc6cc892755b0c77174758d2daad193 ;;
 		manifest.json) printf '%s\n' 84714ebf5bb3d3b2d49c13b72a692da66fea91d896199ea668af384b4eebaaa8 ;;
@@ -423,17 +423,23 @@ input_languages_validate_artifact_self() {
 }
 
 input_languages_validate_integration_artifact_binaries() {
-	local root=$1 metadata=$1/build.json build source compiler compatibility integration protocol controller health unit
+	local root=$1 metadata=$1/build.json build source compiler linker compatibility integration runtime protocol controller health unit package library generated inventory
 	local plugin=$root/input-languages.so helper=$root/input-languages-fcitx-helper output identity symbol binary_role binary
 	build=$(jq -r .build_id "$metadata") || return 1
 	source=$(jq -r .source_id "$metadata") || return 1
 	compiler=$(jq -r .compiler "$metadata") || return 1
+	linker=$(jq -r .linker "$metadata") || return 1
 	compatibility=$(jq -r .compatibility_hash "$metadata") || return 1
 	integration=$(jq -r .integration "$metadata") || return 1
+	runtime=$(jq -r .runtime_identity "$metadata") || return 1
 	protocol=$(jq -r .protocol_identity "$metadata") || return 1
 	controller=$(jq -r .controller_identity "$metadata") || return 1
 	health=$(jq -r .health_identity "$metadata") || return 1
 	unit=$(jq -r .unit_identity "$metadata") || return 1
+	package=$(jq -r .package_identity "$metadata") || return 1
+	library=$(jq -r .library_identity "$metadata") || return 1
+	generated=$(jq -r .generated_files_identity "$metadata") || return 1
+	inventory=$(jq -r .inventory_identity "$metadata") || return 1
 	file "$plugin" | grep -F 'shared object' >/dev/null || return 1
 	file "$helper" | grep -F 'ELF' | grep -F 'executable' >/dev/null || return 1
 	output=$(nm -D --defined-only "$plugin") || return 1
@@ -451,8 +457,10 @@ input_languages_validate_integration_artifact_binaries() {
 		identity=$(readelf -p .input_languages_integration "$binary" 2>/dev/null) || return 1
 		grep -Fq "role=$binary_role" <<<"$identity" && grep -Fq "integration=$integration" <<<"$identity" &&
 			grep -Fq "build_id=$build" <<<"$identity" && grep -Fq "source_id=$source" <<<"$identity" &&
-			grep -Fq "compiler=$compiler" <<<"$identity" && grep -Fq "compatibility=$compatibility" <<<"$identity" && grep -Fq "protocol=$protocol" <<<"$identity" &&
-			grep -Fq "controller=$controller" <<<"$identity" && grep -Fq "health=$health" <<<"$identity" && grep -Fq "unit=$unit" <<<"$identity" || return 1
+			grep -Fq "compiler=$compiler" <<<"$identity" && grep -Fq "linker=$linker" <<<"$identity" && grep -Fq "compatibility=$compatibility" <<<"$identity" &&
+			grep -Fq "runtime=$runtime" <<<"$identity" && grep -Fq "protocol=$protocol" <<<"$identity" && grep -Fq "controller=$controller" <<<"$identity" &&
+			grep -Fq "health=$health" <<<"$identity" && grep -Fq "unit=$unit" <<<"$identity" && grep -Fq "package=$package" <<<"$identity" &&
+			grep -Fq "library=$library" <<<"$identity" && grep -Fq "generated_files=$generated" <<<"$identity" && grep -Fq "inventory=$inventory" <<<"$identity" || return 1
 	done
 	output=$(readelf -d "$helper") || return 1
 	grep -Eq 'NEEDED.*libsystemd[.]so' <<<"$output" && grep -Eq 'NEEDED.*libcrypto[.]so' <<<"$output" || return 1
@@ -464,7 +472,8 @@ input_languages_validate_integration_artifact_binaries() {
 input_languages_validate_integration_artifact_values() {
 	local root=$1 expected_artifact_dir=${2:-$1} verify_unit_syntax=${3:-true}
 	local metadata=$root/build.json source build compatibility compiler linker dependencies plugin_sha helper_sha widget_sha contracts_sha units_sha unit_build_identity
-	local integration protocol controller health unit actual expected frozen inventory source_inventory source_paths expected_build expected_publication path source_digest service_template_sha
+	local package_identity library_identity runtime_identity inventory_identity generated_files_identity
+	local integration protocol controller health unit actual expected frozen inventory source_inventory source_paths expected_build expected_publication path source_digest service_template_sha identity_inputs
 	[[ -d $root && ! -L $root ]] || return 1
 	(( (8#$(stat -c %a -- "$root") & 0222) == 0 )) || return 1
 	inventory=$(input_languages_integration_inventory "$root") || return 1
@@ -475,6 +484,11 @@ input_languages_validate_integration_artifact_values() {
 	compiler=$(jq -r .compiler "$metadata") || return 1
 	linker=$(jq -r .linker "$metadata") || return 1
 	dependencies=$(jq -r .dependencies "$metadata") || return 1
+	package_identity=$(jq -r .package_identity "$metadata") || return 1
+	library_identity=$(jq -r .library_identity "$metadata") || return 1
+	runtime_identity=$(jq -r .runtime_identity "$metadata") || return 1
+	inventory_identity=$(jq -r .inventory_identity "$metadata") || return 1
+	generated_files_identity=$(jq -r .generated_files_identity "$metadata") || return 1
 	plugin_sha=$(jq -r .artifact_sha256 "$metadata") || return 1
 	helper_sha=$(jq -r .helper_sha256 "$metadata") || return 1
 	widget_sha=$(jq -r .widget_sha256 "$metadata") || return 1
@@ -489,6 +503,8 @@ input_languages_validate_integration_artifact_values() {
 	[[ $source =~ ^[0-9a-f]{64}$ && $build =~ ^[0-9a-f]{64}$ && $plugin_sha =~ ^[0-9a-f]{64}$ && $helper_sha =~ ^[0-9a-f]{64}$ &&
 		$widget_sha =~ ^[0-9a-f]{64}$ && $contracts_sha =~ ^[0-9a-f]{64}$ && $units_sha =~ ^[0-9a-f]{64}$ &&
 		$unit_build_identity =~ ^[0-9a-f]{64}$ && -n $compatibility && -n $compiler && -n $linker ]] || return 1
+	[[ $package_identity =~ ^[0-9a-f]{64}$ && $library_identity =~ ^[0-9a-f]{64}$ && $runtime_identity =~ ^[0-9a-f]{64}$ &&
+		$inventory_identity =~ ^[0-9a-f]{64}$ && $generated_files_identity =~ ^[0-9a-f]{64}$ ]] || return 1
 	source_inventory=$(jq -r '.source_inventory[]' "$metadata") || return 1
 	source_paths=$(awk '{ print $2 }' <<<"$source_inventory") || return 1
 	[[ $source_paths == "$(input_languages_integration_expected_source_paths)" ]] || return 1
@@ -496,13 +512,24 @@ input_languages_validate_integration_artifact_values() {
 	[[ $source_digest == "$source" ]] || return 1
 	expected=$(input_languages_integration_unit_build_identity "$source_inventory") || return 1
 	[[ $expected == "$unit_build_identity" ]] || return 1
-	expected_publication=$(input_languages_integration_build_identity "$source" "$compiler" "$linker" "$compatibility" "$dependencies" "$unit_build_identity") || return 1
+	expected=$(input_languages_integration_runtime_identity "$root/contracts/systemd.json") || return 1
+	[[ $expected == "$runtime_identity" ]] || return 1
+	expected=$(input_languages_integration_inventory_identity) || return 1
+	[[ $expected == "$inventory_identity" ]] || return 1
+	expected=$(input_languages_integration_generated_files_identity "$source_inventory") || return 1
+	[[ $generated_files_identity == "$expected" ]] || return 1
+	identity_inputs=$(jq -cn --arg integration "$integration" --arg runtime "$runtime_identity" --arg unit "$unit" --arg health "$health" \
+		--arg protocol "$protocol" --arg controller "$controller" --arg package "$package_identity" --arg compiler "$compiler" --arg linker "$linker" \
+		--arg library "$library_identity" --arg source "$source" --arg generated_files "$generated_files_identity" --arg inventory "$inventory_identity" \
+		--arg compatibility "$compatibility" '{integration:$integration,runtime:$runtime,unit:$unit,health:$health,protocol:$protocol,controller:$controller,
+		package:$package,compiler:$compiler,linker:$linker,library:$library,source:$source,generated_files:$generated_files,inventory:$inventory,compatibility:$compatibility}') || return 1
+	expected_publication=$(input_languages_integration_build_identity "$identity_inputs") || return 1
 	[[ ${expected_artifact_dir##*/} == "integration-$expected_publication" ]] || return 1
-	expected_build=$(input_languages_integration_build_identity "$source" "$compiler" "$linker" "$compatibility" "$dependencies" "$units_sha") || return 1
+	expected_build=$(input_languages_integration_build_identity "$identity_inputs") || return 1
 	[[ $expected_build == "$build" ]] || return 1
 	jq -e --arg inventory "$inventory" --arg plugin_flags "$INPUT_LANGUAGES_INTEGRATION_PLUGIN_FLAGS" \
 		--arg helper_flags "$INPUT_LANGUAGES_INTEGRATION_HELPER_FLAGS" '
-		(keys | sort) == (["version","integration","source_id","build_id","compatibility_hash","compiler","linker","dependencies","plugin_flags","helper_flags","artifact_sha256","helper_sha256","widget_sha256","contracts_sha256","units_sha256","unit_build_identity","protocol_identity","controller_identity","health_identity","unit_identity","source_inventory","inventory","exports"] | sort) and
+		(keys | sort) == (["version","integration","runtime_identity","source_id","build_id","compatibility_hash","package_identity","compiler","linker","library_identity","dependencies","plugin_flags","helper_flags","artifact_sha256","helper_sha256","widget_sha256","contracts_sha256","units_sha256","unit_build_identity","generated_files_identity","inventory_identity","protocol_identity","controller_identity","health_identity","unit_identity","source_inventory","inventory","exports"] | sort) and
 		.version == 1 and .plugin_flags == $plugin_flags and .helper_flags == $helper_flags and
 		.exports == ["pluginAPIVersion","pluginExit","pluginInit"] and .inventory == ($inventory | split("\n")) and
 		(.source_inventory | type == "array" and length > 0 and all(.[]; test("^[0-9a-f]{64}  (plugin|contracts|systemd|widget|config)/")))
@@ -1055,6 +1082,12 @@ input_languages_integration_inventory_spec() {
 	done < <(input_languages_integration_expected_inventory_paths)
 }
 
+input_languages_integration_inventory_identity() {
+	local inventory
+	inventory=$(input_languages_integration_inventory_spec) || return 1
+	printf '%s\n' "$inventory" | sha256sum | cut -d' ' -f1
+}
+
 input_languages_integration_inventory() {
 	local root=$1 entries expected path type mode digest
 	[[ -d $root && ! -L $root ]] || return 1
@@ -1118,6 +1151,13 @@ input_languages_integration_unit_build_identity() {
 		"$socket_digest" dotfiles-input-languages-fcitx.socket | sha256sum | cut -d' ' -f1
 }
 
+input_languages_integration_generated_files_identity() {
+	local source_inventory=$1 unit_identity renderer
+	unit_identity=$(input_languages_integration_unit_build_identity "$source_inventory") || return 1
+	renderer=$(declare -f input_languages_render_integration_service) || return 1
+	printf '%s\n%s\n' "$unit_identity" "$renderer" | sha256sum | cut -d' ' -f1
+}
+
 input_languages_systemd_exec_path() {
 	local path=$1 escaped
 	input_languages_safe_absolute_path "$path" || return 1
@@ -1172,12 +1212,32 @@ input_languages_linker_identity() {
 	printf '%s\n' "$identity"
 }
 
+input_languages_integration_package_identity() {
+	local packages
+	packages=$(env -i PATH=/usr/bin:/bin LC_ALL=C /usr/bin/pacman -Q "${INPUT_LANGUAGES_INTEGRATION_STACK_PACKAGES[@]}") || return 1
+	printf '%s\n' "$packages" | sha256sum | cut -d' ' -f1
+}
+
+input_languages_integration_library_identity() {
+	local versions flags
+	versions=$(env -i PATH=/usr/bin:/bin LC_ALL=C /usr/bin/pkg-config --modversion "${INPUT_LANGUAGES_INTEGRATION_PKGCONFIG_MODULES[@]}") || return 1
+	flags=$(env -i PATH=/usr/bin:/bin LC_ALL=C /usr/bin/pkg-config --cflags --libs "${INPUT_LANGUAGES_INTEGRATION_PKGCONFIG_MODULES[@]}") || return 1
+	printf '%s\n%s\n' "$versions" "$flags" | sha256sum | cut -d' ' -f1
+}
+
+input_languages_integration_runtime_identity() {
+	local contract=${1:-$INPUT_LANGUAGES_PLUGIN_SOURCE/contracts/systemd.json} runtime
+	runtime=$(jq -cS '{integration,socket:(.socket | {listen_sequential_packet,directory_mode,socket_mode,remove_on_stop}),service:(.service | {environment,socket_activated,starts_or_restarts_fcitx})}' \
+		"$contract") || return 1
+	printf '%s\n' "$runtime" | sha256sum | cut -d' ' -f1
+}
+
 input_languages_integration_dependency_identity() {
 	local package_versions module_versions plugin_flags helper_flags header_source fcitx_upstream supported_fcitx hyprland_compiler
-	package_versions=$(LC_ALL=C /usr/bin/pacman -Q "${INPUT_LANGUAGES_INTEGRATION_STACK_PACKAGES[@]}" | /usr/bin/tr '\n' ',') || return 1
-	module_versions=$(LC_ALL=C /usr/bin/pkg-config --modversion "${INPUT_LANGUAGES_INTEGRATION_PKGCONFIG_MODULES[@]}" | /usr/bin/tr '\n' ',') || return 1
-	plugin_flags=$(LC_ALL=C /usr/bin/pkg-config --cflags --libs "${INPUT_LANGUAGES_PKGCONFIG_MODULES[@]}") || return 1
-	helper_flags=$(LC_ALL=C /usr/bin/pkg-config --cflags --libs libsystemd libcrypto) || return 1
+	package_versions=$(env -i PATH=/usr/bin:/bin LC_ALL=C /usr/bin/pacman -Q "${INPUT_LANGUAGES_INTEGRATION_STACK_PACKAGES[@]}" | /usr/bin/tr '\n' ',') || return 1
+	module_versions=$(env -i PATH=/usr/bin:/bin LC_ALL=C /usr/bin/pkg-config --modversion "${INPUT_LANGUAGES_INTEGRATION_PKGCONFIG_MODULES[@]}" | /usr/bin/tr '\n' ',') || return 1
+	plugin_flags=$(env -i PATH=/usr/bin:/bin LC_ALL=C /usr/bin/pkg-config --cflags --libs "${INPUT_LANGUAGES_PKGCONFIG_MODULES[@]}") || return 1
+	helper_flags=$(env -i PATH=/usr/bin:/bin LC_ALL=C /usr/bin/pkg-config --cflags --libs libsystemd libcrypto) || return 1
 	header_source=$(input_languages_header_source_identity) || return 1
 	fcitx_upstream=$(LC_ALL=C /usr/bin/fcitx5 --version 2>/dev/null) || return 1
 	supported_fcitx=$(jq -r .compatibility.upstream_version "$INPUT_LANGUAGES_PLUGIN_SOURCE/contracts/fcitx.json") || return 1
@@ -1186,20 +1246,28 @@ input_languages_integration_dependency_identity() {
 	[[ ${hyprland_compiler%%.*} == "${INPUT_LANGUAGES_COMPILER%%.*}" ]] || return 1
 	printf 'arch=%s;pkgconfig=%s;plugin-link=%s;helper-link=%s;hyprland-headers=%s;hyprland-compiler=%s;libsystemd=%s;libcrypto=%s;fcitx-upstream=%s\n' \
 		"$package_versions" "$module_versions" "$plugin_flags" "$helper_flags" "$header_source" \
-		"$hyprland_compiler" "$(/usr/bin/pkg-config --modversion libsystemd)" "$(/usr/bin/pkg-config --modversion libcrypto)" "$fcitx_upstream"
+		"$hyprland_compiler" "$(env -i PATH=/usr/bin:/bin LC_ALL=C /usr/bin/pkg-config --modversion libsystemd)" \
+		"$(env -i PATH=/usr/bin:/bin LC_ALL=C /usr/bin/pkg-config --modversion libcrypto)" "$fcitx_upstream"
 }
 
 input_languages_integration_build_identity() {
-	local source=$1 compiler=$2 linker=$3 compatibility=$4 dependencies=$5 unit_build_identity=$6 inventory_spec
-	inventory_spec=$(input_languages_integration_inventory_spec) || return 1
-	printf '%s' "$source|$compiler|$linker|$compatibility|$dependencies|$INPUT_LANGUAGES_INTEGRATION_PLUGIN_FLAGS|$INPUT_LANGUAGES_INTEGRATION_HELPER_FLAGS|$unit_build_identity|$inventory_spec" |
+	local identities canonical
+	identities=$1
+	canonical=$(jq -cSe '
+		select(
+			(keys | sort) == (["integration","runtime","unit","health","protocol","controller","package","compiler","linker","library","source","generated_files","inventory","compatibility"] | sort) and
+			all(.[]; type == "string" and length > 0)
+		)
+	' <<<"$identities") || return 1
+	printf '%s|plugin-flags=%s|helper-flags=%s' "$canonical" "$INPUT_LANGUAGES_INTEGRATION_PLUGIN_FLAGS" "$INPUT_LANGUAGES_INTEGRATION_HELPER_FLAGS" |
 		sha256sum | cut -d' ' -f1
 }
 
 input_languages_build_integration_artifact() {
 	local source_inventory source_id dependencies linker compatibility current_compatibility compiler transaction publication_id final work build_source build_config output preview
 	local protocol controller health unit integration units_sha unit_build_identity build_id snapshot_inventory current_inventory current_dependencies current_linker current_compiler existing_build
-	local artifact_sha helper_sha widget_sha contracts_sha inventory inventory_json source_inventory_json metadata build_log
+	local package_identity library_identity runtime_identity inventory_identity generated_files_identity current_package current_library current_runtime current_generated
+	local artifact_sha helper_sha widget_sha contracts_sha inventory inventory_json source_inventory_json metadata build_log identity_inputs
 	input_languages_set_paths
 	compiler=${INPUT_LANGUAGES_COMPILER-}
 	[[ -n $compiler ]] || compiler=$(/usr/bin/c++ -dumpfullversion -dumpversion) || return 1
@@ -1214,16 +1282,33 @@ input_languages_build_integration_artifact() {
 	[[ $current_inventory == "$source_inventory" ]] || return 1
 	source_id=$(printf '%s\n' "$source_inventory" | sha256sum | cut -d' ' -f1) || return 1
 	dependencies=$(input_languages_integration_dependency_identity) || return 1
+	package_identity=$(input_languages_integration_package_identity) || return 1
+	library_identity=$(input_languages_integration_library_identity) || return 1
+	runtime_identity=$(input_languages_integration_runtime_identity) || return 1
+	inventory_identity=$(input_languages_integration_inventory_identity) || return 1
+	integration=$(jq -r .integration "$INPUT_LANGUAGES_PLUGIN_SOURCE/contracts/manifest.json") || return 1
+	protocol=$(jq -r .identity "$INPUT_LANGUAGES_PLUGIN_SOURCE/contracts/protocol.json") || return 1
+	controller=$(jq -r .identity "$INPUT_LANGUAGES_PLUGIN_SOURCE/contracts/fcitx.json") || return 1
+	health=$(jq -r .identity "$INPUT_LANGUAGES_PLUGIN_SOURCE/contracts/health.json") || return 1
+	unit=$(jq -r .identity "$INPUT_LANGUAGES_PLUGIN_SOURCE/contracts/systemd.json") || return 1
 	unit_build_identity=$(input_languages_integration_unit_build_identity "$source_inventory") || return 1
-	publication_id=$(input_languages_integration_build_identity "$source_id" "$compiler" "$linker" "$compatibility" "$dependencies" "$unit_build_identity") || return 1
+	generated_files_identity=$(input_languages_integration_generated_files_identity "$source_inventory") || return 1
+	identity_inputs=$(jq -cn --arg integration "$integration" --arg runtime "$runtime_identity" --arg unit "$unit" --arg health "$health" \
+		--arg protocol "$protocol" --arg controller "$controller" --arg package "$package_identity" --arg compiler "$compiler" --arg linker "$linker" \
+		--arg library "$library_identity" --arg source "$source_id" --arg generated_files "$generated_files_identity" --arg inventory "$inventory_identity" \
+		--arg compatibility "$compatibility" '{integration:$integration,runtime:$runtime,unit:$unit,health:$health,protocol:$protocol,controller:$controller,
+		package:$package,compiler:$compiler,linker:$linker,library:$library,source:$source,generated_files:$generated_files,inventory:$inventory,compatibility:$compatibility}') || return 1
+	publication_id=$(input_languages_integration_build_identity "$identity_inputs") || return 1
 	final=$INPUT_LANGUAGES_ARTIFACTS/integration-$publication_id
 	input_languages_safe_absolute_path "$final" || return 1
 	if [[ -e $final || -L $final ]]; then
 		[[ -d $final && ! -L $final ]] || return 1
 		jq -e --arg source "$source_id" --arg compiler "$compiler" --arg linker "$linker" --arg compatibility "$compatibility" \
-			--arg dependencies "$dependencies" --arg unit_build_identity "$unit_build_identity" '
+			--arg dependencies "$dependencies" --arg generated_files_identity "$generated_files_identity" --arg package "$package_identity" \
+			--arg library "$library_identity" --arg runtime "$runtime_identity" --arg inventory "$inventory_identity" '
 			.source_id == $source and .compiler == $compiler and .linker == $linker and .compatibility_hash == $compatibility and
-			.dependencies == $dependencies and .unit_build_identity == $unit_build_identity
+			.dependencies == $dependencies and .generated_files_identity == $generated_files_identity and .package_identity == $package and
+			.library_identity == $library and .runtime_identity == $runtime and .inventory_identity == $inventory
 		' "$final/build.json" >/dev/null 2>&1 || return 1
 		input_languages_validate_integration_artifact_self "$final" || return 1
 		existing_build=$(jq -r .build_id "$final/build.json") || return 1
@@ -1250,19 +1335,15 @@ input_languages_build_integration_artifact() {
 	cp -a -- "$INPUT_LANGUAGES_PLUGIN_SOURCE/." "$build_source/" && cp -a -- "$INPUT_LANGUAGES_SOURCE/." "$build_config/" || { rm -rf -- "$work"; return 1; }
 	snapshot_inventory=$(input_languages_integration_source_inventory_from "$build_source" "$build_config") || { rm -rf -- "$work"; return 1; }
 	[[ $snapshot_inventory == "$source_inventory" ]] || { rm -rf -- "$work"; return 1; }
-	integration=$(jq -r .integration "$build_source/contracts/manifest.json") || { rm -rf -- "$work"; return 1; }
-	protocol=$(jq -r .identity "$build_source/contracts/protocol.json") || { rm -rf -- "$work"; return 1; }
-	controller=$(jq -r .identity "$build_source/contracts/fcitx.json") || { rm -rf -- "$work"; return 1; }
-	health=$(jq -r .identity "$build_source/contracts/health.json") || { rm -rf -- "$work"; return 1; }
-	unit=$(jq -r .identity "$build_source/contracts/systemd.json") || { rm -rf -- "$work"; return 1; }
 	cp -- "$build_source/systemd/dotfiles-input-languages-fcitx.socket" "$preview/"
 	input_languages_render_integration_service "$build_source/systemd/dotfiles-input-languages-fcitx.service" "$final" >"$preview/dotfiles-input-languages-fcitx.service" || { rm -rf -- "$work"; return 1; }
 	units_sha=$(input_languages_integration_unit_digest "$preview") || { rm -rf -- "$work"; return 1; }
-	build_id=$(input_languages_integration_build_identity "$source_id" "$compiler" "$linker" "$compatibility" "$dependencies" "$units_sha") || { rm -rf -- "$work"; return 1; }
+	build_id=$(input_languages_integration_build_identity "$identity_inputs") || { rm -rf -- "$work"; return 1; }
 	: >"$build_log" || { rm -rf -- "$work"; return 1; }
 	if ! env -i HOME="$HOME" PATH=/usr/bin:/bin LC_ALL=C make --no-print-directory -C "$build_source" -f integration.mk integration-artifact \
 		OUTPUT_DIR=../output BUILD_ID="$build_id" SOURCE_ID="$source_id" COMPILER_ID="$compiler" COMPATIBILITY_ID="$compatibility" \
-		INTEGRATION_ID="$integration" PROTOCOL_ID="$protocol" CONTROLLER_ID="$controller" HEALTH_ID="$health" UNIT_ID="$unit" CXX=/usr/bin/c++ \
+		LINKER_ID="$linker" INTEGRATION_ID="$integration" RUNTIME_ID="$runtime_identity" PROTOCOL_ID="$protocol" CONTROLLER_ID="$controller" HEALTH_ID="$health" UNIT_ID="$unit" \
+		PACKAGE_ID="$package_identity" LIBRARY_ID="$library_identity" GENERATED_FILES_ID="$generated_files_identity" INVENTORY_ID="$inventory_identity" CXX=/usr/bin/c++ \
 		>"$build_log" 2>&1; then
 		/usr/bin/cat "$build_log" >&2
 		rm -rf -- "$work"
@@ -1271,11 +1352,16 @@ input_languages_build_integration_artifact() {
 	cp -- "$preview/dotfiles-input-languages-fcitx.service" "$output/systemd/dotfiles-input-languages-fcitx.service" || { rm -rf -- "$work"; return 1; }
 	current_inventory=$(input_languages_integration_source_inventory_from "$INPUT_LANGUAGES_PLUGIN_SOURCE" "$INPUT_LANGUAGES_SOURCE") || { rm -rf -- "$work"; return 1; }
 	current_dependencies=$(input_languages_integration_dependency_identity) || { rm -rf -- "$work"; return 1; }
+	current_package=$(input_languages_integration_package_identity) || { rm -rf -- "$work"; return 1; }
+	current_library=$(input_languages_integration_library_identity) || { rm -rf -- "$work"; return 1; }
+	current_runtime=$(input_languages_integration_runtime_identity) || { rm -rf -- "$work"; return 1; }
+	current_generated=$(input_languages_integration_generated_files_identity "$current_inventory") || { rm -rf -- "$work"; return 1; }
 	current_linker=$(input_languages_linker_identity) || { rm -rf -- "$work"; return 1; }
 	current_compiler=$(/usr/bin/c++ -dumpfullversion -dumpversion) || { rm -rf -- "$work"; return 1; }
 	current_compatibility=$(input_languages_header_hash) || { rm -rf -- "$work"; return 1; }
 	[[ $current_inventory == "$source_inventory" && $current_dependencies == "$dependencies" && $current_linker == "$linker" &&
-		$current_compiler == "$compiler" && $current_compatibility == "$compatibility" ]] || { rm -rf -- "$work"; return 1; }
+		$current_compiler == "$compiler" && $current_compatibility == "$compatibility" && $current_package == "$package_identity" &&
+		$current_library == "$library_identity" && $current_runtime == "$runtime_identity" && $current_generated == "$generated_files_identity" ]] || { rm -rf -- "$work"; return 1; }
 	[[ $(input_languages_integration_unit_digest "$output/systemd") == "$units_sha" ]] || { rm -rf -- "$work"; return 1; }
 	artifact_sha=$(sha256sum -- "$output/input-languages.so") || { rm -rf -- "$work"; return 1; }; artifact_sha=${artifact_sha%% *}
 	helper_sha=$(sha256sum -- "$output/input-languages-fcitx-helper") || { rm -rf -- "$work"; return 1; }; helper_sha=${helper_sha%% *}
@@ -1289,16 +1375,17 @@ input_languages_build_integration_artifact() {
 	source_inventory_json=$(printf '%s\n' "$source_inventory" | jq -Rsc 'split("\n")[:-1]') || { chmod -R u+w "$work"; rm -rf -- "$work"; return 1; }
 	metadata=$work/build.json
 	jq -n --arg integration "$integration" --arg source_id "$source_id" --arg build_id "$build_id" --arg compatibility_hash "$compatibility" \
-		--arg compiler "$compiler" --arg linker "$linker" --arg dependencies "$dependencies" \
+		--arg runtime_identity "$runtime_identity" --arg package_identity "$package_identity" --arg compiler "$compiler" --arg linker "$linker" \
+		--arg library_identity "$library_identity" --arg dependencies "$dependencies" --arg inventory_identity "$inventory_identity" \
 		--arg plugin_flags "$INPUT_LANGUAGES_INTEGRATION_PLUGIN_FLAGS" --arg helper_flags "$INPUT_LANGUAGES_INTEGRATION_HELPER_FLAGS" \
 		--arg artifact_sha256 "$artifact_sha" --arg helper_sha256 "$helper_sha" --arg widget_sha256 "$widget_sha" \
-		--arg contracts_sha256 "$contracts_sha" --arg units_sha256 "$units_sha" --arg unit_build_identity "$unit_build_identity" --arg protocol_identity "$protocol" \
+		--arg contracts_sha256 "$contracts_sha" --arg units_sha256 "$units_sha" --arg unit_build_identity "$unit_build_identity" --arg generated_files_identity "$generated_files_identity" --arg protocol_identity "$protocol" \
 		--arg controller_identity "$controller" --arg health_identity "$health" --arg unit_identity "$unit" \
 		--argjson source_inventory "$source_inventory_json" --argjson inventory "$inventory_json" '
-		{version:1,integration:$integration,source_id:$source_id,build_id:$build_id,compatibility_hash:$compatibility_hash,
-		compiler:$compiler,linker:$linker,dependencies:$dependencies,plugin_flags:$plugin_flags,helper_flags:$helper_flags,
+		{version:1,integration:$integration,runtime_identity:$runtime_identity,source_id:$source_id,build_id:$build_id,compatibility_hash:$compatibility_hash,
+		package_identity:$package_identity,compiler:$compiler,linker:$linker,library_identity:$library_identity,dependencies:$dependencies,plugin_flags:$plugin_flags,helper_flags:$helper_flags,
 		artifact_sha256:$artifact_sha256,helper_sha256:$helper_sha256,widget_sha256:$widget_sha256,contracts_sha256:$contracts_sha256,
-		units_sha256:$units_sha256,unit_build_identity:$unit_build_identity,protocol_identity:$protocol_identity,controller_identity:$controller_identity,
+		units_sha256:$units_sha256,unit_build_identity:$unit_build_identity,generated_files_identity:$generated_files_identity,inventory_identity:$inventory_identity,protocol_identity:$protocol_identity,controller_identity:$controller_identity,
 		health_identity:$health_identity,unit_identity:$unit_identity,source_inventory:$source_inventory,inventory:$inventory,
 		exports:["pluginAPIVersion","pluginExit","pluginInit"]}
 	' >"$metadata" || { chmod -R u+w "$work"; rm -rf -- "$work"; return 1; }
@@ -2258,6 +2345,36 @@ input_languages_static_preflight() {
 	bash "$REPOSITORY_ROOT/lib/dotfiles/input-languages-validator.sh" "$REPOSITORY_ROOT" /usr/share/omarchy --static-only >/dev/null
 }
 
+input_languages_declared_arch_packages() {
+	jq -r '.packages[] | select(.name == "hyprland") | .arch_packages[]' "$PACKAGE_CATALOG"
+}
+
+input_languages_verify_package_requirements() {
+	local package identity required
+	while IFS= read -r package; do
+		identity=$(LC_ALL=C /usr/bin/pacman -Qq -- "$package") || {
+			printf 'Build preflight failed: declared Arch package is unavailable: %s\n' "$package" >&2
+			return 1
+		}
+		[[ $identity == "$package" ]] || {
+			printf 'Build preflight failed: Arch package identity mismatch for %s: %s\n' "$package" "$identity" >&2
+			return 1
+		}
+	done < <(input_languages_declared_arch_packages)
+	for required in c++ make pkg-config readelf nm file xkbcli luac stow hyprctl jq flock sha256sum diff omarchy fcitx5 systemctl systemd-analyze ld pacman tr; do
+		command -v "$required" >/dev/null 2>&1 || {
+			printf 'Build preflight failed: missing command after package preparation: %s\n' "$required" >&2
+			return 1
+		}
+	done
+	env -i PATH=/usr/bin:/bin LC_ALL=C /usr/bin/pkg-config --exists "${INPUT_LANGUAGES_INTEGRATION_PKGCONFIG_MODULES[@]}" || {
+		printf 'Build preflight failed: required compiler or library metadata is unavailable.\n' >&2
+		return 1
+	}
+	input_languages_integration_package_identity >/dev/null || return 1
+	input_languages_integration_library_identity >/dev/null || return 1
+}
+
 input_languages_prepare_apply_v2() {
 	INPUT_LANGUAGES_PREPARED_RESULT=''
 	input_languages_inspect
@@ -2399,10 +2516,7 @@ apply_input_languages_v2() {
 		install_missing_arch_packages 'Settings -> Input Languages -> Apply' || return 1
 		verify_arch_packages 'Settings -> Input Languages -> Apply' || return 1
 	fi
-	local required
-	for required in c++ make pkg-config readelf nm file xkbcli luac stow hyprctl jq flock sha256sum diff omarchy; do
-		command -v "$required" >/dev/null 2>&1 || { printf 'Build preflight failed: missing command after package preparation: %s\n' "$required" >&2; return 1; }
-	done
+	input_languages_verify_package_requirements || return 1
 	bash "$REPOSITORY_ROOT/lib/dotfiles/input-languages-validator.sh" || { printf 'Build preflight failed: Input Languages source validation failed.\n' >&2; return 1; }
 	input_languages_stack_identity || return 1
 	input_languages_prepare_roots || return 1
@@ -2410,6 +2524,7 @@ apply_input_languages_v2() {
 	input_languages_prepare_apply_v2 || { input_languages_unlock || true; return 1; }
 	if [[ $INPUT_LANGUAGES_PREPARED_RESULT == noop ]]; then input_languages_unlock || return 1; printf 'Exact no-op: Portable input language setup is healthy; active language preserved.\n'; return 0; fi
 	[[ $INPUT_LANGUAGES_PREPARED_RESULT == change ]] || { input_languages_unlock || true; return 1; }
+	input_languages_verify_package_requirements || { input_languages_unlock || true; return 1; }
 	input_languages_build_artifact || { printf 'Build preflight failed; live setup is unchanged.\n' >&2; input_languages_unlock || true; return 1; }
 	if ! input_languages_source_matches_build || ! input_languages_dependencies_match_build; then
 		printf 'Build preflight failed: repository source or stack inputs changed during the artifact build; the built artifact was not activated.\n' >&2

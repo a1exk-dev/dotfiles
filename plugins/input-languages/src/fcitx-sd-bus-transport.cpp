@@ -54,6 +54,19 @@ constexpr std::array EXPECTED_MEMBERS{
 	ExpectedMember{"SwitchInputMethodGroup", "method", "s", ""},
 };
 
+constexpr std::array RESTORATION_MEMBER_NAMES{
+	std::string_view{"AddInputMethodGroup"},
+	std::string_view{"CurrentInputMethod"},
+	std::string_view{"CurrentInputMethodGroup"},
+	std::string_view{"FullInputMethodGroupInfo"},
+	std::string_view{"InputMethodGroups"},
+	std::string_view{"RemoveInputMethodGroup"},
+	std::string_view{"Save"},
+	std::string_view{"SetCurrentIM"},
+	std::string_view{"SetInputMethodGroupInfo"},
+	std::string_view{"SwitchInputMethodGroup"},
+};
+
 std::optional<std::string_view> attribute(std::string_view tag, std::string_view name) {
 	for (const char quote : {'"', '\''}) {
 		std::string prefix(name);
@@ -427,11 +440,15 @@ bool readJsonValue(sd_bus_message* message, std::string& json, std::optional<std
 
 }
 
-ControllerShape controllerShapeFromIntrospection(std::string_view xml) noexcept {
+ControllerShape controllerShapeFromIntrospection(std::string_view xml, ControllerShapeRequirement requirement) noexcept {
 	const auto body = interfaceBody(xml);
 	if (!body)
 		return ControllerShape::Unsupported;
-	return std::ranges::all_of(EXPECTED_MEMBERS, [&body](const ExpectedMember& member) { return memberMatches(*body, member); })
+	return std::ranges::all_of(EXPECTED_MEMBERS, [&body, requirement](const ExpectedMember& member) {
+		return (requirement == ControllerShapeRequirement::Restoration &&
+			std::ranges::find(RESTORATION_MEMBER_NAMES, member.name) == RESTORATION_MEMBER_NAMES.end()) ||
+			memberMatches(*body, member);
+	})
 		? ControllerShape::Supported
 		: ControllerShape::Unsupported;
 }
@@ -758,7 +775,9 @@ Inspection SdBusControllerTransport::inspect() noexcept {
 		return {.status = TransportStatus::MalformedReply, .snapshot = std::move(snapshot), .diagnostic = "Controller introspection reply is malformed"};
 	}
 	reply = sd_bus_message_unref(reply);
-	snapshot.identity.controllerShape = controllerShapeFromIntrospection(xml);
+	snapshot.identity.controllerShape = controllerShapeFromIntrospection(
+		xml,
+		m_impl->restorationMode ? ControllerShapeRequirement::Restoration : ControllerShapeRequirement::ChangedApply);
 	if (snapshot.identity.controllerShape != ControllerShape::Supported)
 		return {.status = TransportStatus::Ok, .snapshot = std::move(snapshot), .diagnostic = "Controller shape is unsupported"};
 
@@ -772,71 +791,73 @@ Inspection SdBusControllerTransport::inspect() noexcept {
 	for (const auto& groupName : groupNames) {
 		Group group;
 		result = m_impl->readFullGroup(owner, groupName, group);
-		if (result >= 0)
+		if (result >= 0 && !m_impl->restorationMode)
 			result = m_impl->crossCheckGroup(owner, group);
 		if (result < 0)
 			return {.status = statusFromError(result), .snapshot = std::move(snapshot), .diagnostic = "group semantic inspection failed"};
 		snapshot.groups.push_back(std::move(group));
 	}
 
-	result = m_impl->callController(owner, "AvailableInputMethods", &reply);
-	if (result >= 0)
-		result = sd_bus_message_enter_container(reply, SD_BUS_TYPE_ARRAY, "(ssssssb)");
-	while (result > 0) {
-		result = sd_bus_message_enter_container(reply, SD_BUS_TYPE_STRUCT, "ssssssb");
-		if (result <= 0)
-			break;
-		const char* name = nullptr;
-		const char* display = nullptr;
-		const char* nativeName = nullptr;
-		const char* icon = nullptr;
-		const char* label = nullptr;
-		const char* language = nullptr;
-		int configurable = 0;
-		result = sd_bus_message_read(reply, "ssssssb", &name, &display, &nativeName, &icon, &label, &language, &configurable);
+	if (!m_impl->restorationMode) {
+		result = m_impl->callController(owner, "AvailableInputMethods", &reply);
 		if (result >= 0)
-			result = sd_bus_message_exit_container(reply);
-		if (result >= 0)
-			snapshot.availableMethods.emplace_back(name ? name : "");
-	}
-	if (result == 0)
-		result = sd_bus_message_exit_container(reply);
-	reply = sd_bus_message_unref(reply);
-	if (result < 0)
-		return {.status = statusFromError(result), .snapshot = std::move(snapshot), .diagnostic = "available-method inspection failed"};
-
-	result = m_impl->callController(owner, "GetAddonsV2", &reply);
-	if (result >= 0)
-		result = sd_bus_message_enter_container(reply, SD_BUS_TYPE_ARRAY, "(sssibbbasas)");
-	while (result > 0) {
-		result = sd_bus_message_enter_container(reply, SD_BUS_TYPE_STRUCT, "sssibbbasas");
-		if (result <= 0)
-			break;
-		const char* name = nullptr;
-		const char* display = nullptr;
-		const char* comment = nullptr;
-		int category = 0;
-		int configurable = 0;
-		int enabled = 0;
-		int onDemand = 0;
-		result = sd_bus_message_read(reply, "sssibbb", &name, &display, &comment, &category, &configurable, &enabled, &onDemand);
-		if (result >= 0)
-			result = sd_bus_message_skip(reply, "as");
-		if (result >= 0)
-			result = sd_bus_message_skip(reply, "as");
-		if (result >= 0)
-			result = sd_bus_message_exit_container(reply);
-		if (result >= 0) {
-			snapshot.addons.push_back({.name = name ? name : "", .enabled = enabled != 0, .available = true});
-			if (enabled)
-				snapshot.enabledAddons.emplace_back(name ? name : "");
+			result = sd_bus_message_enter_container(reply, SD_BUS_TYPE_ARRAY, "(ssssssb)");
+		while (result > 0) {
+			result = sd_bus_message_enter_container(reply, SD_BUS_TYPE_STRUCT, "ssssssb");
+			if (result <= 0)
+				break;
+			const char* name = nullptr;
+			const char* display = nullptr;
+			const char* nativeName = nullptr;
+			const char* icon = nullptr;
+			const char* label = nullptr;
+			const char* language = nullptr;
+			int configurable = 0;
+			result = sd_bus_message_read(reply, "ssssssb", &name, &display, &nativeName, &icon, &label, &language, &configurable);
+			if (result >= 0)
+				result = sd_bus_message_exit_container(reply);
+			if (result >= 0)
+				snapshot.availableMethods.emplace_back(name ? name : "");
 		}
+		if (result == 0)
+			result = sd_bus_message_exit_container(reply);
+		reply = sd_bus_message_unref(reply);
+		if (result < 0)
+			return {.status = statusFromError(result), .snapshot = std::move(snapshot), .diagnostic = "available-method inspection failed"};
+
+		result = m_impl->callController(owner, "GetAddonsV2", &reply);
+		if (result >= 0)
+			result = sd_bus_message_enter_container(reply, SD_BUS_TYPE_ARRAY, "(sssibbbasas)");
+		while (result > 0) {
+			result = sd_bus_message_enter_container(reply, SD_BUS_TYPE_STRUCT, "sssibbbasas");
+			if (result <= 0)
+				break;
+			const char* name = nullptr;
+			const char* display = nullptr;
+			const char* comment = nullptr;
+			int category = 0;
+			int configurable = 0;
+			int enabled = 0;
+			int onDemand = 0;
+			result = sd_bus_message_read(reply, "sssibbb", &name, &display, &comment, &category, &configurable, &enabled, &onDemand);
+			if (result >= 0)
+				result = sd_bus_message_skip(reply, "as");
+			if (result >= 0)
+				result = sd_bus_message_skip(reply, "as");
+			if (result >= 0)
+				result = sd_bus_message_exit_container(reply);
+			if (result >= 0) {
+				snapshot.addons.push_back({.name = name ? name : "", .enabled = enabled != 0, .available = true});
+				if (enabled)
+					snapshot.enabledAddons.emplace_back(name ? name : "");
+			}
+		}
+		if (result == 0)
+			result = sd_bus_message_exit_container(reply);
+		reply = sd_bus_message_unref(reply);
+		if (result < 0)
+			return {.status = statusFromError(result), .snapshot = std::move(snapshot), .diagnostic = "addon inspection failed"};
 	}
-	if (result == 0)
-		result = sd_bus_message_exit_container(reply);
-	reply = sd_bus_message_unref(reply);
-	if (result < 0)
-		return {.status = statusFromError(result), .snapshot = std::move(snapshot), .diagnostic = "addon inspection failed"};
 
 	result = m_impl->callController(owner, "CurrentInputMethodGroup", &reply);
 	if (result >= 0 && !readString(reply, snapshot.currentGroup))

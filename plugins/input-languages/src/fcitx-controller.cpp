@@ -521,7 +521,7 @@ AdapterResult ControllerAdapter::restore(const Snapshot& prior) noexcept {
 
 	m_savePurpose = SavePurpose::Restore;
 	auto initial = m_transport.inspect();
-	if (initial.status != TransportStatus::Ok || !runtimeSupported(initial.snapshot))
+	if (initial.status != TransportStatus::Ok || !(m_restorationMode ? restorationRuntimeSupported(initial.snapshot) : runtimeSupported(initial.snapshot)))
 		return inspectionFailure(std::move(initial));
 	resetRetry(prior.currentMethod, initial.snapshot.identity.ownerEpoch);
 	if (m_pendingSave) {

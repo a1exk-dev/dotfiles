@@ -357,7 +357,7 @@ input_languages_v3_helper_ownership_bound() {
 }
 
 input_languages_v3_common_receipt_valid() {
-	local file=$1 direct artifact fcitx operation_start restoration artifact_root recorded_artifact
+	local file=$1 direct artifact fcitx operation_start restoration artifact_root
 	direct=$(jq -c .direct_ancestry "$file") || return 1
 	artifact=$(jq -c .integration_artifact "$file") || return 1
 	fcitx=$(jq -c .fcitx_before "$file") || return 1
@@ -370,14 +370,15 @@ input_languages_v3_common_receipt_valid() {
 		(.backup_transaction_id | type == "string" and length > 0) and (.backup_existed | type == "boolean")
 	' <<<"$direct" >/dev/null || return 1
 	jq -e '
-		(keys | sort) == (["source_id","build_id","artifact","artifact_sha256","helper_sha256","widget_sha256","protocol_identity","controller_identity","health_identity","unit_identity","compatibility_hash","compiler","compiler_warning","dependencies","inventory"] | sort) and
-		([.source_id,.build_id,.artifact_sha256,.helper_sha256,.widget_sha256] | all(test("^[0-9a-f]{64}$"))) and
-		(.artifact | startswith("/")) and ([.protocol_identity,.controller_identity,.health_identity,.unit_identity,.compatibility_hash,.compiler,.dependencies] | all(type == "string" and length > 0)) and
+		(keys | sort) == (["source_id","build_id","artifact","artifact_sha256","helper_sha256","widget_sha256","protocol_identity","controller_identity","health_identity","unit_identity","runtime_identity","integration_identity","package_identity","compiler_identity","linker_identity","library_identity","generated_files_identity","inventory_identity","compatibility_hash","compiler_warning","dependencies","inventory"] | sort) and
+		([.source_id,.build_id,.artifact_sha256,.helper_sha256,.widget_sha256,.runtime_identity,.package_identity,.library_identity,
+			.generated_files_identity,.inventory_identity] | all(test("^[0-9a-f]{64}$"))) and
+		(.artifact | startswith("/")) and ([.protocol_identity,.controller_identity,.health_identity,.unit_identity,.integration_identity,
+			.compiler_identity,.linker_identity,.compatibility_hash,.dependencies] | all(type == "string" and length > 0)) and
 		(.compiler_warning == null or (.compiler_warning | type == "string")) and (.inventory | type == "array" and all(.[]; type == "string"))
 	' <<<"$artifact" >/dev/null || return 1
 	artifact_root=$(jq -r .artifact <<<"$artifact"); artifact_root=${artifact_root%/*}
-	recorded_artifact=$(input_languages_v3_integration_artifact "$artifact_root") || return 1
-	[[ $(jq -cS . <<<"$artifact") == "$(jq -cS . <<<"$recorded_artifact")" ]] || return 1
+	input_languages_v3_integration_artifact_matches "$artifact" "$artifact_root" || return 1
 	input_languages_v3_semantics_valid "$fcitx" || return 1
 	jq -e '
 		(keys | sort) == (["canonical_language","physical_groups","fcitx_method"] | sort) and
@@ -658,23 +659,44 @@ input_languages_v3_integration_artifact() {
 	metadata=$root/build.json
 	jq -c '
 		{source_id,build_id,artifact:(input_filename | sub("/build.json$"; "/input-languages.so")),artifact_sha256,
-		helper_sha256,widget_sha256,protocol_identity,controller_identity,health_identity,unit_identity,compatibility_hash,compiler,
-		compiler_warning:null,dependencies,inventory}
+		helper_sha256,widget_sha256,protocol_identity,controller_identity,health_identity,unit_identity,runtime_identity,integration_identity:.integration,
+		package_identity,compiler_identity:.compiler,linker_identity:.linker,library_identity,generated_files_identity,inventory_identity,
+		compatibility_hash,compiler_warning:null,dependencies,inventory}
 	' "$metadata"
 }
 
+input_languages_v3_integration_artifact_matches() {
+	local receipt=$1 root=$2 recorded
+	recorded=$(input_languages_v3_integration_artifact "$root") || return 1
+	[[ $(jq -cS . <<<"$receipt") == "$(jq -cS . <<<"$recorded")" ]]
+}
+
 input_languages_v3_build_inputs_match() {
-	local root=$1 metadata source dependencies linker
+	local root=$1 metadata source dependencies linker package library runtime inventory source_inventory generated
 	metadata=$root/build.json
 	input_languages_validate_integration_artifact_self "$root" || return 1
 	source=$(input_languages_integration_source_identity) || return 1
 	dependencies=$(input_languages_integration_dependency_identity) || return 1
 	linker=$(input_languages_linker_identity) || return 1
+	package=$(input_languages_integration_package_identity) || return 1
+	library=$(input_languages_integration_library_identity) || return 1
+	runtime=$(input_languages_integration_runtime_identity) || return 1
+	inventory=$(input_languages_integration_inventory_identity) || return 1
+	source_inventory=$(input_languages_integration_source_inventory_from "$INPUT_LANGUAGES_PLUGIN_SOURCE" "$INPUT_LANGUAGES_SOURCE") || return 1
+	generated=$(input_languages_integration_generated_files_identity "$source_inventory") || return 1
 	input_languages_stack_identity || return 1
-	jq -e --arg source "$source" --arg dependencies "$dependencies" --arg linker "$linker" \
-		--arg compatibility "$INPUT_LANGUAGES_HEADER_HASH" --arg compiler "$INPUT_LANGUAGES_COMPILER" '
+	jq -e --arg source "$source" --arg dependencies "$dependencies" --arg linker "$linker" --arg package "$package" --arg library "$library" \
+		--arg runtime "$runtime" --arg inventory "$inventory" --arg generated "$generated" \
+		--arg compatibility "$INPUT_LANGUAGES_HEADER_HASH" --arg compiler "$INPUT_LANGUAGES_COMPILER" \
+		--arg integration "$(jq -r .integration "$INPUT_LANGUAGES_PLUGIN_SOURCE/contracts/manifest.json")" \
+		--arg protocol "$(jq -r .identity "$INPUT_LANGUAGES_PLUGIN_SOURCE/contracts/protocol.json")" \
+		--arg controller "$(jq -r .identity "$INPUT_LANGUAGES_PLUGIN_SOURCE/contracts/fcitx.json")" \
+		--arg health "$(jq -r .identity "$INPUT_LANGUAGES_PLUGIN_SOURCE/contracts/health.json")" \
+		--arg unit "$(jq -r .identity "$INPUT_LANGUAGES_PLUGIN_SOURCE/contracts/systemd.json")" '
 		.source_id == $source and .dependencies == $dependencies and .linker == $linker and
-		.compatibility_hash == $compatibility and .compiler == $compiler
+		.package_identity == $package and .library_identity == $library and .runtime_identity == $runtime and .inventory_identity == $inventory and
+		.generated_files_identity == $generated and .compatibility_hash == $compatibility and .compiler == $compiler and .integration == $integration and
+		.protocol_identity == $protocol and .controller_identity == $controller and .health_identity == $health and .unit_identity == $unit
 	' "$metadata" >/dev/null 2>&1
 }
 
@@ -858,8 +880,9 @@ input_languages_exact_noop_v3() {
 		$INPUT_LANGUAGES_PENDING_STATE == absent && $INPUT_LANGUAGES_RECOVERY_STATE == absent && $INPUT_LANGUAGES_CLEANUP_STATE == absent ]] || return 1
 	[[ $(jq -r .version "$INPUT_LANGUAGES_ACTIVE") == 3 ]] || return 1
 	input_languages_validate_active_file_v3 "$INPUT_LANGUAGES_ACTIVE" artifact || return 1
-	local artifact_root helper controller managed expected helper_current widget errors source artifact
+	local artifact_root helper controller managed expected helper_current widget errors artifact
 	artifact_root=$(jq -r .integration_artifact.artifact "$INPUT_LANGUAGES_ACTIVE"); artifact_root=${artifact_root%/*}
+	input_languages_v3_build_inputs_match "$artifact_root" || return 1
 	helper=$artifact_root/input-languages-fcitx-helper
 	input_languages_v3_controller_inspect "$helper" || return 1
 	controller=$INPUT_LANGUAGES_V3_CONTROLLER_RESPONSE
@@ -878,8 +901,6 @@ input_languages_exact_noop_v3() {
 	input_languages_pointer_matches "$(jq -r .integration_artifact.artifact "$INPUT_LANGUAGES_ACTIVE")" || return 1
 	widget=$(jq -c .widget_ownership "$INPUT_LANGUAGES_ACTIVE") || return 1
 	input_languages_v3_indicator_valid "$widget" "$INPUT_LANGUAGES_PLUGIN_HEALTH" || return 1
-	source=$(input_languages_integration_source_identity) || return 1
-	[[ $source == "$(jq -r .integration_artifact.source_id "$INPUT_LANGUAGES_ACTIVE")" ]] || return 1
 	jq -e --arg build "$(jq -r .integration_artifact.build_id "$INPUT_LANGUAGES_ACTIVE")" --arg protocol "$(jq -r .integration_artifact.protocol_identity "$INPUT_LANGUAGES_ACTIVE")" '
 		.direct_xkb_health == "healthy" and .helper_connection == "connected" and .helper_build_id == $build and .protocol_identity == $protocol and
 		.managed_group_state == "exact" and .report_stale == false and
@@ -1158,6 +1179,20 @@ input_languages_apply_v3() {
 	input_languages_v3_require_runtime false || { printf 'Apply blocked: the Input Languages runtime contract is not satisfied.\n' >&2; return 1; }
 	planned_runtime=$INPUT_LANGUAGES_V3_RUNTIME_ROOT
 	input_languages_static_preflight || return 1
+	stow --no-folding --simulate --dir "$REPOSITORY_ROOT/config" --target "$HOME" hyprland >/dev/null || { printf 'Apply blocked: Input Languages Stow simulation failed.\n' >&2; return 1; }
+	if [[ $packages_prepared != true ]]; then
+		plan_arch_packages hyprland
+		print_arch_package_plan
+	fi
+	printf 'Plan: expand the exact version-2 Input Languages installation through one version-3 Fcitx and helper transaction.\n'
+	if [[ $approved != true ]] && ! wizard_confirm 'Apply this complete Input Languages expansion plan?'; then printf 'Apply canceled; no changes made.\n'; return 0; fi
+	if [[ $packages_prepared != true ]]; then
+		install_missing_arch_packages 'Settings -> Input Languages -> Apply' || return 1
+		verify_arch_packages 'Settings -> Input Languages -> Apply' || return 1
+	fi
+	input_languages_verify_package_requirements || return 1
+	input_languages_static_preflight || return 1
+	stow --no-folding --simulate --dir "$REPOSITORY_ROOT/config" --target "$HOME" hyprland >/dev/null || { printf 'Apply blocked: Input Languages Stow simulation failed after package preparation.\n' >&2; return 1; }
 	input_languages_prepare_roots || return 1
 	input_languages_stack_identity || return 1
 	input_languages_build_integration_artifact || return 1
@@ -1183,13 +1218,14 @@ input_languages_apply_v3() {
 	managed_target=$(input_languages_v3_managed_group "$([[ $(jq -r .canonical_language <<<"$operation_start") == US ]] && printf keyboard-us || printf keyboard-ru)") || return 1
 	restoration=$(input_languages_v3_restoration)
 	active_digest=$(sha256sum "$INPUT_LANGUAGES_ACTIVE" | cut -d' ' -f1) || return 1
-	printf 'Plan: expand the exact version-2 Input Languages installation through one version-3 Fcitx and helper transaction.\n'
-	if [[ $approved != true ]] && ! wizard_confirm 'Apply this complete Input Languages expansion plan?'; then printf 'Apply canceled; no changes made.\n'; return 0; fi
 	input_languages_acquire_lock Apply || return 1
 	input_languages_inspect
 	[[ $INPUT_LANGUAGES_ACTIVE_STATE == valid && $(jq -r .version "$INPUT_LANGUAGES_ACTIVE") == 2 && $INPUT_LANGUAGES_TREE_STATE == linked &&
 		$(sha256sum "$INPUT_LANGUAGES_ACTIVE" | cut -d' ' -f1) == "$active_digest" ]] || { input_languages_unlock || true; return 1; }
 	input_languages_v3_require_runtime false && [[ $INPUT_LANGUAGES_V3_RUNTIME_ROOT == "$planned_runtime" ]] || { printf 'Apply blocked: the runtime root changed after confirmation.\n' >&2; input_languages_unlock || true; return 1; }
+	input_languages_verify_package_requirements || { input_languages_unlock || true; return 1; }
+	input_languages_static_preflight || { input_languages_unlock || true; return 1; }
+	stow --no-folding --simulate --dir "$REPOSITORY_ROOT/config" --target "$HOME" hyprland >/dev/null || { printf 'Apply blocked: Input Languages Stow simulation changed after confirmation.\n' >&2; input_languages_unlock || true; return 1; }
 	input_languages_v3_build_inputs_match "$INPUT_LANGUAGES_INTEGRATION_ARTIFACT_DIR" || { printf 'Apply blocked: integration build inputs changed after confirmation.\n' >&2; input_languages_unlock || true; return 1; }
 	input_languages_v3_apply_plan_matches "$INPUT_LANGUAGES_INTEGRATION_HELPER" "$controller" "$helper_before" "$hypr_before" || { printf 'Apply blocked: the confirmed runtime plan changed before pending evidence.\n' >&2; input_languages_unlock || true; return 1; }
 	transaction=$(input_languages_new_transaction) || { input_languages_unlock || true; return 1; }

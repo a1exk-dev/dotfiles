@@ -17,7 +17,10 @@ inline constexpr auto US_METHOD = "keyboard-us";
 inline constexpr auto RUSSIAN_METHOD = "keyboard-ru";
 
 enum class ControllerShape { Supported, Unsupported };
-[[nodiscard]] ControllerShape controllerShapeFromIntrospection(std::string_view xml) noexcept;
+enum class ControllerShapeRequirement { ChangedApply, Restoration };
+[[nodiscard]] ControllerShape controllerShapeFromIntrospection(
+	std::string_view xml,
+	ControllerShapeRequirement requirement = ControllerShapeRequirement::ChangedApply) noexcept;
 enum class TransportStatus { Ok, Unavailable, Disconnected, Timeout, MethodError, MalformedReply, Conflict };
 enum class Outcome {
 	Pending,

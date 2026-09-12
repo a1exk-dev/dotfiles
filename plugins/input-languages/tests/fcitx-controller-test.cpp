@@ -180,11 +180,84 @@ int main(int argc, char** argv) {
 <method name="AdditionalSupportedMember"/>
 </interface></node>)XML";
 		require(controllerShapeFromIntrospection(xml) == ControllerShape::Supported, "the exact manifest tolerates additional Controller members");
-		auto changed = xml;
-		changed.replace(changed.find("ssa(ss)"), 7, "ssa(sss)");
-		require(controllerShapeFromIntrospection(changed) == ControllerShape::Unsupported, "a changed Controller signature is rejected");
+		for (const auto member : {
+				"AddInputMethodGroup", "AvailableInputMethods", "CurrentInputMethod", "CurrentInputMethodGroup", "DebugInfo",
+				"FullInputMethodGroupInfo", "GetAddonsV2", "InputMethodGroupInfo", "InputMethodGroups",
+				"RemoveInputMethodGroup", "Save", "SetCurrentIM", "SetInputMethodGroupInfo", "SwitchInputMethodGroup"}) {
+			auto changed = xml;
+			const auto memberStart = changed.find("<method name=\"" + std::string(member) + "\"");
+			require(memberStart != std::string::npos, "the test fixture contains every required method");
+			changed.replace(memberStart, 7, "<signal");
+			const auto memberEnd = changed.find("</method>", memberStart);
+			if (memberEnd != std::string::npos)
+				changed.replace(memberEnd, 9, "</signal>");
+			require(controllerShapeFromIntrospection(changed) == ControllerShape::Unsupported,
+				"every listed Controller method has an exact member type");
+		}
+		{
+			auto changed = xml;
+			changed.replace(changed.find("<signal name=\"InputMethodGroupsChanged\""), 7, "<method");
+			require(controllerShapeFromIntrospection(changed) == ControllerShape::Unsupported,
+				"the listed Controller signal has an exact member type");
+		}
+		struct SignatureChange {
+			std::string_view member;
+			std::string_view signature;
+		};
+		for (const auto [member, signature] : std::vector<SignatureChange>{
+				{"AddInputMethodGroup", "s\" direction=\"in"},
+				{"AvailableInputMethods", "a(ssssssb)"},
+				{"CurrentInputMethod", "s\" direction=\"out"},
+				{"CurrentInputMethodGroup", "s\" direction=\"out"},
+				{"DebugInfo", "s\" direction=\"out"},
+				{"FullInputMethodGroupInfo", "s\" direction=\"in"},
+				{"FullInputMethodGroupInfo", "sssa{sv}a(sssssssbsa{sv})"},
+				{"GetAddonsV2", "a(sssibbbasas)"},
+				{"InputMethodGroupInfo", "s\" direction=\"in"},
+				{"InputMethodGroupInfo", "sa(ss)"},
+				{"InputMethodGroups", "as\" direction=\"out"},
+				{"RemoveInputMethodGroup", "s\" direction=\"in"},
+				{"SetCurrentIM", "s\" direction=\"in"},
+				{"SetInputMethodGroupInfo", "ssa(ss)"},
+				{"SwitchInputMethodGroup", "s\" direction=\"in"},
+			}) {
+			auto changed = xml;
+			const auto memberStart = changed.find("<method name=\"" + std::string(member) + "\"");
+			const auto signatureStart = changed.find(signature, memberStart);
+			require(signatureStart != std::string::npos, "the test fixture contains every nonempty signature shape");
+			changed.insert(signatureStart, "s");
+			require(controllerShapeFromIntrospection(changed) == ControllerShape::Unsupported,
+				"every listed Controller input and output signature is exact");
+		}
+		for (const auto member : {"Save", "InputMethodGroupsChanged"}) {
+			auto changed = xml;
+			const auto memberStart = changed.find("name=\"" + std::string(member) + "\"");
+			const auto tagEnd = changed.find("/>", memberStart);
+			const std::string type = member == std::string_view{"Save"} ? "method" : "signal";
+			changed.replace(tagEnd, 2, "><arg type=\"s\" direction=\"in\"/></" + type + ">");
+			require(controllerShapeFromIntrospection(changed) == ControllerShape::Unsupported,
+				"listed members with no arguments require exact empty signatures");
+		}
+
+		auto restorationOnly = xml;
+		for (const auto member : {"AvailableInputMethods", "DebugInfo", "GetAddonsV2", "InputMethodGroupInfo", "InputMethodGroupsChanged"}) {
+			const auto name = restorationOnly.find("name=\"" + std::string(member) + "\"");
+			const auto start = restorationOnly.rfind('<', name);
+			const auto end = restorationOnly.find('>', name);
+			const bool selfClosing = restorationOnly[end - 1] == '/';
+			const auto close = selfClosing ? end + 1 : restorationOnly.find('>', restorationOnly.find("</", end)) + 1;
+			restorationOnly.erase(start, close - start);
+		}
+		require(controllerShapeFromIntrospection(restorationOnly) == ControllerShape::Unsupported,
+			"changed Apply requires members outside the restoration manifest");
+		require(controllerShapeFromIntrospection(restorationOnly, ControllerShapeRequirement::Restoration) == ControllerShape::Supported,
+			"restoration accepts its declared narrow required member set");
+		auto changedRestoration = restorationOnly;
+		changedRestoration.replace(changedRestoration.find("ssa(ss)"), 7, "ssa(sss)");
+		require(controllerShapeFromIntrospection(changedRestoration, ControllerShapeRequirement::Restoration) == ControllerShape::Unsupported,
+			"restoration requires exact signatures for every narrow member");
 	}
-	std::cout << "ok - Controller introspection requires exact listed signatures\n";
+	std::cout << "ok - Controller introspection enforces distinct exact Apply and restoration manifests\n";
 
 	{
 		ScriptedTransport transport;
@@ -257,10 +330,16 @@ int main(int argc, char** argv) {
 		transport.snapshot.identity.upstreamVersion = "5.1.22";
 		transport.snapshot.availableMethods.clear();
 		transport.snapshot.enabledAddons.clear();
+		Snapshot prior = transport.snapshot;
+		prior.groups = {{.name = "Default", .defaultMethod = US_METHOD, .defaultLayout = "us", .items = {{US_METHOD, ""}}}};
+		prior.currentGroup = "Default";
+		transport.snapshot.groups.push_back(prior.groups.front());
 		ControllerAdapter adapter(transport, true);
 		require(adapter.inspect().outcome == Outcome::Converged, "restoration accepts coherent receipt-backed semantics after Apply compatibility changes");
 		require(adapter.executeOne(transport.snapshot, SaveCommand{}).outcome == Outcome::Pending,
 			"restoration retains digest-guarded mutation and readback");
+		require(adapter.restore(prior).outcome == Outcome::Converged,
+			"restoration completes through the narrow runtime gate after Apply compatibility changes");
 	}
 	std::cout << "ok - receipt-backed restoration uses the narrow Controller seam\n";
 

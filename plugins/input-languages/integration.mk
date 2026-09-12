@@ -13,7 +13,7 @@ integration-artifact:
 	@for value in "$(BUILD_ID)" "$(SOURCE_ID)"; do \
 		printf '%s\n' "$$value" | grep -Eq '^[0-9a-f]{64}$$' || { printf 'BUILD_ID and SOURCE_ID must be lowercase SHA-256 digests\n' >&2; exit 2; }; \
 	done
-	@for value in "$(COMPILER_ID)" "$(COMPATIBILITY_ID)" "$(INTEGRATION_ID)" "$(PROTOCOL_ID)" "$(CONTROLLER_ID)" "$(HEALTH_ID)" "$(UNIT_ID)"; do \
+	@for value in "$(COMPILER_ID)" "$(LINKER_ID)" "$(COMPATIBILITY_ID)" "$(INTEGRATION_ID)" "$(RUNTIME_ID)" "$(PROTOCOL_ID)" "$(CONTROLLER_ID)" "$(HEALTH_ID)" "$(UNIT_ID)" "$(PACKAGE_ID)" "$(LIBRARY_ID)" "$(GENERATED_FILES_ID)" "$(INVENTORY_ID)"; do \
 		test -n "$$value" || { printf 'all integration identities are required\n' >&2; exit 2; }; \
 	done
 	@test ! -e "$(OUTPUT_DIR)/input-languages.so" && test ! -e "$(OUTPUT_DIR)/input-languages-fcitx-helper"
@@ -22,12 +22,18 @@ integration-artifact:
 		-DINPUT_LANGUAGES_BUILD_ID='"$(BUILD_ID)"' \
 		-DINPUT_LANGUAGES_SOURCE_ID='"$(SOURCE_ID)"' \
 		-DINPUT_LANGUAGES_COMPILER_ID='"$(COMPILER_ID)"' \
+		-DINPUT_LANGUAGES_LINKER_ID='"$(LINKER_ID)"' \
 		-DINPUT_LANGUAGES_COMPATIBILITY_ID='"$(COMPATIBILITY_ID)"' \
 		-DINPUT_LANGUAGES_INTEGRATION_ID='"$(INTEGRATION_ID)"' \
+		-DINPUT_LANGUAGES_RUNTIME_ID='"$(RUNTIME_ID)"' \
 		-DINPUT_LANGUAGES_PROTOCOL_ID='"$(PROTOCOL_ID)"' \
 		-DINPUT_LANGUAGES_CONTROLLER_ID='"$(CONTROLLER_ID)"' \
 		-DINPUT_LANGUAGES_HEALTH_ID='"$(HEALTH_ID)"' \
 		-DINPUT_LANGUAGES_UNIT_ID='"$(UNIT_ID)"' \
+		-DINPUT_LANGUAGES_PACKAGE_ID='"$(PACKAGE_ID)"' \
+		-DINPUT_LANGUAGES_LIBRARY_ID='"$(LIBRARY_ID)"' \
+		-DINPUT_LANGUAGES_GENERATED_FILES_ID='"$(GENERATED_FILES_ID)"' \
+		-DINPUT_LANGUAGES_INVENTORY_ID='"$(INVENTORY_ID)"' \
 		-DINPUT_LANGUAGES_ARTIFACT_ROLE='"plugin"' \
 		-DINPUT_LANGUAGES_FCITX_COORDINATION \
 		src/plugin.cpp src/input-language-model.cpp src/input-language-health.cpp src/fcitx-follower.cpp src/fcitx-protocol.cpp src/integration-artifact-identity.cpp \
@@ -36,12 +42,18 @@ integration-artifact:
 		-DINPUT_LANGUAGES_BUILD_ID='"$(BUILD_ID)"' \
 		-DINPUT_LANGUAGES_SOURCE_ID='"$(SOURCE_ID)"' \
 		-DINPUT_LANGUAGES_COMPILER_ID='"$(COMPILER_ID)"' \
+		-DINPUT_LANGUAGES_LINKER_ID='"$(LINKER_ID)"' \
 		-DINPUT_LANGUAGES_COMPATIBILITY_ID='"$(COMPATIBILITY_ID)"' \
 		-DINPUT_LANGUAGES_INTEGRATION_ID='"$(INTEGRATION_ID)"' \
+		-DINPUT_LANGUAGES_RUNTIME_ID='"$(RUNTIME_ID)"' \
 		-DINPUT_LANGUAGES_PROTOCOL_ID='"$(PROTOCOL_ID)"' \
 		-DINPUT_LANGUAGES_CONTROLLER_ID='"$(CONTROLLER_ID)"' \
 		-DINPUT_LANGUAGES_HEALTH_ID='"$(HEALTH_ID)"' \
 		-DINPUT_LANGUAGES_UNIT_ID='"$(UNIT_ID)"' \
+		-DINPUT_LANGUAGES_PACKAGE_ID='"$(PACKAGE_ID)"' \
+		-DINPUT_LANGUAGES_LIBRARY_ID='"$(LIBRARY_ID)"' \
+		-DINPUT_LANGUAGES_GENERATED_FILES_ID='"$(GENERATED_FILES_ID)"' \
+		-DINPUT_LANGUAGES_INVENTORY_ID='"$(INVENTORY_ID)"' \
 		-DINPUT_LANGUAGES_ARTIFACT_ROLE='"helper"' \
 		src/fcitx-helper-main.cpp src/fcitx-helper.cpp src/fcitx-protocol.cpp src/fcitx-controller.cpp src/fcitx-controller-cli.cpp src/fcitx-sd-bus-transport.cpp \
 		src/integration-artifact-identity.cpp -o "$(OUTPUT_DIR)/input-languages-fcitx-helper" $(HELPER_FLAGS) \

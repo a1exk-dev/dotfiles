@@ -857,10 +857,6 @@ apply_packages() {
 	fi
 	resolve_dependency_order "$@" || return 1
 	local -a selected=("$@") packages=("${DEPENDENCY_ORDER[@]}")
-	if ((${#packages[@]} == 1)) && [[ ${packages[0]} == hyprland ]]; then
-		apply_input_languages
-		return
-	fi
 	local package prerequisite missing=false selected_label input_languages_planned_result=''
 	for package in "${packages[@]}"; do
 		[[ $package != hyprland ]] || continue
@@ -881,7 +877,6 @@ apply_packages() {
 		phase_error plan "${selected[0]}" 'install each declared validator executable, then choose Apply Stow packages in the Dotfiles wizard'
 		return 1
 	fi
-	plan_arch_packages "${packages[@]}"
 	local includes_screensaver_effects=false includes_hyprland=false
 	for package in "${packages[@]}"; do
 		[[ $package != screensaver-effects ]] || includes_screensaver_effects=true
@@ -897,6 +892,10 @@ apply_packages() {
 			pending) input_languages_reconcile_pending; return ;;
 			cleanup) input_languages_reconcile_cleanup; return ;;
 		esac
+		if [[ $INPUT_LANGUAGES_PREPARED_RESULT == noop && ${#packages[@]} -eq 1 ]]; then
+			apply_input_languages
+			return
+		fi
 	fi
 	for package in "${packages[@]}"; do
 		if [[ $package == screensaver-effects ]]; then
@@ -906,6 +905,11 @@ apply_packages() {
 			}
 		fi
 	done
+	local -a package_plan_packages=()
+	for package in "${packages[@]}"; do
+		[[ $package == hyprland && $input_languages_planned_result == noop ]] || package_plan_packages+=("$package")
+	done
+	plan_arch_packages "${package_plan_packages[@]}"
 	for package in "${packages[@]}"; do [[ $package == hyprland ]] || simulate_apply_package "$package" || return 1; done
 	printf 'Plan: apply packages in dependency order:\n'
 	local position=1 candidate package_json
