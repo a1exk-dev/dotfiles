@@ -205,6 +205,7 @@ test_remove_changes_one_assignment_and_strongly_confirms_final_identity_deletion
 	two=$(assign_wallpaper_fixture "$image" two gif) || return 1
 	run_wallpaper_operation "$FIXTURE_ROOT" remove_wallpaper_assignment "$digest" one --yes
 	assert_eq 0 "$COMMAND_STATUS" 'Remove should delete one assignment' || return 1
+	[[ $COMMAND_OUTPUT != *'jq: error'* ]] || { printf '  Remove leaked a jq transaction diagnostic: %s\n' "$COMMAND_OUTPUT" >&2; return 1; }
 	assert_path_absent "$one" 'selected assignment should be removed' || return 1
 	[[ -f $two ]] || return 1
 	DOTFILES_TEST_INPUT='n\n' run_wallpaper_operation "$FIXTURE_ROOT" remove_wallpaper_assignment "$digest" two

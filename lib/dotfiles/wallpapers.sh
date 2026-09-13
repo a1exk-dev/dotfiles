@@ -1723,7 +1723,7 @@ wallpaper_begin_curation_transaction() {
 	parents=$(wallpaper_parent_intent_evidence "${parent_paths[@]}") || return 1
 	wallpaper_path_is_absent "$backup_root" || return 1
 	while IFS= read -r path; do wallpaper_path_is_absent "$path" || return 1; done \
-		< <(jq -r '(.changes[].prior.backup_path,.changes[].desired.stage_path,.changes[].quarantine_path) | select(. != null)' <<<"$changes")
+		< <(jq -r '(.[] | .prior.backup_path,.desired.stage_path,.quarantine_path) | select(. != null)' <<<"$changes")
 	created_at=$(wallpaper_now) || return 1
 	pending=$(jq -cn --argjson schema "$WALLPAPER_SCHEMA_VERSION" --arg operation "$operation" --arg transaction "$transaction" \
 		--arg created_at "$created_at" --arg repository "$REPOSITORY_ROOT" --argjson changes "$changes" --argjson directories "$created" --argjson parents "$parents" \
