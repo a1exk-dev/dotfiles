@@ -964,7 +964,7 @@ direct_v2_expands_to_v3() (
 		return 0
 	fi
 
-	if [[ $lifecycle_mode == remove || $lifecycle_mode == remove-rollback || $lifecycle_mode == remove-unsupported || $lifecycle_mode == remove-unrelated-edit || $lifecycle_mode == remove-defaultim-drift || $lifecycle_mode == remove-environment-changed ]]; then
+	if [[ $lifecycle_mode == remove || $lifecycle_mode == remove-cleanup-recovery || $lifecycle_mode == remove-rollback || $lifecycle_mode == remove-unsupported || $lifecycle_mode == remove-unrelated-edit || $lifecycle_mode == remove-defaultim-drift || $lifecycle_mode == remove-environment-changed ]]; then
 		local installed_active=$root/installed-v3.json remove_archive
 		cp "$INPUT_LANGUAGES_ACTIVE" "$installed_active"
 		if [[ $lifecycle_mode == remove-environment-changed ]]; then
@@ -992,6 +992,29 @@ direct_v2_expands_to_v3() (
 			[[ -L $XDG_CONFIG_HOME/systemd/user/dotfiles-input-languages-fcitx.socket && -L $XDG_CONFIG_HOME/systemd/user/dotfiles-input-languages-fcitx.service ]] || return 1
 			[[ -L $XDG_CONFIG_HOME/omarchy/plugins/dotfiles.keyboard-layout && -f $XDG_DATA_HOME/dotfiles/input-languages/active-artifact.lua ]] || return 1
 			[[ $(<"$root/plugin-state") == active && $(<"$root/group") == 0 && $(<"$root/autoreload") == false ]] || return 1
+			return 0
+		fi
+		if [[ $lifecycle_mode == remove-cleanup-recovery ]]; then
+			local remove_file_definition cleanup_mutations_before
+			remove_file_definition=$(declare -f input_languages_remove_file_verified)
+			remove_file_definition=${remove_file_definition/input_languages_remove_file_verified /input_languages_remove_file_verified_real }
+			eval "$remove_file_definition"
+			input_languages_remove_file_verified() {
+				if [[ $1 == "$INPUT_LANGUAGES_CLEANUP" && ! -e $root/cleanup-retirement-failed ]]; then
+					: >"$root/cleanup-retirement-failed"
+					return 1
+				fi
+				input_languages_remove_file_verified_real "$@"
+			}
+			if remove_input_languages --yes >"$root/remove-cleanup-failed.out" 2>&1; then return 1; fi
+			grep -Fq 'Remove committed but cleanup evidence could not be retired; rerun Remove to reconcile it.' "$root/remove-cleanup-failed.out" || return 1
+			[[ ! -e $INPUT_LANGUAGES_ACTIVE && ! -e $INPUT_LANGUAGES_PENDING && -f $INPUT_LANGUAGES_CLEANUP ]] || return 1
+			input_languages_validate_cleanup_file_v3 "$INPUT_LANGUAGES_CLEANUP" || return 1
+			[[ $(input_languages_tree_digest "$(dirname -- "$(jq -r .integration_cleanup.artifact "$INPUT_LANGUAGES_CLEANUP")")") == "$artifact_before" ]] || return 1
+			[[ $(sha256sum "$XDG_CONFIG_HOME/fcitx5/profile" | cut -d' ' -f1) == "$profile_before" && -d $backup ]] || return 1
+			cleanup_mutations_before=$(grep -Ec '^(systemctl (start|stop|daemon-reload)|controller execute|hyprctl (-j inputlanguagesreset|reload|keyword)|omarchy (restart|shell shell rescanPlugins))' "$root/calls" || true)
+			remove_input_languages --yes >/dev/null || return 1
+			[[ ! -e $INPUT_LANGUAGES_CLEANUP && $(grep -Ec '^(systemctl (start|stop|daemon-reload)|controller execute|hyprctl (-j inputlanguagesreset|reload|keyword)|omarchy (restart|shell shell rescanPlugins))' "$root/calls" || true) == "$cleanup_mutations_before" ]] || return 1
 			return 0
 		fi
 		remove_input_languages --yes >/dev/null || return 1
@@ -1026,6 +1049,7 @@ direct_v2_partial_helper_publication_rolls_back() { direct_v2_expands_to_v3 part
 direct_v3_active_publication_recovers_archive() { direct_v2_expands_to_v3 archive-recovery; }
 fresh_v3_active_publication_recovers_existing_archive() { direct_v2_expands_to_v3 fresh-archive-recovery; }
 direct_v3_removes_transactionally() { direct_v2_expands_to_v3 remove; }
+direct_v3_remove_cleanup_recovers() { direct_v2_expands_to_v3 remove-cleanup-recovery; }
 direct_v3_failed_remove_reconstructs() { direct_v2_expands_to_v3 remove-rollback; }
 direct_v3_remove_uses_restoration_gate() { direct_v2_expands_to_v3 remove-unsupported; }
 direct_v2_invalid_evidence_blocks() { direct_v2_expands_to_v3 invalid-evidence; }
@@ -1076,6 +1100,7 @@ run_test direct_v2_partial_helper_publication_rolls_back 'partial helper publica
 run_test direct_v3_active_publication_recovers_archive 'interrupted active publication archives retained Apply evidence during recovery'
 run_test fresh_v3_active_publication_recovers_existing_archive 'fresh active publication finalizes from its existing ancestry-free archive'
 run_test direct_v3_removes_transactionally 'version-3 Remove restores direct and Fcitx ancestry and archives the receipt last'
+run_test direct_v3_remove_cleanup_recovers 'version-3 Remove cleanup evidence resumes after interrupted retirement'
 run_test direct_v3_failed_remove_reconstructs 'failed version-3 Remove reconstructs the installed integration and Remove-start language'
 run_test direct_v3_remove_uses_restoration_gate 'receipt-backed Remove uses the narrow Controller restoration gate'
 run_test direct_v2_invalid_evidence_blocks 'invalid version-3 lifecycle evidence blocks Apply without mutation'

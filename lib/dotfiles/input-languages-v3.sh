@@ -516,14 +516,57 @@ input_languages_validate_recovery_file_v3() {
 }
 
 input_languages_validate_cleanup_file_v3() {
-	local file=$1
+	local file=$1 transaction archive active_digest pending_digest actual integration
 	input_languages_file_metadata_safe "$file" 600 || return 1
 	input_languages_v3_exact_keys "$file" '
 		(keys | sort) == (["version","state","transaction_id","archive","archive_active_digest","archive_pending_digest","integration_cleanup"] | sort) and
 		.version == 3 and .state == "remove-cleanup" and (.transaction_id | type == "string" and length > 0) and
 		(.archive | type == "string" and startswith("/")) and ([.archive_active_digest,.archive_pending_digest] | all(test("^[0-9a-f]{64}$"))) and
-		(.integration_cleanup | (keys | sort) == (["artifact","build_id","artifact_sha256","helper_edges","runtime_edges"] | sort))
-	'
+		(.integration_cleanup | (keys | sort) == (["artifact","build_id","artifact_sha256","helper_edges","runtime_edges"] | sort)) and
+		(.integration_cleanup.artifact | type == "string" and startswith("/")) and
+		([.integration_cleanup.build_id,.integration_cleanup.artifact_sha256] | all(test("^[0-9a-f]{64}$")))
+	' || return 1
+	transaction=$(jq -r .transaction_id "$file")
+	archive=$(jq -r .archive "$file")
+	active_digest=$(jq -r .archive_active_digest "$file")
+	pending_digest=$(jq -r .archive_pending_digest "$file")
+	input_languages_transaction_valid "$transaction" || return 1
+	[[ $archive == "$INPUT_LANGUAGES_STATE/archive/$transaction-remove" ]] || return 1
+	input_languages_owned_directory_safe "$archive" || return 1
+	[[ $(find "$archive" -mindepth 1 -maxdepth 1 -printf '%f\n' | LC_ALL=C sort) == $'active.json\npending.json' ]] || return 1
+	input_languages_file_metadata_safe "$archive/active.json" 600 || return 1
+	input_languages_file_metadata_safe "$archive/pending.json" 600 || return 1
+	actual=$(sha256sum "$archive/active.json"); [[ ${actual%% *} == "$active_digest" ]] || return 1
+	actual=$(sha256sum "$archive/pending.json"); [[ ${actual%% *} == "$pending_digest" ]] || return 1
+	input_languages_validate_active_file_v3 "$archive/active.json" evidence || return 1
+	input_languages_validate_pending_file_v3 "$archive/pending.json" || return 1
+	[[ $(jq -r .operation "$archive/pending.json") == remove && $(jq -r .transaction_id "$archive/pending.json") == "$transaction" ]] || return 1
+	cmp -s "$archive/active.json" "$(jq -r .prior_active "$archive/pending.json")" || return 1
+	[[ $active_digest == "$(jq -r .prior_active_digest "$archive/pending.json")" ]] || return 1
+	integration=$(jq -c .integration_cleanup "$file") || return 1
+	jq -e --argjson integration "$integration" '
+		.integration_artifact.artifact == $integration.artifact and
+		.integration_artifact.build_id == $integration.build_id and
+		.integration_artifact.artifact_sha256 == $integration.artifact_sha256 and
+		.helper_ownership == $integration.helper_edges
+	' "$archive/active.json" >/dev/null 2>&1 || return 1
+	jq -e --argjson integration "$integration" '.helper_target == $integration.runtime_edges' "$archive/pending.json" >/dev/null 2>&1 || return 1
+	input_languages_v3_helper_ownership_valid "$(jq -c .runtime_edges <<<"$integration")"
+}
+
+input_languages_v3_publish_cleanup() {
+	local transaction=$1 archive active_digest pending_digest content
+	archive=$INPUT_LANGUAGES_STATE/archive/$transaction-remove
+	[[ -d $archive && ! -L $archive ]] || return 1
+	active_digest=$(sha256sum "$archive/active.json" | cut -d' ' -f1) || return 1
+	pending_digest=$(sha256sum "$archive/pending.json" | cut -d' ' -f1) || return 1
+	content=$(jq -cn --arg transaction "$transaction" --arg archive "$archive" --arg active_digest "$active_digest" --arg pending_digest "$pending_digest" \
+		--argjson active "$(jq -c . "$archive/active.json")" --argjson pending "$(jq -c . "$archive/pending.json")" '
+		{version:3,state:"remove-cleanup",transaction_id:$transaction,archive:$archive,archive_active_digest:$active_digest,
+		archive_pending_digest:$pending_digest,integration_cleanup:{artifact:$active.integration_artifact.artifact,
+		build_id:$active.integration_artifact.build_id,artifact_sha256:$active.integration_artifact.artifact_sha256,
+		helper_edges:$active.helper_ownership,runtime_edges:$pending.helper_target}}') || return 1
+	input_languages_write_json_atomic "$INPUT_LANGUAGES_CLEANUP" "$content" cleanup
 }
 
 input_languages_validate_active_evidence_file() {
@@ -1539,10 +1582,10 @@ input_languages_v3_restore_helper_ownership() {
 }
 
 input_languages_v3_verify_removed() {
-	local active=$1 helper=$2 controller expected_helper backup transaction existed digest prior_present prior_section prior_index prior_entry runtime_root
+	local active=$1 helper=$2 pending=${3-$INPUT_LANGUAGES_PENDING} controller expected_helper backup transaction existed digest prior_present prior_section prior_index prior_entry runtime_root
 	input_languages_v3_controller_inspect "$helper" || return 1
 	controller=$INPUT_LANGUAGES_V3_CONTROLLER_RESPONSE
-	input_languages_v3_remove_fcitx_restored "$controller" "$(jq -c .fcitx_before "$INPUT_LANGUAGES_PENDING")" "$(jq -c .fcitx_before "$active")" || return 1
+	input_languages_v3_remove_fcitx_restored "$controller" "$(jq -c .fcitx_before "$pending")" "$(jq -c .fcitx_before "$active")" || return 1
 	runtime_root=$(input_languages_v3_runtime_root_from_ownership "$(jq -c .helper_ownership "$active")") || return 1
 	expected_helper=$(input_languages_v3_absent_helper_ownership "$runtime_root") || return 1
 	[[ $(jq -cS . <<<"$(input_languages_v3_helper_ownership "$runtime_root")") == "$(jq -cS . <<<"$expected_helper")" ]] || return 1
@@ -1564,11 +1607,24 @@ input_languages_v3_verify_removed() {
 	input_languages_custom_plugin_absent && input_languages_plugin_unloaded
 }
 
+input_languages_v3_cleanup_state_exact() {
+	local cleanup=$1 archive active pending helper artifact
+	input_languages_validate_cleanup_file_v3 "$cleanup" || return 1
+	archive=$(jq -r .archive "$cleanup")
+	active=$archive/active.json
+	pending=$archive/pending.json
+	if [[ -e $INPUT_LANGUAGES_ACTIVE || -L $INPUT_LANGUAGES_ACTIVE ]]; then cmp -s "$INPUT_LANGUAGES_ACTIVE" "$active" || return 1; fi
+	if [[ -e $INPUT_LANGUAGES_PENDING || -L $INPUT_LANGUAGES_PENDING ]]; then cmp -s "$INPUT_LANGUAGES_PENDING" "$pending" || return 1; fi
+	artifact=$(jq -r .integration_artifact.artifact "$active")
+	helper=${artifact%/*}/input-languages-fcitx-helper
+	input_languages_v3_verify_removed "$active" "$helper" "$pending"
+}
+
 input_languages_remove_v3() {
 	local INPUT_LANGUAGES_V3_RESTORATION_MODE=true
 	local INPUT_LANGUAGES_V3_WRITE_INDETERMINATE=false
 	local approved=false recovery_approved=false option active_digest artifact_root helper controller fcitx_start helper_before helper_target health
-	local operation_start transaction transaction_root prior_active prior_digest pending_content managed failed='' committed=false runtime_root active_helper
+	local operation_start transaction transaction_root prior_active prior_digest pending_content managed failed='' runtime_root active_helper
 	for option in "$@"; do case $option in --yes) approved=true ;; --recovery-approved) recovery_approved=true ;; *) printf 'Error: unknown Input Languages Remove option: %s\n' "$option" >&2; return 2 ;; esac; done
 	input_languages_inspect
 	input_languages_paths_are_safe || return 1
@@ -1653,8 +1709,10 @@ input_languages_remove_v3() {
 	if [[ -z $failed ]]; then input_languages_v3_update_pending verified "$(jq -c .snapshot <<<"$INPUT_LANGUAGES_V3_CONTROLLER_RESPONSE")" || failed=record-verified; fi
 	if [[ -z $failed ]]; then input_languages_v3_update_pending active-archived "$(jq -c .snapshot <<<"$INPUT_LANGUAGES_V3_CONTROLLER_RESPONSE")" || failed=record-archive; fi
 	if [[ -z $failed ]]; then input_languages_archive_remove_evidence "$transaction" || failed=archive-evidence; fi
+	if [[ -z $failed ]]; then input_languages_v3_publish_cleanup "$transaction" || failed=publish-cleanup; fi
 	if [[ -z $failed ]]; then input_languages_remove_file_verified "$INPUT_LANGUAGES_ACTIVE" || failed=remove-active; fi
-	if [[ -z $failed ]]; then committed=true; input_languages_remove_file_verified "$INPUT_LANGUAGES_PENDING" || failed=remove-pending; fi
+	if [[ -z $failed ]]; then input_languages_remove_file_verified "$INPUT_LANGUAGES_PENDING" || failed=remove-pending; fi
+	if [[ -z $failed ]]; then input_languages_remove_file_verified "$INPUT_LANGUAGES_CLEANUP" || failed=remove-cleanup; fi
 	if [[ -n $failed ]]; then
 		if [[ $INPUT_LANGUAGES_V3_WRITE_INDETERMINATE == true ]]; then
 			input_languages_record_recovery_v3 "$transaction" verified || true
@@ -1662,8 +1720,8 @@ input_languages_remove_v3() {
 			input_languages_unlock || true
 			return 1
 		fi
-		if [[ $committed == true ]]; then
-			printf 'Remove committed but final evidence cleanup failed at %s; rerun Remove to reconcile it.\n' "$failed" >&2
+		if [[ -e $INPUT_LANGUAGES_CLEANUP || -L $INPUT_LANGUAGES_CLEANUP ]]; then
+			printf 'Remove committed but cleanup evidence could not be retired; rerun Remove to reconcile it.\n' >&2
 		else
 			printf 'Remove failed at %s; reconstructing the verified version-3 installation.\n' "$failed" >&2
 			input_languages_rollback_pending_v3 || true
@@ -2056,7 +2114,29 @@ input_languages_reconcile_pending() {
 }
 
 input_languages_reconcile_cleanup() {
-	if [[ $(jq -r '.version // empty' "$INPUT_LANGUAGES_CLEANUP" 2>/dev/null) == 3 ]]; then return 1; else input_languages_reconcile_cleanup_v2 "$@"; fi
+	if [[ $(jq -r '.version // empty' "$INPUT_LANGUAGES_CLEANUP" 2>/dev/null) != 3 ]]; then input_languages_reconcile_cleanup_v2 "$@"; return; fi
+	local approved=${1-false} snapshot
+	input_languages_validate_cleanup_file_v3 "$INPUT_LANGUAGES_CLEANUP" || { printf 'Cleanup blocked: version-3 Remove cleanup evidence is invalid.\n' >&2; return 1; }
+	snapshot=$(sha256sum "$INPUT_LANGUAGES_CLEANUP" | cut -d' ' -f1) || return 1
+	printf 'Plan: verify archived version-3 Remove evidence and retire completed cleanup evidence; retain immutable artifacts and all preserved state.\n'
+	if [[ $approved != true ]] && ! wizard_confirm 'Resume this receipt-backed Input Languages version-3 Remove cleanup?'; then return 0; fi
+	input_languages_acquire_lock Cleanup || return 1
+	input_languages_inspect
+	if [[ $INPUT_LANGUAGES_CLEANUP_STATE != valid || $(sha256sum "$INPUT_LANGUAGES_CLEANUP" | cut -d' ' -f1) != "$snapshot" ||
+		$INPUT_LANGUAGES_RECOVERY_STATE != absent ]]; then input_languages_unlock || true; return 1; fi
+	input_languages_v3_cleanup_state_exact "$INPUT_LANGUAGES_CLEANUP" || { input_languages_unlock || true; return 1; }
+	if [[ -e $INPUT_LANGUAGES_ACTIVE || -L $INPUT_LANGUAGES_ACTIVE ]]; then
+		input_languages_remove_file_verified "$INPUT_LANGUAGES_ACTIVE" || { input_languages_unlock || true; return 1; }
+	fi
+	input_languages_v3_cleanup_state_exact "$INPUT_LANGUAGES_CLEANUP" || { input_languages_unlock || true; return 1; }
+	if [[ -e $INPUT_LANGUAGES_PENDING || -L $INPUT_LANGUAGES_PENDING ]]; then
+		input_languages_remove_file_verified "$INPUT_LANGUAGES_PENDING" || { input_languages_unlock || true; return 1; }
+	fi
+	input_languages_v3_cleanup_state_exact "$INPUT_LANGUAGES_CLEANUP" || { input_languages_unlock || true; return 1; }
+	input_languages_remove_file_verified "$INPUT_LANGUAGES_CLEANUP"
+	local result=$?
+	input_languages_unlock || true
+	return "$result"
 }
 
 input_languages_prepare_apply() {
@@ -2107,7 +2187,14 @@ remove_input_languages() {
 	input_languages_inspect
 	if [[ ( $INPUT_LANGUAGES_ACTIVE_STATE == valid && $(jq -r .version "$INPUT_LANGUAGES_ACTIVE") == 3 ) ||
 		( $INPUT_LANGUAGES_PENDING_STATE == valid && $(jq -r .version "$INPUT_LANGUAGES_PENDING") == 3 ) ||
-		( $INPUT_LANGUAGES_RECOVERY_STATE == valid && $(jq -r .version "$INPUT_LANGUAGES_RECOVERY") == 3 ) ]]; then
+		( $INPUT_LANGUAGES_RECOVERY_STATE == valid && $(jq -r .version "$INPUT_LANGUAGES_RECOVERY") == 3 ) ||
+		( $INPUT_LANGUAGES_CLEANUP_STATE == valid && $(jq -r .version "$INPUT_LANGUAGES_CLEANUP") == 3 ) ]]; then
+		if [[ $INPUT_LANGUAGES_CLEANUP_STATE == valid ]]; then
+			local cleanup=false option
+			for option in "$@"; do [[ $option != --yes && $option != --recovery-approved ]] || cleanup=true; done
+			input_languages_reconcile_cleanup "$cleanup"
+			return
+		fi
 		input_languages_remove_v3 "$@"
 		return
 	fi
