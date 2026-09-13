@@ -13,6 +13,10 @@ INPUT_LANGUAGES_V3_RUNTIME_REASON=missing-environment
 INPUT_LANGUAGES_V3_RUNTIME_ROOT=''
 INPUT_LANGUAGES_V3_DELIVERY_STATE=unavailable
 
+input_languages_v3_supported_fcitx_version() {
+	jq -r .compatibility.upstream_version "$REPOSITORY_ROOT/plugins/input-languages/contracts/fcitx.json"
+}
+
 input_languages_v3_set_paths() {
 	local runtime_root=${1-${XDG_RUNTIME_DIR-}}
 	INPUT_LANGUAGES_V3_SYSTEMD_USER=$INPUT_LANGUAGES_CONFIG_HOME/systemd/user
@@ -259,6 +263,116 @@ input_languages_v3_delivery_state() {
 	else
 		printf 'pending\n'
 	fi
+}
+
+input_languages_status_v3() {
+	local overall=conflict action='Preserve lifecycle evidence and resolve the conflict before mutation.' delivery=conflicting health=${INPUT_LANGUAGES_PLUGIN_HEALTH-}
+	local language=unknown generation=unknown physical=unknown synchronized=unknown indicator=unhealthy outcome=unknown observed=unknown
+	local fcitx_version=unavailable controller_state=unavailable helper_state=unverified socket_state=$INPUT_LANGUAGES_V3_RUNTIME_STATE artifact_root helper current_helper
+	if [[ $INPUT_LANGUAGES_PLUGIN_HEALTH_VALID == true ]] && input_languages_v3_health_valid "$health"; then
+		delivery=$(input_languages_v3_delivery_state "$health")
+		language=$(jq -r .canonical_language <<<"$health")
+		generation=$(jq -r .canonical_generation <<<"$health")
+		physical=$(jq -r '.physical_keyboards | length' <<<"$health")
+		synchronized=$(jq -r .physical_synchronized <<<"$health")
+		outcome=$(jq -r .outcome <<<"$health")
+		observed=$(jq -r 'if .observed_method == "" then "empty" else .observed_method end' <<<"$health")
+	fi
+	if [[ $INPUT_LANGUAGES_V3_RUNTIME_STATE == conflicting ]]; then delivery=conflicting
+	elif [[ $INPUT_LANGUAGES_V3_RUNTIME_STATE == unavailable ]]; then delivery=unavailable; fi
+	[[ $INPUT_LANGUAGES_INDICATOR_HEALTHY != true ]] || indicator=healthy
+	if [[ $INPUT_LANGUAGES_ACTIVE_STATE == valid ]]; then
+		artifact_root=$(jq -r .integration_artifact.artifact "$INPUT_LANGUAGES_ACTIVE"); artifact_root=${artifact_root%/*}
+		helper=$artifact_root/input-languages-fcitx-helper
+		if input_languages_v3_controller_inspect "$helper"; then
+			fcitx_version=$(jq -r .snapshot.identity.upstream_version <<<"$INPUT_LANGUAGES_V3_CONTROLLER_RESPONSE")
+			if input_languages_v3_controller_supported "$INPUT_LANGUAGES_V3_CONTROLLER_RESPONSE"; then controller_state=supported; else controller_state=unsupported; fi
+		fi
+		if current_helper=$(input_languages_v3_helper_ownership 2>/dev/null) &&
+			input_languages_v3_helper_ownership_matches "$current_helper" "$(jq -c .helper_ownership "$INPUT_LANGUAGES_ACTIVE")"; then helper_state=exact; fi
+		if [[ $helper_state != exact && $INPUT_LANGUAGES_V3_RUNTIME_STATE == available ]]; then socket_state=conflicting; fi
+	fi
+	if [[ $INPUT_LANGUAGES_RECOVERY_STATE == valid || $INPUT_LANGUAGES_PENDING_STATE == valid || $INPUT_LANGUAGES_CLEANUP_STATE == valid ]]; then
+		overall=recovery-required
+		action='Choose Apply or Remove to review the receipt-backed recovery plan; ordinary mutation remains blocked.'
+	elif [[ $INPUT_LANGUAGES_SUPPORTED != true ]]; then
+		overall=unsupported
+		action='Restore the supported stack before Apply; choose Remove only when receipt-backed restoration is proven safe.'
+	elif [[ $controller_state == unsupported ]]; then
+		overall=unsupported
+		action='Restore the supported Fcitx Controller interface before Apply; receipt-backed Remove remains conditional on safe restoration.'
+	elif [[ $INPUT_LANGUAGES_V3_RUNTIME_STATE == conflicting || $delivery == conflicting || $INPUT_LANGUAGES_ACTIVE_STATE != valid ]]; then
+		overall=conflict
+	elif [[ $INPUT_LANGUAGES_TREE_STATE == linked && $indicator == healthy && $INPUT_LANGUAGES_PLUGIN_HEALTH_VALID == true &&
+		$(jq -r .direct_xkb_health <<<"$health") == healthy && $(jq -r .physical_synchronized <<<"$health") == true &&
+		$controller_state == supported && $helper_state == exact && $socket_state != conflicting ]]; then
+		case $delivery in
+			converged) overall=healthy; action='No action required.' ;;
+			pending) overall=degraded; action='Focus a covered Fcitx surface, then choose Status to prove nonempty matching readback.' ;;
+			unavailable) overall=degraded; action='Restore the user-session Fcitx/helper route, then choose Status; direct XKB remains usable.' ;;
+			stale) overall=degraded; action='Restore fresh helper reports, then choose Status; the old acknowledgement is not current proof.' ;;
+		esac
+	fi
+	printf 'Overall: %s\n' "$overall"
+	printf 'Direct XKB: health=%s; language=%s; generation=%s; physical-keyboards=%s; synchronized=%s\n' \
+		"$([[ $INPUT_LANGUAGES_PLUGIN_HEALTH_VALID == true ]] && jq -r .direct_xkb_health <<<"$health" || printf unavailable)" "$language" "$generation" "$physical" "$synchronized"
+	printf 'Indicator: health=%s; language=%s; placement=right[0]; ownership=%s; link=%s\n' "$indicator" "$language" \
+		"$([[ $INPUT_LANGUAGES_ACTIVE_STATE == valid ]] && printf exact || printf unrecorded)" "$INPUT_LANGUAGES_WIDGET_LINK_STATE"
+	printf 'Fcitx delivery: runtime=%s; outcome=%s; observed-method=%s\n' "$delivery" "$outcome" "$observed"
+	if [[ $INPUT_LANGUAGES_PLUGIN_HEALTH_VALID == true ]]; then
+		printf 'Generation progress: authority=%s; offered=%s; accepted=%s; acknowledged=%s\n' \
+			"$(jq -r .authority_session <<<"$health")" "$(jq -r .offered_generation <<<"$health")" "$(jq -r '.accepted_generation // "none"' <<<"$health")" "$(jq -r '.acknowledged_generation // "none"' <<<"$health")"
+		printf 'Fcitx ownership: owner=%s; epoch=%s; managed-group=%s; current-group=%s\n' \
+			"$(jq -r .fcitx_owner_state <<<"$health")" "$(jq -r .fcitx_owner_epoch <<<"$health")" "$(jq -r .managed_group_state <<<"$health")" "$(jq -r '.current_group // "unknown"' <<<"$health")"
+		printf 'Compatibility: Fcitx=%s; supported=%s; Controller=%s\n' "$fcitx_version" "$(input_languages_v3_supported_fcitx_version)" "$controller_state"
+		printf 'Helper: connection=%s; units=%s; socket=%s; runtime=%s; protocol=%s; artifact=%s\n' "$(jq -r .helper_connection <<<"$health")" \
+			"$helper_state" "$socket_state" "$INPUT_LANGUAGES_V3_RUNTIME_STATE" \
+			"$(jq -r .protocol_identity <<<"$health")" "$(jq -r .build_id <<<"$health")"
+		printf 'Report: sequence=%s; age=%sms; stale=%s; retry=%s; diagnostic=%s\n' "$(jq -r '.report_sequence // "none"' <<<"$health")" \
+			"$(jq -r '.report_age_milliseconds // "unknown"' <<<"$health")" "$(jq -r .report_stale <<<"$health")" "$(jq -r .retry_phase <<<"$health")" "$(jq -r 'if .diagnostic == "" then "none" else .diagnostic end' <<<"$health")"
+	fi
+	printf 'Persistent ownership: version=3; active=%s; pending=%s; recovery-required=%s; remove-cleanup=%s\n' \
+		"$INPUT_LANGUAGES_ACTIVE_STATE" "$INPUT_LANGUAGES_PENDING_STATE" "$INPUT_LANGUAGES_RECOVERY_STATE" "$INPUT_LANGUAGES_CLEANUP_STATE"
+	if [[ $INPUT_LANGUAGES_ACTIVE_STATE == valid ]]; then
+		printf 'Direct ancestry: entry=%s; original-backup=%s\n' "$(jq -r .direct_ancestry.entry "$INPUT_LANGUAGES_ACTIVE")" "$(jq -r .direct_ancestry.backup "$INPUT_LANGUAGES_ACTIVE")"
+	fi
+	if [[ $INPUT_LANGUAGES_PENDING_STATE == valid ]]; then
+		printf 'Interrupted operation: %s; transaction=%s; durable-phase=%s\n' "$(jq -r .operation "$INPUT_LANGUAGES_PENDING")" \
+			"$(jq -r .transaction_id "$INPUT_LANGUAGES_PENDING")" "$(jq -r .phase "$INPUT_LANGUAGES_PENDING")"
+		printf 'Retained evidence: pending, recovery-required, receipt, original backup, immutable artifacts, archive, and diagnostics.\n'
+	fi
+	printf 'Required next action: %s\n' "$action"
+	printf 'Warning: Omarchy Hyprland refresh commands can write through Stow links into repository sources; review resulting Git changes.\n'
+}
+
+input_languages_v3_print_phases() {
+	local operation=$1 phase
+	while IFS= read -r phase; do
+		case $phase in
+			prepared) printf 'Phase prepared: publish exact pending evidence and restoration instructions.\n' ;;
+			prior-helper-quiesced|authority-quiesced) printf 'Phase %s: stop the socket before the helper and prove authority absent.\n' "$phase" ;;
+			managed-group-created) printf 'Phase managed-group-created: create only the managed Fcitx group and verify the delta.\n' ;;
+			managed-group-populated) printf 'Phase managed-group-populated: add ordered US and Russian methods and verify the delta.\n' ;;
+			managed-group-selected) printf 'Phase managed-group-selected: select the managed group, restore a valid start method, and verify readback.\n' ;;
+			prior-group-selected) printf 'Phase prior-group-selected: restore the exact pre-expansion current group and verify readback.\n' ;;
+			prior-method-restored) printf 'Phase prior-method-restored: restore the still-valid prior nonempty method and verify readback.\n' ;;
+			managed-group-removed) printf 'Phase managed-group-removed: remove only the exact managed group and verify unrelated groups remain.\n' ;;
+			managed-group-saved) printf 'Phase managed-group-saved: call Controller Save once and verify the persisted semantic model.\n' ;;
+			units-published) printf 'Phase units-published: publish only receipt-owned helper unit and enablement links.\n' ;;
+			manager-reloaded) printf 'Phase manager-reloaded: daemon-reload once and verify helper ownership.\n' ;;
+			socket-started) printf 'Phase socket-started: start and verify the private socket endpoint.\n' ;;
+			pointer-published) printf 'Phase pointer-published: atomically publish the immutable version-3 artifact pointer.\n' ;;
+			hyprland-transitioned) printf 'Phase hyprland-transitioned: apply the Stow tree and indicator while preserving unrelated Shell state.\n' ;;
+			hyprland-reloaded) printf 'Phase hyprland-reloaded: reload Hyprland once and verify direct continuity.\n' ;;
+			helper-ready) printf 'Phase helper-ready: prove the authenticated same-artifact plugin/helper handshake.\n' ;;
+			reset-issued) printf 'Phase reset-issued: issue one deliberate US target and generation.\n' ;;
+			hyprland-restored) printf 'Phase hyprland-restored: restore original Hyprland and indicator ancestry.\n' ;;
+			helper-edges-removed) printf 'Phase helper-edges-removed: remove only receipt-owned helper and runtime edges.\n' ;;
+			verified) printf 'Phase verified: prove direct, indicator, Fcitx, helper, and lifecycle state.\n' ;;
+			active-published) printf 'Phase active-published: publish the active receipt last and archive pending evidence.\n' ;;
+			active-archived) printf 'Phase active-archived: archive active and pending evidence and retire live evidence last.\n' ;;
+		esac
+	done < <(jq -r --arg operation "$operation" '.phase_order[$operation][]' "$REPOSITORY_ROOT/plugins/input-languages/contracts/evidence-v3.json")
 }
 
 input_languages_v3_hyprland_ownership_valid() {
@@ -1304,6 +1418,7 @@ input_languages_apply_v3() {
 	[[ $INPUT_LANGUAGES_SUPPORTED == true ]] || return 1
 	input_languages_v3_require_runtime false || { printf 'Apply blocked: the Input Languages runtime contract is not satisfied.\n' >&2; return 1; }
 	planned_runtime=$INPUT_LANGUAGES_V3_RUNTIME_ROOT
+	input_languages_v3_set_paths "$planned_runtime"
 	input_languages_static_preflight || return 1
 	stow --no-folding --simulate --dir "$REPOSITORY_ROOT/config" --target "$HOME" hyprland >/dev/null || { printf 'Apply blocked: Input Languages Stow simulation failed.\n' >&2; return 1; }
 	if [[ $packages_prepared != true ]]; then
@@ -1315,7 +1430,32 @@ input_languages_apply_v3() {
 	else
 		printf 'Plan: install Input Languages version 3 directly with one Hyprland, indicator, Fcitx, and helper transaction.\n'
 	fi
-	if [[ $approved != true ]] && ! wizard_confirm 'Apply this complete Input Languages expansion plan?'; then printf 'Apply canceled; no changes made.\n'; return 0; fi
+	printf 'Inspected: direct=%s; tree=%s; indicator=%s; runtime=%s; lifecycle active=%s pending=%s recovery=%s.\n' \
+		"$entry" "$INPUT_LANGUAGES_TREE_STATE" "$INPUT_LANGUAGES_INDICATOR_HEALTHY" "$INPUT_LANGUAGES_V3_RUNTIME_STATE" \
+		"$INPUT_LANGUAGES_ACTIVE_STATE" "$INPUT_LANGUAGES_PENDING_STATE" "$INPUT_LANGUAGES_RECOVERY_STATE"
+	printf 'Inspected compatibility: Omarchy=%s; supported=%s; required Fcitx=%s; Controller=validated after required package preparation and before pending evidence.\n' \
+		"$INPUT_LANGUAGES_VERSION" "$INPUT_LANGUAGES_SUPPORTED" "$(input_languages_v3_supported_fcitx_version)"
+	printf 'Inspected helper: socket-unit=%s; service-unit=%s; enablement=%s; private-runtime=%s.\n' \
+		"$([[ -e $INPUT_LANGUAGES_V3_SOCKET_PATH || -L $INPUT_LANGUAGES_V3_SOCKET_PATH ]] && printf present || printf absent)" \
+		"$([[ -e $INPUT_LANGUAGES_V3_SERVICE_PATH || -L $INPUT_LANGUAGES_V3_SERVICE_PATH ]] && printf present || printf absent)" \
+		"$([[ -e $INPUT_LANGUAGES_V3_ENABLEMENT || -L $INPUT_LANGUAGES_V3_ENABLEMENT ]] && printf present || printf absent)" \
+		"$([[ -e $INPUT_LANGUAGES_V3_RUNTIME_DIR || -L $INPUT_LANGUAGES_V3_RUNTIME_DIR ]] && printf present || printf absent)"
+	if [[ $entry == version-2 ]]; then
+		printf 'Inspected ancestry: version-2 receipt=exact; original-backup=%s; operation-start language=%s.\n' \
+			"$(jq -r .backup "$INPUT_LANGUAGES_ACTIVE")" "$(jq -r 'if .canonical_group == 0 then "US" else "Russian" end' <<<"$INPUT_LANGUAGES_PLUGIN_HEALTH")"
+	else
+		printf 'Inspected ancestry: fresh installation; original tree=%s; operation-start language captured before pending evidence.\n' "$INPUT_LANGUAGES_TREE_STATE"
+	fi
+	input_languages_v3_print_phases apply
+	printf 'Preserve throughout: unrelated Fcitx groups, addons, profile bytes, Compose, environment, Shell state, and the Omarchy Fcitx service.\n'
+	printf 'Rollback: restore exact direct ancestry, reverse only the owned semantic delta, restore helper state and operation-start language, or retain recovery-required evidence.\n'
+	printf 'Retain: repository sources, Arch packages, original backup, immutable artifacts, archives, and diagnostics.\n'
+	printf 'Expected result: healthy direct XKB and indicator with converged delivery, or degraded idle-no-context.\n'
+	printf 'Required next action: Approve the complete plan to mutate, or decline to leave all state unchanged.\n'
+	if [[ $approved != true ]] && ! wizard_confirm 'Apply this complete Input Languages expansion plan?'; then
+		printf 'Apply canceled; no changes made.\nRequired next action: Choose Apply again when ready, or return to Input Languages.\n'
+		return 0
+	fi
 	if [[ $packages_prepared != true ]]; then
 		install_missing_arch_packages 'Settings -> Input Languages -> Apply' || return 1
 		verify_arch_packages 'Settings -> Input Languages -> Apply' || return 1
@@ -1469,7 +1609,17 @@ input_languages_apply_v3() {
 		return 1
 	fi
 	input_languages_unlock || return 1
-	printf 'Apply completed: Input Languages version 3 is installed with Fcitx delivery.\n'
+	local delivery
+	delivery=$(input_languages_v3_delivery_state "$INPUT_LANGUAGES_PLUGIN_HEALTH")
+	if [[ $delivery == converged ]]; then
+		printf 'Apply completed: Input Languages version 3 is installed; direct XKB and indicator are healthy and reset to US; Fcitx delivery is converged with generation %s acknowledged.\n' "$(jq -r .canonical_generation <<<"$INPUT_LANGUAGES_PLUGIN_HEALTH")"
+		printf 'Retained: original backup, direct ancestry, version-3 artifact, archive, and diagnostics.\n'
+		printf 'Required next action: No action required.\n'
+	else
+		printf 'Apply completed: Input Languages version 3 is installed; direct XKB and indicator are healthy and reset to US; Fcitx delivery is pending (idle-no-context), so convergence is not yet proved.\n'
+		printf 'Retained: original backup, direct ancestry, version-3 artifact, archive, and diagnostics.\n'
+		printf 'Required next action: Focus a covered Fcitx surface, then choose Status to prove nonempty matching readback.\n'
+	fi
 }
 
 input_languages_v3_remove_runtime_edges() {
@@ -1650,7 +1800,17 @@ input_languages_remove_v3() {
 		--arg method "$(jq -r .snapshot.observed_method <<<"$controller")" '{canonical_language:$language,physical_groups:$groups,fcitx_method:$method}')
 	active_digest=$(sha256sum "$INPUT_LANGUAGES_ACTIVE" | cut -d' ' -f1) || return 1
 	printf 'Plan: remove the exact version-3 Input Languages integration, restore its direct-XKB ancestry and prior Fcitx semantics, and retain immutable artifacts.\n'
-	if [[ $approved != true ]] && ! wizard_confirm 'Remove this complete Input Languages version-3 plan?'; then printf 'Remove canceled; no changes made.\n'; return 0; fi
+	printf 'Inspected: direct XKB=%s; indicator=%s; Fcitx delivery=%s; managed-group=exact; helper/runtime ownership=exact; ancestry=verified.\n' \
+		"$(jq -r .direct_xkb_health <<<"$health")" "$INPUT_LANGUAGES_INDICATOR_HEALTHY" "$(input_languages_v3_delivery_state "$health")"
+	input_languages_v3_print_phases remove
+	printf 'Rollback: reconstruct the exact version-3 installation and publish the Remove-start language; retain recovery-required evidence if reconstruction cannot be proved.\n'
+	printf 'Retain: repository sources, Arch packages, original backup, immutable artifacts, archives, and diagnostics.\n'
+	printf 'Expected result: original direct state and pre-expansion Fcitx semantics restored; version-3 helper ownership absent.\n'
+	printf 'Required next action: Approve the complete plan to mutate, or decline to leave all state unchanged.\n'
+	if [[ $approved != true ]] && ! wizard_confirm 'Remove this complete Input Languages version-3 plan?'; then
+		printf 'Remove canceled; no changes made.\nRequired next action: Choose Remove again when ready, or return to Input Languages.\n'
+		return 0
+	fi
 	input_languages_prepare_roots || return 1
 	input_languages_acquire_lock Remove || return 1
 	input_languages_inspect
@@ -1730,7 +1890,9 @@ input_languages_remove_v3() {
 		return 1
 	fi
 	input_languages_unlock || return 1
-	printf 'Remove completed: prior direct-XKB and Fcitx state restored; immutable artifacts, backups, archive, diagnostics, sources, and Arch packages retained.\n'
+	printf 'Remove completed: exact pre-first-Apply direct state and pre-expansion Fcitx semantics restored; version-3 helper and runtime ownership is absent.\n'
+	printf 'Retained: repository sources, Arch packages, original backup, immutable artifacts, archived lifecycle evidence, and diagnostics.\n'
+	printf 'Required next action: No action required.\n'
 }
 
 input_languages_record_recovery_v3() {
@@ -2090,9 +2252,16 @@ input_languages_reconcile_pending_v3() {
 		input_languages_remove_file_verified "$INPUT_LANGUAGES_PENDING"
 		return
 	fi
-	printf 'Plan: reconcile interrupted version-3 transaction %s by semantic rollback.\n' "$transaction"
+	printf 'Inspected recovery: operation=%s; transaction=%s; recorded phase=%s; retained evidence=valid.\n' "$operation" "$transaction" "$(jq -r .phase "$INPUT_LANGUAGES_PENDING")"
+	printf 'Plan: reconcile interrupted version-3 transaction %s by semantic rollback; do not continue it forward.\n' "$transaction"
 	input_languages_v3_recovery_plan
-	if [[ $approved != true ]] && ! wizard_confirm 'Recover this interrupted Input Languages transaction?'; then return 0; fi
+	printf 'Retain: original backup, receipts, immutable artifacts, archives, Arch packages, repository sources, and diagnostics.\n'
+	printf 'Required next action: Approve receipt-backed rollback, or decline to preserve current state and evidence.\n'
+	if [[ $approved != true ]] && ! wizard_confirm 'Recover this interrupted Input Languages transaction?'; then
+		printf 'Recovery canceled; live state and pending recovery evidence are unchanged.\n'
+		printf 'Required next action: Choose Apply or Remove when ready to review the same receipt-backed recovery plan.\n'
+		return 0
+	fi
 	input_languages_acquire_lock Recovery || return 1
 	input_languages_validate_pending_file_v3 "$INPUT_LANGUAGES_PENDING" || { input_languages_unlock || true; return 1; }
 	if [[ -e $INPUT_LANGUAGES_RECOVERY || -L $INPUT_LANGUAGES_RECOVERY ]]; then
@@ -2106,6 +2275,13 @@ input_languages_reconcile_pending_v3() {
 	input_languages_rollback_pending_v3
 	local result=$?
 	input_languages_unlock || true
+	if [[ $result == 0 ]]; then
+		printf 'Interrupted version-3 %s reconciled by verified semantic rollback.\n' "$operation"
+		printf 'Required next action: Choose Status, then run the requested operation again only if the restored state is expected.\n'
+	else
+		printf 'Recovery required: restoration cannot be proved; retained evidence remains authoritative.\n' >&2
+		printf 'Required next action: Choose Status, preserve all evidence, and do not attempt ordinary Apply or Remove.\n' >&2
+	fi
 	return "$result"
 }
 
@@ -2171,7 +2347,11 @@ apply_input_languages() {
 		local expect_noop=false option
 		for option in "$@"; do [[ $option != --expect-noop ]] || expect_noop=true; done
 		if input_languages_exact_noop_v3; then
-			printf 'Exact no-op: Fcitx delivery is %s; active language preserved; no confirmation or mutation required.\n' "$(input_languages_v3_delivery_state "$INPUT_LANGUAGES_PLUGIN_HEALTH")"
+			local delivery
+			delivery=$(input_languages_v3_delivery_state "$INPUT_LANGUAGES_PLUGIN_HEALTH")
+			printf 'Exact no-op: version-3 persistent ownership is exact; direct XKB is healthy; Fcitx delivery remains %s; active language preserved; no mutation or confirmation was required.\n' "$delivery"
+			if [[ $delivery == converged ]]; then printf 'Required next action: No action required.\n'
+			else printf 'Required next action: Focus a covered Fcitx surface, then choose Status to prove nonempty matching readback.\n'; fi
 			return 0
 		fi
 		if [[ $expect_noop == true ]]; then printf 'Apply blocked: Input Languages changed after its exact no-op was inspected; review a new complete plan.\n' >&2; return 1; fi

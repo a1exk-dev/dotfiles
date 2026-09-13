@@ -544,6 +544,10 @@ direct_v2_expands_to_v3() (
 		group_before=$(<"$root/group")
 		output=$(apply_input_languages --packages-prepared </dev/null) || return 1
 		grep -Fq 'Apply canceled; no changes made.' <<<"$output" || return 1
+		for phase in prepared prior-helper-quiesced managed-group-created managed-group-populated managed-group-selected managed-group-saved units-published manager-reloaded socket-started pointer-published hyprland-transitioned hyprland-reloaded helper-ready reset-issued verified active-published; do
+			grep -Fq "Phase $phase:" <<<"$output" || return 1
+		done
+		grep -Fq 'Required next action: Approve the complete plan to mutate' <<<"$output" || return 1
 		[[ ! -e $INPUT_LANGUAGES_ACTIVE && ! -e $INPUT_LANGUAGES_PENDING && ! -e $INPUT_LANGUAGES_RECOVERY ]] || return 1
 		[[ $(sha256sum "$root/controller.json" | cut -d' ' -f1) == "$controller_before" ]] || return 1
 		[[ $(sha256sum "$XDG_CONFIG_HOME/omarchy/shell.json" | cut -d' ' -f1) == "$shell_before" && $(<"$root/group") == "$group_before" ]] || return 1
@@ -809,7 +813,11 @@ direct_v2_expands_to_v3() (
 		grep -Fq 'fcitx5 (required by hyprland): will install' "$root/package-apply.out" || return 1
 		[[ $(grep -c '^omarchy pkg add fcitx5$' "$root/calls") == 1 ]] || return 1
 	else
-		apply_input_languages --yes --packages-prepared >/dev/null || return 1
+		local apply_output
+		apply_output=$(apply_input_languages --yes --packages-prepared) || return 1
+		grep -Fq 'direct XKB and indicator are healthy' <<<"$apply_output" || return 1
+		grep -Fq 'Retained:' <<<"$apply_output" || return 1
+		[[ $(grep -c '^Required next action:' <<<"$apply_output") -eq 2 ]] || return 1
 	fi
 	[[ $(grep -c '^verify package requirements$' "$root/calls") == 2 ]] || return 1
 	if [[ $fresh_entry == true ]]; then [[ $(grep -c '^stow --no-folding --simulate .* hyprland$' "$root/calls") -ge 2 ]] || return 1
@@ -914,7 +922,10 @@ direct_v2_expands_to_v3() (
 		else
 			input_languages_status >"$root/status.out"
 			grep -Fq 'Overall: conflict' "$root/status.out" || return 1
-			grep -Fq 'Fcitx runtime: state=conflicting; reason=systemd-runtime-mismatch;' "$root/status.out" || return 1
+			grep -Fq 'Direct XKB: health=' "$root/status.out" || return 1
+			grep -Fq 'Indicator: health=' "$root/status.out" || return 1
+			grep -Fq 'Fcitx delivery: runtime=conflicting;' "$root/status.out" || return 1
+			[[ $(grep -c '^Required next action:' "$root/status.out") -eq 1 ]] || return 1
 		fi
 		mutation_calls_after=$(grep -Ec '^(systemctl (start|stop|daemon-reload)|controller execute|hyprctl (-j inputlanguagesreset|reload|keyword)|omarchy (restart|shell shell rescanPlugins))' "$root/calls" || true)
 		[[ $(sha256sum "$INPUT_LANGUAGES_ACTIVE" | cut -d' ' -f1) == "$active_before" && $mutation_calls_after -eq $mutation_calls_before && ! -e $INPUT_LANGUAGES_PENDING ]] || return 1
@@ -931,7 +942,8 @@ direct_v2_expands_to_v3() (
 	else
 		noop_output=$(apply_input_languages --yes --packages-prepared)
 		delivery=$([[ $lifecycle_mode == idle ]] && printf pending || printf converged)
-		[[ $noop_output == "Exact no-op: Fcitx delivery is $delivery; active language preserved; no confirmation or mutation required." ]] || return 1
+		grep -Fq "Exact no-op: version-3 persistent ownership is exact; direct XKB is healthy; Fcitx delivery remains $delivery; active language preserved; no mutation or confirmation was required." <<<"$noop_output" || return 1
+		[[ $(grep -c '^Required next action:' <<<"$noop_output") -eq 1 ]] || return 1
 	fi
 	mutation_calls_after=$(grep -Ec '^(systemctl (start|stop|daemon-reload)|controller execute|hyprctl (-j inputlanguagesreset|reload|keyword)|omarchy (restart|shell shell rescanPlugins))' "$root/calls" || true)
 	[[ $(sha256sum "$INPUT_LANGUAGES_ACTIVE" | cut -d' ' -f1) == "$active_before" ]]
@@ -1017,7 +1029,12 @@ direct_v2_expands_to_v3() (
 			[[ ! -e $INPUT_LANGUAGES_CLEANUP && $(grep -Ec '^(systemctl (start|stop|daemon-reload)|controller execute|hyprctl (-j inputlanguagesreset|reload|keyword)|omarchy (restart|shell shell rescanPlugins))' "$root/calls" || true) == "$cleanup_mutations_before" ]] || return 1
 			return 0
 		fi
-		remove_input_languages --yes >/dev/null || return 1
+		local remove_output
+		remove_output=$(remove_input_languages --yes) || return 1
+		for phase in prepared authority-quiesced prior-group-selected prior-method-restored managed-group-removed managed-group-saved hyprland-restored helper-edges-removed manager-reloaded verified active-archived; do
+			grep -Fq "Phase $phase:" <<<"$remove_output" || return 1
+		done
+		grep -Fq 'Remove completed: exact pre-first-Apply direct state' <<<"$remove_output" || return 1
 		! grep -q '^omarchy pkg drop ' "$root/calls" || return 1
 		[[ ! -e $INPUT_LANGUAGES_ACTIVE && ! -e $INPUT_LANGUAGES_PENDING && ! -e $INPUT_LANGUAGES_RECOVERY ]] || return 1
 		jq -e '[.groups[].name] == ["Default"] and .current_group == "Default" and .observed_method == "keyboard-ru"' "$root/controller.json" >/dev/null || return 1

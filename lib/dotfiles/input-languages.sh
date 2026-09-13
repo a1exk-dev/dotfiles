@@ -1516,8 +1516,15 @@ input_languages_exact_noop() {
 
 input_languages_status() {
 	input_languages_inspect
-	printf 'Portable input language setup: US English first, Russian second; desktop Hyprland/XKB applications only.\n'
-	printf 'Boundary: console, locale, display language, input methods, captured guests, and compositor-bypassing applications are unchanged.\n'
+	printf 'Portable input language setup: fixed US English and Russian across covered desktop input surfaces.\n'
+	printf 'Boundary: console, locale, display language, captured guests, raw/custom keymaps, and unverified input-method routes are unchanged.\n'
+	if { [[ $INPUT_LANGUAGES_ACTIVE_STATE == valid && $(jq -r '.version // 0' "$INPUT_LANGUAGES_ACTIVE") == 3 ]] ||
+		[[ $INPUT_LANGUAGES_PENDING_STATE == valid && $(jq -r '.version // 0' "$INPUT_LANGUAGES_PENDING") == 3 ]] ||
+		[[ $INPUT_LANGUAGES_RECOVERY_STATE == valid && $(jq -r '.version // 0' "$INPUT_LANGUAGES_RECOVERY") == 3 ]] ||
+		[[ $INPUT_LANGUAGES_CLEANUP_STATE == valid && $(jq -r '.version // 0' "$INPUT_LANGUAGES_CLEANUP") == 3 ]]; }; then
+		input_languages_status_v3
+		return
+	fi
 	local overall action source_state=unavailable pointer_state=absent artifact_state=absent config_state=unavailable
 	local installed_state=false running_state=unavailable-or-unhealthy running_compatibility=unavailable
 	if ! input_languages_paths_are_safe >/dev/null 2>&1; then
