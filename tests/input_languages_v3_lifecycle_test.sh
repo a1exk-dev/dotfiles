@@ -296,7 +296,7 @@ direct_v2_expands_to_v3() (
 	: >"$root/calls"
 
 	jq -n --arg profile "$XDG_CONFIG_HOME/fcitx5/profile" --arg digest "$profile_digest" --arg method "$([[ $lifecycle_mode == idle ]] && printf '' || printf keyboard-ru)" '
-		{identity:{unique_owner:":1.42",owner_epoch:1,supervised:true,upstream_version:"5.1.21",controller_shape:"supported"},
+		{identity:{unique_owner:":1.42",owner_epoch:1,supervised:true,upstream_version:"5.1.22",controller_shape:"supported"},
 		profile:{path:$profile,safe:true,device:1,inode:2,mode:384,uid:1000,digest:$digest},
 		groups:[{name:"Default",default_layout:"us",default_im:"keyboard-ru",properties:{},items:[{method:"keyboard-us",layout_override:"",display_name:"English (US)",native_name:"English (US)",language_code:"en",addon:"keyboard",configurable:true,variant:null,properties:{}},{method:"keyboard-ru",layout_override:"",display_name:"Russian",native_name:"Russian",language_code:"ru",addon:"keyboard",configurable:true,variant:null,properties:{}}]}],
 		available_methods:["keyboard-us","keyboard-ru"],addons:[{name:"keyboard",enabled:true,available:true},{name:"dbus",enabled:true,available:true},{name:"dbusfrontend",enabled:true,available:true}],current_group:"Default",observed_method:$method}' >"$root/controller.json"
@@ -557,13 +557,14 @@ direct_v2_expands_to_v3() (
 		! grep -Eq '^(controller|systemctl (start|stop|daemon-reload))' "$root/calls" || return 1
 		return 0
 	fi
-	if [[ $lifecycle_mode == phase-interrupt ]]; then
+	if [[ $lifecycle_mode == phase-interrupt || $lifecycle_mode == adjacent-phase-interrupt ]]; then
 		local update_definition rollback_definition
 		update_definition=$(declare -f input_languages_v3_update_pending)
 		rollback_definition=$(declare -f input_languages_rollback_pending_v3)
 		update_definition=${update_definition/input_languages_v3_update_pending /input_languages_v3_update_pending_recorded }
 		eval "$update_definition"
 		input_languages_v3_update_pending() {
+			if [[ $lifecycle_mode == adjacent-phase-interrupt && $1 == "$INPUT_LANGUAGES_TEST_INTERRUPT_PHASE" ]]; then return 1; fi
 			input_languages_v3_update_pending_recorded "$@" || return 1
 			[[ $1 != "$INPUT_LANGUAGES_TEST_INTERRUPT_PHASE" ]]
 		}
@@ -640,6 +641,7 @@ direct_v2_expands_to_v3() (
 		input_languages_rollback_pending_v3() { return 1; }
 		if apply_input_languages --yes --packages-prepared >/dev/null 2>&1; then return 1; fi
 		[[ $(jq -r .phase "$INPUT_LANGUAGES_PENDING") == socket-started ]] || return 1
+		printf 'foreign pointer\n' >"$INPUT_LANGUAGES_POINTER"
 		mutation_calls=$(grep -Ec '^(controller execute|systemctl (start|stop|daemon-reload)|hyprctl (-j inputlanguagesreset|reload|keyword)|omarchy (restart|shell shell rescanPlugins))' "$root/calls" || true)
 		if apply_input_languages --recovery-approved >/dev/null 2>&1; then return 1; fi
 		[[ $(grep -Ec '^(controller execute|systemctl (start|stop|daemon-reload)|hyprctl (-j inputlanguagesreset|reload|keyword)|omarchy (restart|shell shell rescanPlugins))' "$root/calls" || true) == "$mutation_calls" ]] || return 1
@@ -670,9 +672,17 @@ direct_v2_expands_to_v3() (
 		[[ -e $INPUT_LANGUAGES_PENDING && -e $INPUT_LANGUAGES_RECOVERY ]] || return 1
 		return 0
 	fi
-	if [[ $lifecycle_mode == phase-interrupt ]]; then
+	if [[ $lifecycle_mode == phase-interrupt || $lifecycle_mode == adjacent-phase-interrupt ]]; then
 		if apply_input_languages --yes --packages-prepared >/dev/null 2>&1; then return 1; fi
 		[[ -e $INPUT_LANGUAGES_PENDING && ! -e $INPUT_LANGUAGES_RECOVERY ]] || return 1
+		if [[ $lifecycle_mode == adjacent-phase-interrupt ]]; then
+			if [[ $INPUT_LANGUAGES_TEST_INTERRUPT_PHASE == managed-group-created ]]; then
+				[[ $(jq -r .phase "$INPUT_LANGUAGES_PENDING") == prior-helper-quiesced ]] || return 1
+				jq -e --arg name "$INPUT_LANGUAGES_V3_MANAGED_GROUP" 'any(.groups[]; .name == $name)' "$root/controller.json" >/dev/null || return 1
+			else
+				[[ $INPUT_LANGUAGES_TEST_INTERRUPT_PHASE == active-published && $(jq -r .phase "$INPUT_LANGUAGES_PENDING") == verified && -f $INPUT_LANGUAGES_ACTIVE ]] || return 1
+			fi
+		fi
 		eval "$rollback_definition"
 		unset INPUT_LANGUAGES_INTEGRATION_ARTIFACT_DIR INPUT_LANGUAGES_INTEGRATION_ARTIFACT INPUT_LANGUAGES_INTEGRATION_HELPER INPUT_LANGUAGES_INTEGRATION_BUILD_ID
 		apply_input_languages --recovery-approved >/dev/null || return 1
@@ -772,7 +782,10 @@ direct_v2_expands_to_v3() (
 			if [[ $lifecycle_mode == recovery-environment-changed ]]; then mkdir -m 0700 "$root/other-runtime"; XDG_RUNTIME_DIR=$root/other-runtime; fi
 			lifecycle_mode=rollback-complete
 			unset INPUT_LANGUAGES_INTEGRATION_ARTIFACT_DIR INPUT_LANGUAGES_INTEGRATION_ARTIFACT INPUT_LANGUAGES_INTEGRATION_HELPER INPUT_LANGUAGES_INTEGRATION_BUILD_ID
-			apply_input_languages --recovery-approved >/dev/null || return 1
+			apply_input_languages --recovery-approved >"$root/recovery.out" 2>"$root/recovery.err" || { printf '%s\n' "$(<"$root/recovery.err")" >&2; return 1; }
+			for phase in authority-quiesced direct-restored fcitx-semantic-delta-reversed helper-state-restored operation-start-language-restored verified; do
+				grep -Fq "Plan: $phase -" "$root/recovery.out" || return 1
+			done
 		fi
 		if [[ $fresh_entry == true ]]; then
 			[[ ! -e $INPUT_LANGUAGES_ACTIVE && ! -e $XDG_CONFIG_HOME/hypr && ! -e $XDG_DATA_HOME/dotfiles/input-languages/active-artifact.lua && ! -e $XDG_CONFIG_HOME/omarchy/plugins/dotfiles.keyboard-layout ]] || return 1
@@ -1032,6 +1045,12 @@ direct_v2_durable_phase_interruptions_recover() {
 		INPUT_LANGUAGES_TEST_INTERRUPT_PHASE=$phase direct_v2_expands_to_v3 phase-interrupt || return 1
 	done
 }
+direct_v2_adjacent_phase_interruption_recovers() {
+	local phase
+	for phase in managed-group-created active-published; do
+		INPUT_LANGUAGES_TEST_INTERRUPT_PHASE=$phase direct_v2_expands_to_v3 adjacent-phase-interrupt || return 1
+	done
+}
 direct_v2_stale_helper_plan_blocks() { direct_v2_expands_to_v3 stale-helper; }
 direct_v2_stale_controller_plan_blocks() { direct_v2_expands_to_v3 stale-controller; }
 direct_v2_invalid_runtime_blocks_before_mutation() { direct_v2_expands_to_v3 runtime-invalid; }
@@ -1071,6 +1090,7 @@ run_test direct_v2_corrupt_recovery_artifact_stops 'fresh recovery rejects corru
 run_test direct_v2_transitional_helper_quiesces 'transitional helper units are stopped and reinspected before Controller mutation'
 run_test direct_v2_post_pause_failure_restores_autoreload 'post-pause Apply failure restores the original autoreload value'
 run_test direct_v2_durable_phase_interruptions_recover 'every durable Fcitx and helper Apply phase supports verified rollback'
+run_test direct_v2_adjacent_phase_interruption_recovers 'recovery reconciles a uniquely observed mutation completed before phase publication'
 run_test direct_v2_stale_helper_plan_blocks 'locked Apply rejects changed helper ownership before pending evidence'
 run_test direct_v2_stale_controller_plan_blocks 'locked Apply rejects changed Controller semantics before pending evidence'
 run_test direct_v2_invalid_runtime_blocks_before_mutation 'invalid runtime blocks Apply before persistent mutation'

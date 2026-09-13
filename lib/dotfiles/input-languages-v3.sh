@@ -509,6 +509,7 @@ input_languages_validate_recovery_file_v3() {
 	digest=$(jq -r .pending_digest "$file")
 	[[ $pending == "$INPUT_LANGUAGES_PENDING" ]] || return 1
 	input_languages_validate_pending_file_v3 "$pending" || return 1
+	[[ $(jq -r .transaction_id "$file") == "$(jq -r .transaction_id "$pending")" ]] || return 1
 	jq -e --argjson pending_restoration "$(jq -c .restoration "$pending")" '.restoration == $pending_restoration' "$file" >/dev/null 2>&1 || return 1
 	actual=$(sha256sum "$pending") || return 1
 	[[ ${actual%% *} == "$digest" ]]
@@ -874,7 +875,7 @@ input_languages_v3_controller_inspect() {
 input_languages_v3_controller_supported() {
 	jq -e '
 		. as $response |
-		.snapshot.identity.supervised == true and .snapshot.identity.upstream_version == "5.1.21" and
+		.snapshot.identity.supervised == true and .snapshot.identity.upstream_version == "5.1.22" and
 		.snapshot.identity.controller_shape == "supported" and .snapshot.profile.safe == true and
 		.snapshot.profile.mode == 384 and (.snapshot.profile.uid | type == "number" and . >= 0 and floor == .) and
 		(["keyboard-us","keyboard-ru"] - .snapshot.available_methods | length == 0) and
@@ -1684,22 +1685,59 @@ input_languages_record_recovery_v3() {
 
 input_languages_v3_recovery_phase() {
 	case $1 in
-		quiesce|inspect-controller) printf 'authority-quiesced\n' ;;
-		restore-pointer|restore-widget-link|reload-shell|reload-hyprland|restore-receipt|restore-direct) printf 'direct-restored\n' ;;
-		restore-group|restore-method|remove-group|save-restoration|reconstruct-group) printf 'fcitx-semantic-delta-reversed\n' ;;
+		quiesce|runtime-after-quiesce|inspect-controller|ambiguous-phase|foreign-managed-group|restore-anchor|foreign-helper-state) printf 'authority-quiesced\n' ;;
+		foreign-direct-state|restore-pointer|restore-widget-link|reload-shell|restore-autoreload|reload-hyprland|restore-receipt|restore-direct) printf 'direct-restored\n' ;;
+		inspect-managed|restore-group|restore-method|remove-group|save-restoration|reconstruct-group) printf 'fcitx-semantic-delta-reversed\n' ;;
 		remove-helper-edges|restore-helper-state) printf 'helper-state-restored\n' ;;
 		restore-language) printf 'operation-start-language-restored\n' ;;
-		*) printf 'verified\n' ;;
+		verify-restoration|remove-recovery|remove-pending) printf 'verified\n' ;;
+		*) return 1 ;;
 	esac
 }
 
+input_languages_v3_recovery_plan() {
+	printf 'Plan: authority-quiesced - stop and prove helper authority absent before restoration.\n'
+	printf 'Plan: direct-restored - restore and prove the exact prior Hyprland, pointer, widget, and receipt ancestry.\n'
+	printf 'Plan: fcitx-semantic-delta-reversed - reverse only the owned Fcitx delta and preserve unrelated semantics.\n'
+	printf 'Plan: helper-state-restored - restore the recorded helper, unit, socket, and runtime ownership.\n'
+	printf 'Plan: operation-start-language-restored - publish the recorded operation-start language when authority remains installed.\n'
+	printf 'Plan: verified - verify exact restoration before retiring recovery evidence.\n'
+}
+
+input_languages_v3_active_receipt_matches_pending() {
+	input_languages_validate_active_file_v3 "$INPUT_LANGUAGES_ACTIVE" evidence || return 1
+	jq -e --argjson pending "$(jq -c . "$INPUT_LANGUAGES_PENDING")" '
+		.transaction_id == $pending.transaction_id and
+		.direct_ancestry == $pending.direct_ancestry and .integration_artifact == $pending.integration_artifact and
+		.fcitx_before == $pending.fcitx_before and .profile_diagnostic == $pending.profile_diagnostic and
+		.operation_start == $pending.operation_start and .restoration == $pending.restoration
+	' "$INPUT_LANGUAGES_ACTIVE" >/dev/null 2>&1
+}
+
 input_languages_v3_recorded_phase_matches_fcitx() {
-	local phase expected actual
+	local phase expected actual before target
 	phase=$(jq -r .phase "$INPUT_LANGUAGES_PENDING") || return 1
 	expected=$(jq -r --arg phase "$phase" '.expected_states[] | select(.phase == $phase) | .fcitx_semantic_digest // ""' "$INPUT_LANGUAGES_PENDING") || return 1
 	[[ -n $expected ]] || return 0
 	actual=$(input_languages_v3_fcitx_phase_digest "$(jq -c .snapshot <<<"$1")") || return 1
-	[[ $actual == "$expected" ]]
+	[[ $actual == "$expected" ]] && return 0
+	before=$(jq -c .fcitx_before "$INPUT_LANGUAGES_PENDING") || return 1
+	target=$(jq -c .managed_group_target "$INPUT_LANGUAGES_PENDING") || return 1
+	jq -e --arg phase "$phase" --arg name "$INPUT_LANGUAGES_V3_MANAGED_GROUP" --argjson before "$before" --argjson target "$target" '
+		.snapshot as $current |
+		all($before.groups[]; . as $group | any($current.groups[]; .name == $group.name and . == $group)) and
+		(if $phase == "prior-helper-quiesced" then
+			([$current.groups[] | select(.name == $name)] == [($target | .default_im="" | .items=[])]) and
+			$current.current_group == $before.current_group and $current.observed_method == $before.observed_method
+		 elif $phase == "managed-group-created" then
+			([$current.groups[] | select(.name == $name)] == [$target]) and
+			$current.current_group == $before.current_group and $current.observed_method == $before.observed_method
+		 elif ($phase == "managed-group-populated" or $phase == "managed-group-selected") then
+			([$current.groups[] | select(.name == $name)] == [$target]) and
+			$current.current_group == $name and
+			($current.observed_method == $target.default_im or ($before.observed_method == "" and $current.observed_method == ""))
+		 else false end)
+	' <<<"$1" >/dev/null 2>&1
 }
 
 input_languages_v3_helper_state_between() {
@@ -1723,7 +1761,8 @@ input_languages_v3_apply_rollback_direct_safe() {
 		input_languages_inspect_tree
 		if [[ $INPUT_LANGUAGES_TREE_STATE != linked ]]; then
 			if [[ $(jq -r .direct_ancestry.backup_existed "$INPUT_LANGUAGES_PENDING") == true ]]; then
-				[[ $INPUT_LANGUAGES_TREE_STATE == migratable && $(input_languages_tree_digest "$INPUT_LANGUAGES_LIVE") == "$(jq -r .direct_ancestry.backup_digest "$INPUT_LANGUAGES_PENDING")" ]] || return 1
+				[[ $INPUT_LANGUAGES_TREE_STATE == uninstalled ||
+					( $INPUT_LANGUAGES_TREE_STATE == migratable && $(input_languages_tree_digest "$INPUT_LANGUAGES_LIVE") == "$(jq -r .direct_ancestry.backup_digest "$INPUT_LANGUAGES_PENDING")" ) ]] || return 1
 			else [[ $INPUT_LANGUAGES_TREE_STATE == uninstalled ]] || return 1; fi
 		fi
 		prior_present=$(jq -r .widget_before.prior_stock_present "$INPUT_LANGUAGES_PENDING")
@@ -1735,7 +1774,8 @@ input_languages_v3_apply_rollback_direct_safe() {
 			input_languages_widget_matches true "$(jq -r .widget_before.section "$INPUT_LANGUAGES_PENDING")" "$(jq -r .widget_before.index "$INPUT_LANGUAGES_PENDING")" "$(jq -c .widget_before.entry "$INPUT_LANGUAGES_PENDING")"
 		return
 	fi
-	cmp -s "$prior" "$INPUT_LANGUAGES_ACTIVE" || return 1
+	cmp -s "$prior" "$INPUT_LANGUAGES_ACTIVE" ||
+		{ [[ $(jq -r .phase "$INPUT_LANGUAGES_PENDING") == verified ]] && input_languages_v3_active_receipt_matches_pending; } || return 1
 	input_languages_inspect_tree
 	[[ $INPUT_LANGUAGES_TREE_STATE == linked ]] || return 1
 	input_languages_widget_matches true "$(jq -r .widget_before.section "$INPUT_LANGUAGES_PENDING")" "$(jq -r .widget_before.index "$INPUT_LANGUAGES_PENDING")" "$(jq -c .widget_before.entry "$INPUT_LANGUAGES_PENDING")" || return 1
@@ -1925,18 +1965,32 @@ input_languages_rollback_pending_v3() {
 	esac
 }
 
-input_languages_v3_recorded_phase_matches_direct_state() {
-	local phase expected direct helper receipt=null runtime_root
+input_languages_v3_recovery_state_safe() {
+	local phase expected direct helper receipt=null changed=0 prior current_widget runtime_root
 	phase=$(jq -r .phase "$INPUT_LANGUAGES_PENDING") || return 1
 	expected=$(jq -c --arg phase "$phase" '.expected_states[] | select(.phase == $phase)' "$INPUT_LANGUAGES_PENDING") || return 1
 	direct=$(input_languages_v3_state_digest "$(input_languages_tree_digest "$INPUT_LANGUAGES_LIVE" 2>/dev/null || printf absent)|$(sha256sum "$INPUT_LANGUAGES_POINTER" 2>/dev/null || true)") || return 1
 	runtime_root=$(input_languages_v3_runtime_root_from_ownership "$(jq -c .helper_target "$INPUT_LANGUAGES_PENDING")") || return 1
 	helper=$(input_languages_v3_json_digest "$(input_languages_v3_helper_ownership "$runtime_root")") || return 1
 	if [[ -f $INPUT_LANGUAGES_ACTIVE ]]; then receipt=$(sha256sum "$INPUT_LANGUAGES_ACTIVE" | cut -d' ' -f1) || return 1; fi
-	jq -e --arg direct "$direct" --arg helper "$helper" --arg receipt "$receipt" '
-		.direct_digest == $direct and .helper_digest == $helper and
-		.receipt_digest == (if $receipt == "null" then null else $receipt end)
-	' <<<"$expected" >/dev/null 2>&1
+	[[ $direct == "$(jq -r .direct_digest <<<"$expected")" ]] || changed=$((changed + 1))
+	[[ $helper == "$(jq -r .helper_digest <<<"$expected")" ]] || changed=$((changed + 1))
+	[[ $receipt == "$(jq -r '.receipt_digest // "null"' <<<"$expected")" ]] || changed=$((changed + 1))
+	[[ $changed -le 1 ]] || return 1
+	[[ $changed == 1 ]] || return 0
+	prior=$(jq -r .direct_ancestry.receipt "$INPUT_LANGUAGES_PENDING") || return 1
+	current_widget=$(jq -r .integration_artifact.artifact "$INPUT_LANGUAGES_PENDING") || return 1
+	current_widget=${current_widget%/*}/$INPUT_LANGUAGES_WIDGET
+	if [[ $direct != "$(jq -r .direct_digest <<<"$expected")" ]]; then
+		[[ $phase == socket-started || $phase == pointer-published ]] || return 1
+		input_languages_v3_apply_rollback_direct_safe "$prior" "$current_widget"
+	elif [[ $helper != "$(jq -r .helper_digest <<<"$expected")" ]]; then
+		[[ $phase == managed-group-saved || $phase == manager-reloaded ]] || return 1
+		input_languages_v3_helper_state_between "$(jq -c .helper_before "$INPUT_LANGUAGES_PENDING")" "$(jq -c .helper_target "$INPUT_LANGUAGES_PENDING")"
+	else
+		[[ $phase == verified ]] || return 1
+		input_languages_v3_active_receipt_matches_pending
+	fi
 }
 
 input_languages_reconcile_pending_v3() {
@@ -1944,8 +1998,8 @@ input_languages_reconcile_pending_v3() {
 	input_languages_validate_pending_file_v3 "$INPUT_LANGUAGES_PENDING" || return 1
 	transaction=$(jq -r .transaction_id "$INPUT_LANGUAGES_PENDING")
 	operation=$(jq -r .operation "$INPUT_LANGUAGES_PENDING")
-	if [[ -f $INPUT_LANGUAGES_ACTIVE && $(jq -r '.version == 3 and .transaction_id == $transaction' --arg transaction "$transaction" "$INPUT_LANGUAGES_ACTIVE") == true ]]; then
-		[[ $operation == apply && $(jq -r .phase "$INPUT_LANGUAGES_PENDING") == active-published ]] || return 1
+	if [[ $operation == apply && $(jq -r .phase "$INPUT_LANGUAGES_PENDING") == active-published && -f $INPUT_LANGUAGES_ACTIVE &&
+		$(jq -r '.version == 3 and .transaction_id == $transaction' --arg transaction "$transaction" "$INPUT_LANGUAGES_ACTIVE") == true ]]; then
 		input_languages_acquire_lock Recovery || return 1
 		input_languages_validate_pending_file_v3 "$INPUT_LANGUAGES_PENDING" || { input_languages_unlock || true; return 1; }
 		[[ $(jq -r '.version == 3 and .transaction_id == $transaction' --arg transaction "$transaction" "$INPUT_LANGUAGES_ACTIVE") == true ]] || { input_languages_unlock || true; return 1; }
@@ -1979,12 +2033,13 @@ input_languages_reconcile_pending_v3() {
 		return
 	fi
 	printf 'Plan: reconcile interrupted version-3 transaction %s by semantic rollback.\n' "$transaction"
+	input_languages_v3_recovery_plan
 	if [[ $approved != true ]] && ! wizard_confirm 'Recover this interrupted Input Languages transaction?'; then return 0; fi
 	input_languages_acquire_lock Recovery || return 1
 	input_languages_validate_pending_file_v3 "$INPUT_LANGUAGES_PENDING" || { input_languages_unlock || true; return 1; }
 	if [[ -e $INPUT_LANGUAGES_RECOVERY || -L $INPUT_LANGUAGES_RECOVERY ]]; then
 		input_languages_validate_recovery_file_v3 "$INPUT_LANGUAGES_RECOVERY" || { input_languages_unlock || true; return 1; }
-	elif ! input_languages_v3_recorded_phase_matches_direct_state; then
+	elif [[ $operation != apply ]] || ! input_languages_v3_recovery_state_safe; then
 		input_languages_record_recovery_v3 "$transaction" verified || { input_languages_unlock || true; return 1; }
 		printf 'Recovery required: observed direct/helper state does not match recorded phase %s; no rollback write was attempted.\n' "$(jq -r .phase "$INPUT_LANGUAGES_PENDING")" >&2
 		input_languages_unlock || true
