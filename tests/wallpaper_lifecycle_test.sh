@@ -214,6 +214,28 @@ test_apply_converges_additions_and_stale_removals_while_preserving_unrelated_fil
 	[[ -f $unrelated ]] || { printf '  created-directory cleanup removed unrelated content\n' >&2; return 1; }
 }
 
+test_apply_repairs_absent_owned_targets() {
+	new_fixture
+	setup_wallpaper_fixture
+	mkdir "$FIXTURE_WALLPAPER_THEMES/catppuccin"
+	local assignment digest live retained
+	assignment=$(seed_wallpaper_assignment catppuccin PNG png) || return 1
+	retained=$(seed_wallpaper_assignment catppuccin JPEG jpg '#334455') || return 1
+	digest=${assignment##*/} digest=${digest%%.*}
+	live="$FIXTURE_CONFIG/omarchy/backgrounds/catppuccin/$digest.png"
+	run_wallpaper_operation "$FIXTURE_ROOT" apply_wallpapers --yes
+	rm "$live"
+	run_wallpaper_operation "$FIXTURE_ROOT" apply_wallpapers --yes
+	assert_eq 0 "$COMMAND_STATUS" 'Apply should repair an absent receipt-owned target' || return 1
+	[[ -f $live && ! -L $live ]] || return 1
+	assert_eq "$digest" "$(wallpaper_digest "$live")" 'Apply should restore the repository bytes' || return 1
+	rm "$assignment" "$live"
+	run_wallpaper_operation "$FIXTURE_ROOT" apply_wallpapers --yes
+	assert_eq 0 "$COMMAND_STATUS" 'Apply should accept an already-absent stale target' || return 1
+	assert_eq 1 "$(jq '.targets | length' "$FIXTURE_STATE/dotfiles/wallpapers/active.json")" 'Apply should drop the absent stale target from its receipt' || return 1
+	assert_eq "${retained#"$FIXTURE_REPO/wallpapers/library/"}" "$(jq -r '.targets[0].path' "$FIXTURE_STATE/dotfiles/wallpapers/active.json")" 'Apply should retain the remaining assignment'
+}
+
 test_changed_owned_file_and_unsafe_live_parent_block_fail_closed() {
 	new_fixture
 	setup_wallpaper_fixture
@@ -798,6 +820,7 @@ run_test_group 1 test_locked_state_root_replacement_blocks_curation_mutation 'lo
 
 run_test_group 2 test_apply_converges_additions_and_stale_removals_while_preserving_unrelated_files 'Apply converges owned files and preserves unrelated backgrounds'
 run_test_group 2 test_partial_publication_rolls_back_mode_and_cleans_backups 'partial publication rolls back live mutation and cleans backups'
+run_test_group 2 test_apply_repairs_absent_owned_targets 'Apply repairs desired targets and forgets stale targets that are already absent'
 
 run_test_group 3 test_apply_adopts_exact_unowned_match_but_blocks_different_foreign_target 'Apply adopts exact unowned files and preserves foreign conflicts'
 run_test_group 3 test_post_pending_replacement_one_case 'post-pending active-link replacement blocks removal' active-link

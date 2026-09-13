@@ -2738,7 +2738,7 @@ wallpaper_validate_deployment_pending() {
 			[[ $(jq -r --arg path "$path" '.changes[] | select(.path == $path) | (.desired.digest == null and .desired.identity == null and .desired.source_identity == null and .desired.stage_path == null and .desired.stage_identity == null)' <<<"$json") == true ]] || return 1
 		fi
 		case $action:$prior_present:$desired_present in
-			add:false:true|adopt:true:true|remove:true:false) ;;
+			add:false:true|adopt:true:true|remove:true:false|remove:false:false) ;;
 			*) return 1 ;;
 		esac
 		quarantine=$(jq -r --arg path "$path" '.changes[] | select(.path == $path) | .quarantine_path' <<<"$json")
@@ -2982,7 +2982,7 @@ wallpaper_deployment_snapshot() {
 
 wallpaper_build_apply_plan() {
 	local item relative digest target source action change plan='[]' combined identity
-	declare -A active_digest=() desired_digest=()
+	declare -A active_digest=() desired_digest=() active_missing=()
 	WALLPAPER_PLAN_ERROR=''
 	if [[ -n $WALLPAPER_ACTIVE_JSON ]]; then
 		while IFS=$'\t' read -r relative digest; do active_digest[$relative]=$digest; done \
@@ -2994,6 +2994,10 @@ wallpaper_build_apply_plan() {
 		digest=${active_digest[$relative]}
 		wallpaper_validate_live_parent "$relative" || return 1
 		target=$(wallpaper_live_target_path "$relative") || return 1
+		if [[ ! -e $target && ! -L $target ]]; then
+			active_missing[$relative]=1
+			continue
+		fi
 		if [[ ! -f $target || -L $target ]]; then
 			WALLPAPER_PLAN_ERROR="receipt-owned target changed, disappeared, or is not a regular file: $target"
 			return 1
@@ -3015,7 +3019,7 @@ wallpaper_build_apply_plan() {
 	fi
 	for relative in "${WALLPAPER_SORTED_PATHS[@]}"; do
 		digest=${desired_digest[$relative]}
-		[[ -n ${active_digest[$relative]+present} ]] && continue
+		[[ -n ${active_digest[$relative]+present} && -z ${active_missing[$relative]+present} ]] && continue
 		wallpaper_validate_live_parent "$relative" || return 1
 		target=$(wallpaper_live_target_path "$relative") || return 1
 		if [[ -e $target || -L $target ]]; then
@@ -3395,6 +3399,10 @@ wallpaper_delete_live_file_impl() {
 	wallpaper_validate_live_parent "$relative" && wallpaper_verify_pending_parent "$parent" || return 1
 	wallpaper_verify_active_background_evidence "$WALLPAPER_PENDING_JSON" || return 1
 	if wallpaper_deletion_is_active "$target"; then return 1; fi
+	if [[ $(jq -r --arg path "$relative" '.changes[] | select(.path == $path) | .prior.present' <<<"$WALLPAPER_PENDING_JSON") == false ]]; then
+		wallpaper_path_is_absent "$target"
+		return
+	fi
 	actual=$(wallpaper_live_file_identity "$target") || return 1
 	wallpaper_live_identity_json_is_valid "$actual" "$digest" || return 1
 	[[ -z $expected_identity || $(jq -Sc . <<<"$actual") == "$(jq -Sc . <<<"$expected_identity")" ]] || return 1
@@ -3543,7 +3551,8 @@ wallpaper_verify_deployment_mutation_boundary() {
 			remove)
 				wallpaper_path_is_absent "$target" || return 1
 				quarantine=$(jq -r '.quarantine_path' <<<"$change") identity=$(jq -c '.prior.identity' <<<"$change")
-				if [[ -e $quarantine || -L $quarantine ]]; then wallpaper_live_identity_matches_exchange "$quarantine" "$identity" || return 1
+				if [[ $(jq -r '.prior.present' <<<"$change") == false ]]; then wallpaper_path_is_absent "$quarantine" || return 1
+				elif [[ -e $quarantine || -L $quarantine ]]; then wallpaper_live_identity_matches_exchange "$quarantine" "$identity" || return 1
 				else [[ $(jq -r '.phase' <<<"$pending") == complete ]] || return 1
 				fi
 				;;
