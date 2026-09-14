@@ -906,11 +906,18 @@ input_languages_v3_hyprland_ownership() {
 		input_languages_v3_health_valid "$health" || return 1
 		language=$(jq -r .canonical_language <<<"$health") || return 1
 		groups=$(jq -c .physical_groups <<<"$health") || return 1
-	else
+		source=$(jq -r .source_id <<<"$health")
+	elif jq -e 'has("canonical_group")' <<<"$health" >/dev/null 2>&1; then
 		language=$(jq -r 'if .canonical_group == 0 then "US" else "Russian" end' <<<"$health") || return 1
 		groups=$(jq -c '[.physical_keyboards[] as $device | {device:$device,group:.canonical_group}]' <<<"$health") || return 1
+		source=$(jq -r .source_id <<<"$health")
+	else
+		# A Hyprland ABI change leaves the version-2 plugin unloaded; its receipt and live XKB groups still describe direct ancestry.
+		[[ $(jq -r '.version // 0' "$INPUT_LANGUAGES_ACTIVE" 2>/dev/null) == 2 ]] || return 1
+		groups=$(hyprctl -j devices | jq -c '[.keyboards[] | select(.active_layout_index == 0 or .active_layout_index == 1) | {device:.name,group:.active_layout_index}]') || return 1
+		language=$(jq -r 'if (.[0].group // 0) == 0 then "US" else "Russian" end' <<<"$groups") || return 1
+		source=$(jq -r .source_id "$INPUT_LANGUAGES_ACTIVE")
 	fi
-	source=$(jq -r '.source_id // empty' <<<"$health")
 	pointer=$(cut -d'"' -f2 "$INPUT_LANGUAGES_POINTER" 2>/dev/null || true)
 	autoreload=$(input_languages_current_autoreload) || return 1
 	jq -cn --arg tree "$INPUT_LANGUAGES_TREE_STATE" --arg source "$source" --arg pointer "$pointer" --argjson autoreload "$autoreload" --arg language "$language" --argjson groups "$groups" \
@@ -1443,8 +1450,10 @@ input_languages_apply_v3() {
 		"$([[ -e $INPUT_LANGUAGES_V3_ENABLEMENT || -L $INPUT_LANGUAGES_V3_ENABLEMENT ]] && printf present || printf absent)" \
 		"$([[ -e $INPUT_LANGUAGES_V3_RUNTIME_DIR || -L $INPUT_LANGUAGES_V3_RUNTIME_DIR ]] && printf present || printf absent)"
 	if [[ $entry == version-2 ]]; then
-		printf 'Inspected ancestry: version-2 receipt=exact; original-backup=%s; operation-start language=%s.\n' \
-			"$(jq -r .backup "$INPUT_LANGUAGES_ACTIVE")" "$(jq -r 'if .canonical_group == 0 then "US" else "Russian" end' <<<"$INPUT_LANGUAGES_PLUGIN_HEALTH")"
+		hypr_before=$(input_languages_v3_hyprland_ownership "$INPUT_LANGUAGES_PLUGIN_HEALTH") || { printf 'Apply blocked: the direct version-2 language state is unavailable.\n' >&2; return 1; }
+		printf 'Inspected ancestry: version-2 receipt=exact; version-2 plugin=%s; original-backup=%s; operation-start language=%s.\n' \
+			"$(jq -e 'has("canonical_group")' <<<"$INPUT_LANGUAGES_PLUGIN_HEALTH" >/dev/null 2>&1 && printf loaded || printf 'not loaded (replaced by version 3)')" \
+			"$(jq -r .backup "$INPUT_LANGUAGES_ACTIVE")" "$(jq -r .canonical_language <<<"$hypr_before")"
 	else
 		printf 'Inspected ancestry: fresh installation; original tree=%s; operation-start language captured before pending evidence.\n' "$INPUT_LANGUAGES_TREE_STATE"
 	fi
@@ -1492,11 +1501,11 @@ input_languages_apply_v3() {
 		if [[ $INPUT_LANGUAGES_STOCK_WIDGET_PRESENT == true ]]; then target_widget=$(jq -c --arg id "$INPUT_LANGUAGES_WIDGET" '.id=$id' <<<"$INPUT_LANGUAGES_STOCK_WIDGET_ENTRY")
 		else target_widget=$(jq -cn --arg id "$INPUT_LANGUAGES_WIDGET" '{id:$id}'); fi
 		widget_before=$(input_languages_v3_widget_ownership "$INPUT_LANGUAGES_INTEGRATION_ARTIFACT_DIR/$INPUT_LANGUAGES_WIDGET" "$(jq -r .widget_sha256 "$INPUT_LANGUAGES_INTEGRATION_ARTIFACT_DIR/build.json")" "$prior_widget" right 0 "$target_widget") || return 1
-		health=$(jq -cn --arg language "$(jq -r .canonical_language <<<"$hypr_before")" --argjson groups "$(jq -c .physical_groups <<<"$hypr_before")" \
-			'{canonical_group:(if $language == "US" then 0 else 1 end),physical_keyboards:[$groups[].device]}')
 	fi
-	operation_start=$(jq -cn --arg language "$(jq -r 'if .canonical_group == 0 then "US" else "Russian" end' <<<"$health")" \
-		--argjson groups "$([[ $entry == fresh ]] && jq -c .physical_groups <<<"$hypr_before" || jq -c '[.physical_keyboards[] as $device | {device:$device,group:.canonical_group}]' <<<"$health")" \
+	health=$(jq -cn --arg language "$(jq -r .canonical_language <<<"$hypr_before")" --argjson groups "$(jq -c .physical_groups <<<"$hypr_before")" \
+		'{canonical_group:(if $language == "US" then 0 else 1 end),physical_keyboards:[$groups[].device]}')
+	operation_start=$(jq -cn --arg language "$(jq -r .canonical_language <<<"$hypr_before")" \
+		--argjson groups "$(jq -c .physical_groups <<<"$hypr_before")" \
 		--arg method "$(jq -r .snapshot.observed_method <<<"$controller")" '{canonical_language:$language,physical_groups:$groups,fcitx_method:$method}')
 	managed_target=$(input_languages_v3_managed_group "$([[ $(jq -r .canonical_language <<<"$operation_start") == US ]] && printf keyboard-us || printf keyboard-ru)") || return 1
 	restoration=$(input_languages_v3_restoration)

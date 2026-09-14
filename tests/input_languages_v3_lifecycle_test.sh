@@ -308,7 +308,7 @@ direct_v2_expands_to_v3() (
 		printf 'deactivating\n' >"$root/service-state"
 	fi
 	printf 'false\n' >"$root/autoreload"
-	if [[ $fresh_entry == true ]]; then printf 'inactive\n' >"$root/plugin-state"; else printf 'active\n' >"$root/plugin-state"; fi
+	if [[ $fresh_entry == true || $lifecycle_mode == unloaded-v2 ]]; then printf 'inactive\n' >"$root/plugin-state"; else printf 'active\n' >"$root/plugin-state"; fi
 	: >"$root/calls"
 
 	jq -n --arg profile "$XDG_CONFIG_HOME/fcitx5/profile" --arg digest "$profile_digest" --arg method "$([[ $lifecycle_mode == idle ]] && printf '' || printf keyboard-ru)" '
@@ -364,6 +364,8 @@ direct_v2_expands_to_v3() (
 				if [[ $pointer == *'/integration-test/input-languages.so' ]]; then
 					if [[ $lifecycle_mode == idle ]]; then method=''; else method=$([[ $group == 0 ]] && printf keyboard-us || printf keyboard-ru); fi
 					jq -n --argjson group "$group" --arg method "$method" --arg mode "$lifecycle_mode" '{healthy:true,direct_xkb_health:"healthy",build_id:("b"*64),source_id:("c"*64),compatibility_hash:"test-compat",canonical_group:$group,physical_keyboards:["test-keyboard"],excluded_keyboards:[],authority_session:("a"*32),canonical_language:(if $group == 0 then "US" else "Russian" end),canonical_generation:2,physical_groups:[{device:"test-keyboard",group:$group}],physical_synchronized:true,helper_connection:"connected",helper_build_id:("b"*64),protocol_identity:"dotfiles-input-languages-fcitx-seqpacket-v1",offered_generation:2,accepted_generation:2,acknowledged_generation:(if $mode == "idle" then null else 2 end),report_sequence:4,report_age_milliseconds:10,coalesced_targets:0,fcitx_owner_state:"present",fcitx_unique_owner:":1.42",fcitx_owner_epoch:1,managed_group_state:"exact",current_group:"Dotfiles Input Languages",observed_method:$method,retry_phase:"none",outcome:(if $mode == "idle" then "idle-no-context" else "converged" end),diagnostic:"",report_stale:false}'
+				elif [[ $lifecycle_mode == unloaded-v2 ]]; then
+					printf 'unknown request\n'
 				else
 					jq -n --argjson group "$group" --arg build "$build" --arg source "$source" '{healthy:true,build_id:$build,source_id:$source,compatibility_hash:"test-compat",canonical_group:$group,physical_keyboards:["test-keyboard"],excluded_keyboards:[]}'
 				fi ;;
@@ -1173,6 +1175,7 @@ direct_v2_expands_to_v3() (
 )
 
 direct_v2_expands_to_acknowledged_v3() { direct_v2_expands_to_v3 acknowledged; }
+direct_v2_with_unloaded_plugin_expands_to_v3() { direct_v2_expands_to_v3 unloaded-v2; }
 fresh_install_reaches_acknowledged_v3() { direct_v2_expands_to_v3 fresh; }
 fresh_install_failure_restores_original_state() { direct_v2_expands_to_v3 fresh-rollback; }
 fresh_install_post_reset_failure_restores_original_state() { direct_v2_expands_to_v3 fresh-post-reset-rollback; }
@@ -1236,6 +1239,7 @@ queue_input_languages_test() {
 }
 
 queue_input_languages_test direct_v2_expands_to_acknowledged_v3 'healthy direct-v2 installation expands transactionally to acknowledged version 3 and exact no-op'
+queue_input_languages_test direct_v2_with_unloaded_plugin_expands_to_v3 'direct-v2 installation whose plugin no longer loads expands to acknowledged version 3'
 queue_input_languages_test systemctl_show_accepts_units_without_main_pid 'systemd readback accepts socket units that report no main process'
 queue_input_languages_test fresh_install_reaches_acknowledged_v3 'one confirmed fresh Apply installs acknowledged version 3 directly and exact reapply is a no-op'
 queue_input_languages_test fresh_install_failure_restores_original_state 'failed fresh Apply restores original direct, indicator, Fcitx, helper, and language state'
