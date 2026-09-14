@@ -16,7 +16,8 @@ Item {
   readonly property string stayAwakeStatePath: stayAwakeStateDir + "/stay-awake"
   readonly property int defaultScreensaverSeconds: 150
   readonly property int defaultLockSeconds: 300
-  readonly property var idleConfig: shell && shell.shellConfig && shell.shellConfig.idle ? shell.shellConfig.idle : ({})
+  readonly property var idleConfig: shell && shell.shellConfig && shell.shellConfig.idle
+    ? shell.shellConfig.idle : (shell && shell.idleConfig ? shell.idleConfig : ({}))
   readonly property int screensaverTimeoutSeconds: secondsFromConfig(idleConfig.screensaver, defaultScreensaverSeconds)
   readonly property int lockTimeoutSeconds: secondsFromConfig(idleConfig.lock, defaultLockSeconds)
   readonly property int firstIdleTimeoutSeconds: Math.min(screensaverTimeoutSeconds, lockTimeoutSeconds)
@@ -25,7 +26,7 @@ Item {
   readonly property bool idleEnabled: stayAwakeStateLoaded && !stayAwake
   readonly property string screensaverClass: "org.omarchy.screensaver"
   readonly property string screensaverLauncherPath: decodeURIComponent(new URL(Qt.resolvedUrl("launch-screensaver")).pathname)
-  readonly property string dotfilesSourceIdentity: "02787bbad8e5ab7668633c591038cf5aee6f9ace219562a962250ec5ec47e93c"
+  readonly property string dotfilesSourceIdentity: "46725dbe6dde8099ee84fd52fc96760799df72e1b86217a82331aefeed874061"
   readonly property string dotfilesInstanceId: Date.now().toString(36) + "-" + Math.random().toString(36).slice(2)
 
   property bool stayAwake: false

@@ -137,9 +137,9 @@ test_hook_fails_closed_on_exact_package_version_mismatch() {
 		make_telegram_theme_manifest /usr/share/omarchy/themes/tokyo-night/colors.toml tokyo-night "$TELEGRAM_MANIFEST" || return 1
 		printf 'tokyo-night\n' >"$TELEGRAM_ACTIVE_ROOT/theme.name"
 		if [[ $mismatch == omarchy ]]; then
-			make_fake pacman 'case "$*" in "-Q omarchy") printf "omarchy 4.0.2-1\n" ;; "-Q telegram-desktop") printf "telegram-desktop 7.0.9-4\n" ;; *) exit 64 ;; esac'
+			make_fake pacman 'case "$*" in "-Q omarchy") printf "omarchy 5.0.0-1\n" ;; "-Q telegram-desktop") printf "telegram-desktop 7.0.9-4\n" ;; *) exit 64 ;; esac'
 		else
-			make_fake pacman 'case "$*" in "-Q omarchy") printf "omarchy 4.0.1-1\n" ;; "-Q telegram-desktop") printf "telegram-desktop 7.0.10-1\n" ;; *) exit 64 ;; esac'
+			make_fake pacman 'case "$*" in "-Q omarchy") printf "omarchy 4.0.1-1\n" ;; "-Q telegram-desktop") printf "telegram-desktop 8.0.0-1\n" ;; *) exit 64 ;; esac'
 		fi
 		run_telegram_hook tokyo-night
 		if [[ $COMMAND_STATUS -eq 0 ]]; then
@@ -151,8 +151,8 @@ test_hook_fails_closed_on_exact_package_version_mismatch() {
 			printf '  %s mismatch did not record failure status\n' "$mismatch" >&2
 			return 1
 		}
-		assert_contains "$COMMAND_OUTPUT$(<"$TELEGRAM_STATUS")" '4.0.1-1' 'compatibility error should name exact supported Omarchy package' || return 1
-		assert_contains "$COMMAND_OUTPUT$(<"$TELEGRAM_STATUS")" '7.0.9-4' 'compatibility error should name exact supported Telegram package' || return 1
+		assert_contains "$COMMAND_OUTPUT$(<"$TELEGRAM_STATUS")" 'omarchy 4.x' 'compatibility error should name the supported Omarchy major' || return 1
+		assert_contains "$COMMAND_OUTPUT$(<"$TELEGRAM_STATUS")" 'telegram-desktop 7.x' 'compatibility error should name the supported Telegram major' || return 1
 		assert_telegram_boundary_untouched || return 1
 	done
 }

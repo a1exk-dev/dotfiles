@@ -67,7 +67,7 @@ test_structural_validator_accepts_the_tracked_package_without_a_live_leaf() {
 	setup_structural_fixture || return 1
 	run_structural_validator
 	assert_eq 0 "$COMMAND_STATUS" 'the tracked package should pass structural validation' || return 1
-	assert_contains "$COMMAND_OUTPUT" 'Supported Omarchy: 4.0.1-1' \
+	assert_contains "$COMMAND_OUTPUT" 'Supported Omarchy: 4' \
 		'the validator should report the supported Omarchy baseline' || return 1
 	assert_contains "$COMMAND_OUTPUT" 'Supported ttfx package/CLI: 0.3.2-1 / 0.3.2' \
 		'the validator should report both supported ttfx versions'
@@ -139,7 +139,7 @@ test_structural_validator_treats_detected_version_drift_as_warning_only() {
 	STRUCTURAL_PATH=$FIXTURE_BIN:/usr/bin:/bin
 	run_structural_validator
 	assert_eq 0 "$COMMAND_STATUS" 'version drift alone should not fail structural validation' || return 1
-	assert_contains "$COMMAND_OUTPUT" 'Warning: supported Omarchy is 4.0.1-1' \
+	assert_contains "$COMMAND_OUTPUT" 'Warning: supported Omarchy is 4;' \
 		'Omarchy drift should be visible' || return 1
 	assert_contains "$COMMAND_OUTPUT" 'Warning: supported ttfx package/CLI is 0.3.2-1 / 0.3.2' \
 		'ttfx drift should be visible' || return 1

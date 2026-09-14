@@ -1,6 +1,6 @@
 readonly TELEGRAM_THEME_ARCHIVE_NAME='current.tdesktop-theme'
-readonly TELEGRAM_THEME_EXPECTED_OMARCHY='4.0.1-1'
-readonly TELEGRAM_THEME_EXPECTED_TELEGRAM='7.0.9-4'
+readonly TELEGRAM_THEME_EXPECTED_OMARCHY='4'
+readonly TELEGRAM_THEME_EXPECTED_TELEGRAM='7'
 
 telegram_theme_state_home() {
 	printf '%s\n' "${XDG_STATE_HOME:-$HOME/.local/state}"
@@ -80,14 +80,14 @@ telegram_theme_require_compatible_packages() {
 	if version=$(telegram_theme_installed_package_version telegram-desktop); then
 		detected_telegram=$version
 	fi
-	printf 'Expected Telegram theme packages: omarchy %s; telegram-desktop %s\n' \
+	printf 'Expected Telegram theme packages: omarchy %s.x; telegram-desktop %s.x\n' \
 		"$TELEGRAM_THEME_EXPECTED_OMARCHY" "$TELEGRAM_THEME_EXPECTED_TELEGRAM"
 	printf 'Detected Telegram theme packages: omarchy %s; telegram-desktop %s\n' \
 		"$detected_omarchy" "$detected_telegram"
-	if [[ $detected_omarchy != "$TELEGRAM_THEME_EXPECTED_OMARCHY" ||
-		$detected_telegram != "$TELEGRAM_THEME_EXPECTED_TELEGRAM" ]]; then
+	if [[ ${detected_omarchy%%.*} != "$TELEGRAM_THEME_EXPECTED_OMARCHY" ||
+		${detected_telegram%%.*} != "$TELEGRAM_THEME_EXPECTED_TELEGRAM" ]]; then
 		printf 'Error: Telegram theme setup is blocked by an unsupported or unverifiable package version.\n' >&2
-		printf 'Recovery: restore the exact supported package versions or update this repository compatibility baseline, then choose Setup / refresh again.\n' >&2
+		printf 'Recovery: install supported major package versions or update this repository compatibility baseline, then choose Setup / refresh again.\n' >&2
 		return 1
 	fi
 }

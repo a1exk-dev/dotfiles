@@ -2,7 +2,7 @@
 
 set -u
 
-readonly SUPPORTED_OMARCHY=4.0.1-1
+readonly SUPPORTED_OMARCHY=4
 readonly SUPPORTED_TTFX=0.3.2
 
 fail() {
@@ -144,7 +144,7 @@ show_state() {
 	local effect mark status current
 	printf '\nSupported Omarchy: %s\nDetected Omarchy: %s\n' "$SUPPORTED_OMARCHY" "${detected_omarchy:-unknown}"
 	printf 'Supported ttfx CLI: %s\nDetected ttfx CLI: %s\n' "$SUPPORTED_TTFX" "${detected_ttfx:-unknown}"
-	[[ $detected_omarchy == "$SUPPORTED_OMARCHY" ]] ||
+	[[ ${detected_omarchy%%.*} == "$SUPPORTED_OMARCHY" ]] ||
 		printf 'Warning: Omarchy version mismatch; concrete validation still applies.\n'
 	[[ $detected_ttfx == "$SUPPORTED_TTFX" ]] ||
 		printf 'Warning: ttfx version mismatch; only tracked mapped effects still discovered are eligible.\n'

@@ -1,5 +1,5 @@
 readonly SCREENSAVER_EFFECTS_PACKAGE=screensaver-effects
-readonly SCREENSAVER_EFFECTS_SUPPORTED_OMARCHY_VERSION=4.0.1-1
+readonly SCREENSAVER_EFFECTS_SUPPORTED_OMARCHY_VERSION=${SUPPORTED_OMARCHY_VERSION:-4}
 readonly SCREENSAVER_EFFECTS_SUPPORTED_TTFX_VERSION=0.3.2-1
 readonly SCREENSAVER_EFFECTS_SOURCE_IDENTITY_SENTINEL=0000000000000000000000000000000000000000000000000000000000000000
 
@@ -79,7 +79,7 @@ screensaver_effects_print_versions() {
 	detected_ttfx=$(screensaver_effects_package_version ttfx)
 	printf 'Supported Omarchy: %s\n' "$SCREENSAVER_EFFECTS_SUPPORTED_OMARCHY_VERSION"
 	printf 'Detected Omarchy: %s\n' "$detected_omarchy"
-	if [[ $detected_omarchy != "$SCREENSAVER_EFFECTS_SUPPORTED_OMARCHY_VERSION" ]]; then
+	if [[ ${detected_omarchy%%.*} != "$SCREENSAVER_EFFECTS_SUPPORTED_OMARCHY_VERSION" ]]; then
 		printf 'Warning: screensaver-effects was verified with Omarchy %s; detected %s. Concrete validation still applies.\n' \
 			"$SCREENSAVER_EFFECTS_SUPPORTED_OMARCHY_VERSION" "$detected_omarchy"
 	fi

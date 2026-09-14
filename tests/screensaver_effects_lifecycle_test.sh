@@ -512,7 +512,7 @@ test_status_is_inactive_and_reports_versions() {
 	new_fixture
 	run_package_operation screensaver_effects_status
 	assert_eq 0 "$COMMAND_STATUS" 'status should be readable' || return 1
-	assert_contains "$COMMAND_OUTPUT" 'Supported Omarchy: 4.0.1-1' 'status should report the supported Omarchy version' || return 1
+	assert_contains "$COMMAND_OUTPUT" 'Supported Omarchy: 4' 'status should report the supported Omarchy version' || return 1
 	assert_contains "$COMMAND_OUTPUT" 'Detected ttfx: 0.3.2-1' 'status should report the detected ttfx version' || return 1
 	assert_contains "$COMMAND_OUTPUT" 'Lifecycle: inactive' 'an untouched fixture should be inactive'
 }

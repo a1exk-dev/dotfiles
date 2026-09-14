@@ -234,7 +234,7 @@ assert_setup_rejects_package_metadata_before_confirmation_and_refresh() {
 	make_fake pacman 'printf "pacman %s\n" "$*" >>"$DOTFILES_TEST_CALL_LOG"
 scenario=$(<"${DOTFILES_TEST_CALL_LOG%/*}/telegram-package-query-scenario")
 case "$scenario:$*" in
-  "mismatched:-Q omarchy") printf "omarchy 4.0.0-1\n" ;;
+  "mismatched:-Q omarchy") printf "omarchy 5.0.0-1\n" ;;
   "unavailable:-Q omarchy") printf "omarchy 4.0.1-1\n" ;;
   "unavailable:-Q telegram-desktop") exit 1 ;;
   "malformed:-Q omarchy") printf "omarchy 4.0.1-1 unexpected\n" ;;
@@ -252,7 +252,7 @@ esac'
 
 test_setup_rejects_mismatched_package_metadata_before_confirmation_and_refresh() {
 	assert_setup_rejects_package_metadata_before_confirmation_and_refresh \
-		mismatched 'omarchy 4.0.0-1; telegram-desktop 7.0.9-4'
+		mismatched 'omarchy 5.0.0-1; telegram-desktop 7.0.9-4'
 }
 
 test_setup_rejects_unavailable_package_metadata_before_confirmation_and_refresh() {

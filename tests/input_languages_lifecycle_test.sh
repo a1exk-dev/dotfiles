@@ -251,7 +251,7 @@ JSON
 	grep -Fq 'Overall: unsupported' <<<"$unsupported_status" || return 1
 	grep -Fq 'choose Remove for receipt-backed removal' <<<"$unsupported_status" || return 1
 	if apply_input_languages --yes >"$root/unsupported-apply.out" 2>&1; then return 1; fi
-	grep -Fq 'outside supported range' "$root/unsupported-apply.out" || return 1
+	grep -Fq 'outside supported Omarchy 4.x' "$root/unsupported-apply.out" || return 1
 	[[ -L $HOME/.config/hypr/hyprland.lua ]] || return 1
 	printf '%064d\n' 0 >"$root/health-build"
 	if remove_input_languages --yes >"$root/mismatched-plugin-remove.out" 2>&1; then return 1; fi
@@ -273,7 +273,7 @@ JSON
 		command rm "$@"
 	}
 	if remove_input_languages --yes >"$root/interrupted-cleanup.out" 2>&1; then return 1; fi
-	grep -Fq 'Compatibility notice: supported Omarchy 4.0.2 through 4.x; detected 5.0.0-1.' "$root/interrupted-cleanup.out" || return 1
+	grep -Fq 'Compatibility notice: supported Omarchy 4.x; detected 5.0.0-1.' "$root/interrupted-cleanup.out" || return 1
 	input_languages_inspect
 	if [[ $INPUT_LANGUAGES_CLEANUP_STATE != valid || $INPUT_LANGUAGES_ACTIVE_STATE != absent || $INPUT_LANGUAGES_PENDING_STATE != absent ]]; then
 		command cat "$root/interrupted-cleanup.out" >&2

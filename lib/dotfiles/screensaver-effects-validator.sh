@@ -2,7 +2,7 @@
 
 set -u
 
-readonly SUPPORTED_OMARCHY=4.0.1-1
+readonly SUPPORTED_OMARCHY=4
 readonly SUPPORTED_TTFX_PACKAGE=0.3.2-1
 readonly SUPPORTED_TTFX_CLI=0.3.2
 readonly OMARCHY_ROOT=${DOTFILES_SCREENSAVER_TEST_OMARCHY_ROOT:-/usr/share/omarchy}
@@ -68,7 +68,7 @@ printf 'Detected Omarchy package/CLI: %s / %s\n' "$detected_omarchy_package" "$d
 printf 'Supported ttfx package/CLI: %s / %s\n' "$SUPPORTED_TTFX_PACKAGE" "$SUPPORTED_TTFX_CLI"
 printf 'Detected ttfx package/CLI: %s / %s\n' "$detected_ttfx_package" "$detected_ttfx_cli"
 
-[[ $detected_omarchy == "$SUPPORTED_OMARCHY" && $detected_omarchy_package == "$SUPPORTED_OMARCHY" ]] ||
+[[ ${detected_omarchy%%.*} == "$SUPPORTED_OMARCHY" && ${detected_omarchy_package%%.*} == "$SUPPORTED_OMARCHY" ]] ||
 	warning "supported Omarchy is $SUPPORTED_OMARCHY; detected package/CLI is $detected_omarchy_package / $detected_omarchy"
 [[ $detected_ttfx_package == "$SUPPORTED_TTFX_PACKAGE" && $detected_ttfx_cli == "$SUPPORTED_TTFX_CLI" ]] ||
 	warning "supported ttfx package/CLI is $SUPPORTED_TTFX_PACKAGE / $SUPPORTED_TTFX_CLI; detected $detected_ttfx_package / $detected_ttfx_cli"
@@ -133,9 +133,9 @@ else
 fi
 
 declare -A source_hashes=(
-	[.local/libexec/dotfiles/screensaver-effects-selector]=d0c894345e660063bcd4aef70a35040dfb74546a96412fbe182c1d0f3bad60a6
+	[.local/libexec/dotfiles/screensaver-effects-selector]=8efcfd912c48b4202d093cc818d5e45d59743e14de34b0f23cf52dd69bcd2f6a
 	[.local/share/dotfiles/screensaver-effects/plugins/dotfiles.idle/IdleModel.js]=58226a67d5fc2f33b1a23b55cb32764a8b2091cc94c4d02af1b67f369440b9b8
-	[.local/share/dotfiles/screensaver-effects/plugins/dotfiles.idle/Service.qml]=222d9dc9ac02bb56ea2f2f56c5e81ad9cf901b45c91c5628180bbdf7ea504248
+	[.local/share/dotfiles/screensaver-effects/plugins/dotfiles.idle/Service.qml]=b05bacc8f5500e830c1f9f227399c53c4a5610754a7ad7669ff4bb91cafce2c9
 	[.local/share/dotfiles/screensaver-effects/plugins/dotfiles.idle/bin/ttfx]=823226321fd69cc4e39db88103c08713469c0ab0d3521ad393708df1d78bc61e
 	[.local/share/dotfiles/screensaver-effects/plugins/dotfiles.idle/launch-screensaver]=787332166ac0657f7abea5dc108cad9c200b64469c46a09c78cdd9b12d734651
 	[.local/share/dotfiles/screensaver-effects/plugins/dotfiles.idle/manifest.json]=364274a35801ce043bdd725e5ed8e03f9e8134b05c9515985e9f6cc089980cb0
@@ -146,7 +146,7 @@ declare -A source_hashes=(
 	[.local/share/dotfiles/screensaver-effects/plugins/dotfiles.indicators/indicators/NightLight.qml]=9a7d5dbbcf5f2b1612d673cef8fba26c53584364e12b43935f1d02a66fb404d2
 	[.local/share/dotfiles/screensaver-effects/plugins/dotfiles.indicators/indicators/Reminder.qml]=51cef554abf4b4b28692cee73add20e2c34bd9883bfed74be10b5334d73f7c7b
 	[.local/share/dotfiles/screensaver-effects/plugins/dotfiles.indicators/indicators/ScreenRecording.qml]=e336f4e14e0875fe56cb0c1008799506eb5023051c80e530b9e1f35fedbce2df
-	[.local/share/dotfiles/screensaver-effects/plugins/dotfiles.indicators/indicators/StayAwake.qml]=ef0beece94f74491f2e58b00f91433fe291bd9f12f2bed6ea1a2017268e6d93e
+	[.local/share/dotfiles/screensaver-effects/plugins/dotfiles.indicators/indicators/StayAwake.qml]=0701f2231d292af5ab500cb7be574222d0be82a7831eb8188da038f2347bdd13
 )
 for path in "${!source_hashes[@]}"; do
 	[[ -f $package/$path && ! -L $package/$path ]] || continue
@@ -184,7 +184,7 @@ require_text "$idle/Service.qml" 'function screensaver(): string' 'idle IPC scre
 require_text "$idle/Service.qml" 'dotfilesSourceIdentity: "' 'idle service does not embed its source identity'
 require_text "$idle/Service.qml" 'dotfilesInstanceId: root.dotfilesInstanceId' 'idle status lacks its runtime instance marker'
 require_text "$idle/Service.qml" 'Qt.resolvedUrl("launch-screensaver")' 'idle service does not resolve its plugin-local launcher'
-require_text "$indicators/indicators/StayAwake.qml" 'resolveEnabledId("omarchy.idle")' 'Stay Awake does not resolve the enabled idle implementation'
+require_text "$indicators/indicators/StayAwake.qml" 'firstPartyServiceFor("omarchy.idle")' 'Stay Awake does not use the sandboxed idle service proxy'
 require_text "$launcher" '"PATH=$shim_dir:$PATH"' 'launcher does not carry the terminal-scoped shim through dispatch'
 require_text "$launcher" 'DOTFILES_SCREENSAVER_ATTEMPT_DIR' 'launcher does not share one launch-attempt marker'
 require_text "$shim" 'screensaver_retain_failure' 'runtime shim lacks retained-process failure handling'
@@ -295,7 +295,7 @@ if [[ -e $deployed || -L $deployed ]]; then
 fi
 
 host_supported=0
-[[ $detected_omarchy == "$SUPPORTED_OMARCHY" && $detected_omarchy_package == "$SUPPORTED_OMARCHY" ]] && host_supported=1
+[[ ${detected_omarchy%%.*} == "$SUPPORTED_OMARCHY" && ${detected_omarchy_package%%.*} == "$SUPPORTED_OMARCHY" ]] && host_supported=1
 
 clone_surface_difference() {
 	if ((host_supported)); then
@@ -343,7 +343,7 @@ done
 
 declare -A host_hashes=(
 	[shell/plugins/services/idle/manifest.json]=bb8a5f55257dc49c2b7632304dad19aa12bbc7ad641828f09481909232f30a6f
-	[shell/plugins/services/idle/Service.qml]=c61f91b55adf864e4ce571526644727b7a2e9f672964af8098b9fd9a4913eee2
+	[shell/plugins/services/idle/Service.qml]=50f5c81e2e94fab32395a5bc3cce982e30a10ab1b3f56cc58f29055951518a51
 	[shell/plugins/services/idle/IdleModel.js]=58226a67d5fc2f33b1a23b55cb32764a8b2091cc94c4d02af1b67f369440b9b8
 	[shell/plugins/bar/widgets/Indicators.manifest.json]=3eea8a52c46d7e2436f8967abb4347d56163f7cef622caf0fe2d69bf6858d59b
 	[shell/plugins/bar/widgets/Indicators.qml]=f64fc3a122d71e6cc1f9a8b8284416df29cac070306fa6df55e9f1053fe4cf65
@@ -353,9 +353,9 @@ declare -A host_hashes=(
 	[shell/plugins/bar/indicators/Reminder.qml]=51cef554abf4b4b28692cee73add20e2c34bd9883bfed74be10b5334d73f7c7b
 	[shell/plugins/bar/indicators/ScreenRecording.qml]=e336f4e14e0875fe56cb0c1008799506eb5023051c80e530b9e1f35fedbce2df
 	[shell/plugins/bar/indicators/StayAwake.qml]=0701f2231d292af5ab500cb7be574222d0be82a7831eb8188da038f2347bdd13
-	[shell/services/PluginRegistry.qml]=63371e4224f948e5444531282ad9f7c74ca2e578470b549f4c6b898c3a15c50f
-	[shell/shell.qml]=9f1db77dcc3c111ceccc860ac472d19b35d385958a63d270ea51e413ab86f1f0
-	[shell/plugins/menu/Menu.qml]=7fef6394cce563f188324386738a55e3bde36187ba6d1341ac2d4d46e1879df9
+	[shell/services/PluginRegistry.qml]=8466127c53037b80b582544610b0bdf78a86764e4f037a3b9ce360d107359803
+	[shell/shell.qml]=4a4b7694e5b9e0bd952ce0efa2d6dc2cea44cdfa98cc2f442e40fe41cbc1beab
+	[shell/plugins/menu/Menu.qml]=0154d0ec3855fbb48aa06eaa724a19f3c07c377494d4a3de65daed2d7d9100e3
 	[bin/omarchy-plugin-clone]=0a5d5cd534443262b1cbade2e4f1d787294fa72b9fb1fb6b3719215b4471a4ac
 	[bin/omarchy-plugin-enable]=750c18dd96dd75e4811215e3fd13f71f5a11aff8e588b4e21688cdc5dd7c62b5
 	[bin/omarchy-plugin-disable]=394414db2d5fd393080f013ba301cf44d81c7bcea7046f7b8c5e34faf1acde15
@@ -372,7 +372,7 @@ declare -A host_hashes=(
 	[default/alacritty/screensaver.toml]=b47ca28f13c7409f17f0938f6e50eb854509b0c1152e05ecde4f59cc2418cf22
 	[default/ghostty/screensaver]=cd14aa796193660808bbd3341d12f5cc69937698399f267015ee2010f627a865
 	[default/foot/screensaver.ini]=053150146bccb101eb2f14e0622376cff4d62563c3b1a16ae7dd8668be7ac51c
-	[default/omarchy/omarchy-menu.jsonc]=42eafef634bb52c4f23b191ec597f442e35e139232ccded6cecba8f7dbb6f648
+	[default/omarchy/omarchy-menu.jsonc]=8c791cfc457d6c50b90a6636a6f28c9415a2fa6e4edf84826906457b75649689
 	[default/hypr/apps/system.lua]=c0c5a45b7abadb22224089b17381ba7b455a5c5d36f770930fb044d9402b5ef3
 )
 for path in "${!host_hashes[@]}"; do

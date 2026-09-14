@@ -1,4 +1,4 @@
-readonly INPUT_LANGUAGES_MIN_OMARCHY=4.0.2
+readonly INPUT_LANGUAGES_SUPPORTED_OMARCHY=${SUPPORTED_OMARCHY_VERSION:-4}
 readonly INPUT_LANGUAGES_STOCK_WIDGET=omarchy.keyboard-layout
 readonly INPUT_LANGUAGES_WIDGET=dotfiles.keyboard-layout
 readonly INPUT_LANGUAGES_WIDGET_FILES=(KeyboardLayout.qml KeyboardLayoutModel.js manifest.json)
@@ -193,7 +193,7 @@ input_languages_detect_support() {
 	local numeric=${INPUT_LANGUAGES_VERSION%%-*}
 	numeric=${numeric##* }
 	INPUT_LANGUAGES_SUPPORTED=false
-	if [[ $numeric =~ ^4([.][0-9]+){1,2}$ ]] && version_at_least "$numeric" "$INPUT_LANGUAGES_MIN_OMARCHY"; then
+	if [[ $numeric =~ ^([0-9]+)([.][0-9]+){1,2}$ && ${BASH_REMATCH[1]} == "$INPUT_LANGUAGES_SUPPORTED_OMARCHY" ]]; then
 		INPUT_LANGUAGES_SUPPORTED=true
 	fi
 }
@@ -201,8 +201,8 @@ input_languages_detect_support() {
 input_languages_report_mutation_compatibility() {
 	[[ $INPUT_LANGUAGES_VERSION != unknown ]] || input_languages_detect_support
 	[[ $INPUT_LANGUAGES_SUPPORTED == true ]] && return 0
-	printf 'Compatibility notice: supported Omarchy %s through 4.x; detected %s. Receipt-backed recovery and Remove remain available when current inspection proves them safe.\n' \
-		"$INPUT_LANGUAGES_MIN_OMARCHY" "$INPUT_LANGUAGES_VERSION"
+	printf 'Compatibility notice: supported Omarchy %s.x; detected %s. Receipt-backed recovery and Remove remain available when current inspection proves them safe.\n' \
+		"$INPUT_LANGUAGES_SUPPORTED_OMARCHY" "$INPUT_LANGUAGES_VERSION"
 }
 
 input_languages_transaction_valid() {
@@ -1568,7 +1568,7 @@ input_languages_status() {
 	if [[ $INPUT_LANGUAGES_PLUGIN_HEALTH_VALID == true ]]; then running_state=healthy; fi
 	running_compatibility=$(input_languages_running_hash 2>/dev/null) || running_compatibility=unavailable
 	printf 'Overall: %s\n' "$overall"
-	printf 'Support: required Omarchy %s through 4.x; detected %s; supported=%s\n' "$INPUT_LANGUAGES_MIN_OMARCHY" "$INPUT_LANGUAGES_VERSION" "$INPUT_LANGUAGES_SUPPORTED"
+	printf 'Support: required Omarchy %s.x; detected %s; supported=%s\n' "$INPUT_LANGUAGES_SUPPORTED_OMARCHY" "$INPUT_LANGUAGES_VERSION" "$INPUT_LANGUAGES_SUPPORTED"
 	printf 'Installed: package=%s; active-receipt=%s\n' "$installed_state" "$INPUT_LANGUAGES_ACTIVE_STATE"
 	printf 'Running: plugin=%s; compositor-compatibility=%s\n' "$running_state" "$running_compatibility"
 	printf 'Configured: tree=%s; Hyprland=%s\n' "$INPUT_LANGUAGES_TREE_STATE" "$config_state"
@@ -2338,7 +2338,7 @@ input_languages_apply_plan() {
 		printf 'Plan: record the absent pre-Apply tree under %s/backups so Remove can restore that absence exactly.\n' "$INPUT_LANGUAGES_STATE"
 	fi
 	printf 'Plan: fixed desktop layouts US then Russian, empty variants, and no XKB group-toggle option.\n'
-	printf 'Plan: verify Omarchy 4.0.2-4.x, packaged defaults, plugin interfaces, compiler, headers, complete ABI hash, canonical no-follow paths, lifecycle evidence, and Stow ownership.\n'
+	printf 'Plan: verify Omarchy 4.x, packaged defaults, plugin interfaces, compiler, headers, complete ABI hash, canonical no-follow paths, lifecycle evidence, and Stow ownership.\n'
 	if [[ $packages_shown != true ]]; then print_arch_package_plan; fi
 	printf 'Plan: validate source, build or reuse one immutable exact-stack plugin artifact containing the complete flag-widget clone, and retain build diagnostics.\n'
 	printf 'Plan: atomically publish pending recovery evidence, pause autoreload, and link every package file with Stow --no-folding.\n'
@@ -2405,7 +2405,7 @@ input_languages_prepare_apply_v2() {
 		printf 'Apply blocked: active lifecycle evidence is invalid.\n' >&2
 		return 1
 	fi
-	[[ $INPUT_LANGUAGES_SUPPORTED == true ]] || { printf 'Apply blocked: Omarchy %s is outside supported range %s through 4.x.\n' "$INPUT_LANGUAGES_VERSION" "$INPUT_LANGUAGES_MIN_OMARCHY" >&2; return 1; }
+	[[ $INPUT_LANGUAGES_SUPPORTED == true ]] || { printf 'Apply blocked: Omarchy %s is outside supported Omarchy %s.x.\n' "$INPUT_LANGUAGES_VERSION" "$INPUT_LANGUAGES_SUPPORTED_OMARCHY" >&2; return 1; }
 	if input_languages_exact_noop; then INPUT_LANGUAGES_PREPARED_RESULT=noop; return 0; fi
 	if [[ $INPUT_LANGUAGES_TREE_STATE == conflict || ( $INPUT_LANGUAGES_TREE_STATE == linked && $INPUT_LANGUAGES_ACTIVE_STATE != valid ) ]]; then
 		printf 'Apply blocked: complete Hyprland tree state is %s and cannot be safely adopted.\n' "$INPUT_LANGUAGES_TREE_STATE" >&2
