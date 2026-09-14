@@ -147,18 +147,13 @@
 	}, {
 		"name": "hyprland",
 		"path": "config/hyprland",
-		"description": "Portable US and Russian input languages with synchronized physical keyboards and flag indicator",
+		"description": "Hyprland user configuration with Omarchy-native US and Russian layouts switched by Left Alt + Right Alt",
 		"dependencies": [],
-		"arch_packages": ["hyprland", "gcc", "make", "pkgconf", "binutils", "lua", "fcitx5", "systemd-libs", "openssl"],
-		"prerequisites": ["omarchy", "hyprctl", "flock"],
-		"validators": [
-			"bash lib/dotfiles/input-languages-validator.sh"
-		],
-		"documentation": "docs/input-languages.md",
+		"arch_packages": ["hyprland"],
+		"prerequisites": ["hyprctl"],
+		"validators": [],
 		"cleanup": [
-			"Removal restores the verified complete pre-Apply Hyprland tree as regular files",
-			"Removal restores the exact pre-Apply stock keyboard-layout bar entry or its absence and removes the immutable live flag-widget link",
-			"Repository plugin source, Arch build packages, backups, archived lifecycle evidence, and diagnostics remain in place"
+			"Removal unlinks the repository-managed ~/.config/hypr files; Omarchy defaults apply until user files are restored"
 		]
 	}]
 }

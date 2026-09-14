@@ -24,14 +24,9 @@ readonly SUITES=(
 	screensaver_effects_mapping_test.sh
 	screensaver_effects_selector_test.sh
 	screensaver_effects_lifecycle_test.sh
-	input_languages_artifact_test.sh
 	wallpaper_validator_test.sh
 	wallpaper_curation_test.sh
 	wallpaper_lifecycle_test.sh
-	input_languages_structural_test.sh
-	input_languages_plugin_test.sh
-	input_languages_lifecycle_test.sh
-	input_languages_v3_lifecycle_test.sh
 	wizard_test.sh
 )
 

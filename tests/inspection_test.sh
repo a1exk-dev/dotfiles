@@ -466,12 +466,9 @@ test_catalog_declares_package_specific_arch_requirements() {
 		'screensaver-effects should retain its position after hyprland is appended' || return 1
 	assert_eq 'hyprland' "$(jq -r '.packages[-1].name' "$FIXTURE_REPO/packages.json")" \
 		'hyprland should be appended without renumbering existing packages' || return 1
-	assert_eq '["hyprland","gcc","make","pkgconf","binutils","lua","fcitx5","systemd-libs","openssl"]' \
+	assert_eq '["hyprland"]' \
 		"$(jq -c '.packages[] | select(.name == "hyprland") | .arch_packages' "$FIXTURE_REPO/packages.json")" \
-		'hyprland should declare the direct and Fcitx exact-stack requirements' || return 1
-	assert_eq 'docs/input-languages.md' \
-		"$(jq -r '.packages[] | select(.name == "hyprland") | .documentation' "$FIXTURE_REPO/packages.json")" \
-		'hyprland should reference its package guide' || return 1
+		'hyprland should declare only Hyprland as a plain Stow package' || return 1
 	assert_eq 'config/screensaver-effects' \
 		"$(jq -r '.packages[] | select(.name == "screensaver-effects") | .path' "$FIXTURE_REPO/packages.json")" \
 		'screensaver-effects should use its dedicated Stow package' || return 1

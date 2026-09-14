@@ -126,8 +126,6 @@ status() {
 		[[ -z $documentation ]] || printf '    Documentation: %s\n' "$documentation"
 		if [[ $package == screensaver-effects ]]; then
 			screensaver_effects_status
-		elif [[ $package == hyprland ]]; then
-			input_languages_status
 		fi
 	done < <(jq -r '.packages[].name' "$PACKAGE_CATALOG")
 }
@@ -203,11 +201,6 @@ check() {
 			missing=true
 		fi
 	fi
-	if jq -e --arg package hyprland 'any(.packages[]; .name == $package)' "$PACKAGE_CATALOG" >/dev/null; then
-		if ! input_languages_check; then
-			missing=true
-		fi
-	fi
 	[[ $missing == false ]]
 }
 report_normal_target_conflicts() {
@@ -224,10 +217,6 @@ report_normal_target_conflicts() {
 
 simulate_apply_package() {
 	local package=$1
-	if [[ $package == hyprland ]]; then
-		printf 'Error: hyprland must use the transactional Input Languages lifecycle.\n' >&2
-		return 2
-	fi
 	printf 'Plan simulation: apply %s\n' "$package"
 	report_normal_target_conflicts "$package"
 	if ! stow --no-folding --simulate --verbose=2 --dir "$REPOSITORY_ROOT/config" --target "$HOME" "$package"; then
@@ -238,10 +227,6 @@ simulate_apply_package() {
 
 apply_one_package() {
 	local package=$1
-	if [[ $package == hyprland ]]; then
-		printf 'Error: hyprland must use Settings -> Input Languages -> Apply.\n' >&2
-		return 2
-	fi
 	local package_json
 	package_json=$(jq -c --arg package "$package" '.packages[] | select(.name == $package)' "$PACKAGE_CATALOG")
 
@@ -307,11 +292,6 @@ migrate_target() {
 	if [[ $package == screensaver-effects ]]; then
 		printf 'Error: screensaver-effects cannot use generic target migration.\n' >&2
 		printf 'Recovery: choose Migrate competing screensaver clones in the Dotfiles wizard.\n' >&2
-		return 2
-	fi
-	if [[ $package == hyprland ]]; then
-		printf 'Error: hyprland cannot use generic target migration.\n' >&2
-		printf 'Recovery: choose Settings -> Input Languages -> Apply.\n' >&2
 		return 2
 	fi
 
@@ -560,26 +540,6 @@ remove_package() {
 	if [[ -z $package ]]; then
 		printf 'Choose a package through Remove Stow package in the Dotfiles wizard.\n' >&2
 		return 2
-	fi
-	if [[ $package == hyprland ]]; then
-		local input_option input_approved=false input_interactive=false
-		for input_option in "$@"; do
-			case $input_option in
-				--yes) input_approved=true ;;
-				--interactive) input_interactive=true ;;
-				--allow-omarchy-mismatch) ;;
-				*) printf 'Error: unknown remove option: %s\n' "$input_option" >&2; return 2 ;;
-			esac
-		done
-		if [[ $input_approved == true ]]; then
-			remove_input_languages --yes
-		elif [[ $input_interactive == true ]]; then
-			remove_input_languages
-		else
-			printf 'Error: remove requires explicit approval with --yes\n' >&2
-			return 2
-		fi
-		return
 	fi
 
 	local approved=false
@@ -857,9 +817,8 @@ apply_packages() {
 	fi
 	resolve_dependency_order "$@" || return 1
 	local -a selected=("$@") packages=("${DEPENDENCY_ORDER[@]}")
-	local package prerequisite missing=false selected_label input_languages_planned_result=''
+	local package prerequisite missing=false selected_label
 	for package in "${packages[@]}"; do
-		[[ $package != hyprland ]] || continue
 		while IFS= read -r prerequisite; do
 			if ! command -v "$prerequisite" >/dev/null 2>&1; then
 				printf 'Missing package prerequisite for %s: %s\n' "$package" "$prerequisite" >&2
@@ -871,32 +830,14 @@ apply_packages() {
 		phase_error plan "${selected[0]}" 'install the listed prerequisite commands, then choose Apply Stow packages in the Dotfiles wizard'
 		return 1
 	fi
-	local -a generic_packages=()
-	for package in "${packages[@]}"; do [[ $package == hyprland ]] || generic_packages+=("$package"); done
-	if ((${#generic_packages[@]} > 0)) && ! validator_executables_available "${generic_packages[@]}"; then
+	if ! validator_executables_available "${packages[@]}"; then
 		phase_error plan "${selected[0]}" 'install each declared validator executable, then choose Apply Stow packages in the Dotfiles wizard'
 		return 1
 	fi
-	local includes_screensaver_effects=false includes_hyprland=false
+	local includes_screensaver_effects=false
 	for package in "${packages[@]}"; do
 		[[ $package != screensaver-effects ]] || includes_screensaver_effects=true
-		[[ $package != hyprland ]] || includes_hyprland=true
 	done
-	if [[ $includes_hyprland == true ]]; then
-		input_languages_prepare_apply || {
-			phase_error plan hyprland 'resolve the reported Input Languages lifecycle conflict, then choose Apply Stow packages in the Dotfiles wizard'
-			return 1
-		}
-		input_languages_planned_result=$INPUT_LANGUAGES_PREPARED_RESULT
-		case $INPUT_LANGUAGES_PREPARED_RESULT in
-			pending) input_languages_reconcile_pending; return ;;
-			cleanup) input_languages_reconcile_cleanup; return ;;
-		esac
-		if [[ $INPUT_LANGUAGES_PREPARED_RESULT == noop && ${#packages[@]} -eq 1 ]]; then
-			apply_input_languages
-			return
-		fi
-	fi
 	for package in "${packages[@]}"; do
 		if [[ $package == screensaver-effects ]]; then
 			screensaver_effects_prepare_apply false || {
@@ -905,12 +846,8 @@ apply_packages() {
 			}
 		fi
 	done
-	local -a package_plan_packages=()
-	for package in "${packages[@]}"; do
-		[[ $package == hyprland && $input_languages_planned_result == noop ]] || package_plan_packages+=("$package")
-	done
-	plan_arch_packages "${package_plan_packages[@]}"
-	for package in "${packages[@]}"; do [[ $package == hyprland ]] || simulate_apply_package "$package" || return 1; done
+	plan_arch_packages "${packages[@]}"
+	for package in "${packages[@]}"; do simulate_apply_package "$package" || return 1; done
 	printf 'Plan: apply packages in dependency order:\n'
 	local position=1 candidate package_json
 	for package in "${packages[@]}"; do
@@ -921,15 +858,6 @@ apply_packages() {
 	done
 	print_arch_package_plan
 	for package in "${packages[@]}"; do
-		if [[ $package == hyprland ]]; then
-			if [[ $input_languages_planned_result == noop ]]; then
-				printf 'Plan: hyprland is an exact no-op; preserve its active language and perform no Input Languages mutation.\n'
-			else
-				input_languages_inspect
-				input_languages_apply_plan true
-			fi
-			continue
-		fi
 		printf 'Plan: apply %s from config/%s to %s\n' "$package" "$package" "$HOME"
 		package_json=$(jq -c --arg package "$package" '.packages[] | select(.name == $package)' "$PACKAGE_CATALOG")
 		printf 'Package %s prerequisites: %s\n' "$package" "$(jq -r '.prerequisites | if length == 0 then "none" else join(", ") end' <<<"$package_json")"
@@ -952,17 +880,7 @@ apply_packages() {
 	verify_arch_packages 'Apply Stow packages' || return 1
 	if [[ $ARCH_PACKAGES_INSTALLED == true ]]; then
 		printf 'Phase: repeat conflict simulation after Arch package installation\n'
-		for package in "${packages[@]}"; do [[ $package == hyprland ]] || simulate_apply_package "$package" || return 1; done
-	fi
-	if [[ $includes_hyprland == true ]]; then
-		input_languages_prepare_apply || {
-			phase_error apply hyprland 'state changed after confirmation; choose Settings -> Input Languages -> Apply'
-			return 1
-		}
-		[[ $INPUT_LANGUAGES_PREPARED_RESULT != pending && $INPUT_LANGUAGES_PREPARED_RESULT != cleanup ]] || {
-			printf 'Package state: hyprland: interrupted lifecycle now requires recovery or cleanup.\n' >&2
-			return 1
-		}
+		for package in "${packages[@]}"; do simulate_apply_package "$package" || return 1; done
 	fi
 	if [[ $includes_screensaver_effects == true ]]; then
 		screensaver_effects_preflight_common false || {
@@ -971,18 +889,6 @@ apply_packages() {
 		}
 	fi
 	for package in "${packages[@]}"; do
-		if [[ $package == hyprland ]]; then
-			local -a input_language_options=(--yes --packages-prepared)
-			if [[ $input_languages_planned_result == noop ]]; then input_language_options+=(--expect-noop); fi
-			if apply_input_languages "${input_language_options[@]}"; then
-				printf 'Package state: %s: succeeded\n' "$package"
-			else
-				printf 'Package state: %s: failed\n' "$package" >&2
-				printf 'Recovery: choose Settings -> Input Languages -> Apply.\n' >&2
-				return 1
-			fi
-			continue
-		fi
 		if apply_one_package "$package"; then
 			if [[ $package == screensaver-effects ]] && ! screensaver_effects_activate; then
 				printf 'Package state: %s: Stow linked, lifecycle inactive\n' "$package" >&2
