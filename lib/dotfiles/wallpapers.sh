@@ -666,7 +666,22 @@ wallpaper_library_snapshot() {
 		snapshot+="${entry#"$WALLPAPER_LIBRARY_ROOT"}|$metadata"
 		[[ $(jq -r '.type' <<<"$metadata") != regular ]] || snapshot+="|$(wallpaper_file_identity "$entry")"
 		snapshot+=';'
-	done < <(find "$WALLPAPER_LIBRARY_ROOT" -mindepth 1 -print0 | sort -z)
+	done < <(find "$WALLPAPER_LIBRARY_ROOT" -mindepth 1 -print0 | LC_ALL=C sort -z)
+	printf '%s\n' "$snapshot"
+}
+
+wallpaper_library_snapshot_fast() {
+	local entry snapshot='' metadata
+	if [[ ! -e $WALLPAPER_LIBRARY_ROOT && ! -L $WALLPAPER_LIBRARY_ROOT ]]; then
+		printf 'absent\n'
+		return 0
+	fi
+	while IFS= read -r -d '' entry; do
+		metadata=$(wallpaper_files lstat "$entry") || return 1
+		snapshot+="${entry#"$WALLPAPER_LIBRARY_ROOT"}|$metadata"
+		[[ $(jq -r '.type' <<<"$metadata") != regular ]] || snapshot+="|$(wallpaper_file_identity "$entry")"
+		snapshot+=';'
+	done < <(find "$WALLPAPER_LIBRARY_ROOT" -mindepth 1 -print0 | LC_ALL=C sort -z)
 	printf '%s\n' "$snapshot"
 }
 
@@ -1515,12 +1530,14 @@ wallpaper_write_state_file() {
 }
 
 wallpaper_write_state_file_verified() {
-	local kind=$1 json=$2 destination identity
+	local kind=$1 json=$2 destination identity content
 	WALLPAPER_PUBLISHED_STATE_IDENTITY=''
 	wallpaper_write_state_file "$@" || return 1
-	wallpaper_verify_state_file "$kind" "$json" || return 1
 	destination=$(wallpaper_state_file_path "$kind") || return 1
 	identity=$WALLPAPER_PUBLISHED_STATE_IDENTITY
+	wallpaper_state_file_is_secure "$destination" || return 1
+	content=$(wallpaper_read_file_stable "$destination" "$identity") || return 1
+	[[ $content == "$json" ]] || return 1
 	wallpaper_identity_json_is_valid "$identity" 0600 || return 1
 	wallpaper_identity_matches "$destination" "$identity" || return 1
 	case $kind in
@@ -1554,14 +1571,8 @@ wallpaper_remove_state_file_verified() {
 }
 
 wallpaper_update_pending_evidence() {
-	local updated=$1 domain expected_identity
+	local updated=$1 expected_identity
 	[[ -n $WALLPAPER_PENDING_JSON ]] || return 1
-	domain=$(jq -r '.domain' <<<"$updated") || return 1
-	case $domain in
-		curation) wallpaper_validate_curation_pending "$updated" || return 1 ;;
-		deployment) wallpaper_validate_deployment_pending "$updated" || return 1 ;;
-		*) return 1 ;;
-	esac
 	expected_identity=$WALLPAPER_PENDING_IDENTITY
 	[[ -n $expected_identity ]] || return 1
 	wallpaper_write_state_file_verified pending "$updated" "$expected_identity" || return 1
@@ -2653,6 +2664,7 @@ wallpaper_relative_target_is_safe() {
 }
 
 wallpaper_validate_active_json() {
+	local LC_ALL=C
 	local json=$1 path digest directory previous=''
 	jq -e --argjson schema "$WALLPAPER_SCHEMA_VERSION" '
 		type == "object" and keys == ["activated_at","created_directories","created_root","kind","schema_version","targets","transaction_id"] and
@@ -2899,9 +2911,9 @@ wallpaper_build_desired_inventory() {
 			item=$(jq -cn --arg path "$relative" --arg digest "$digest" --argjson source_identity "$identity" \
 				'{path:$path,digest:$digest,source_identity:$source_identity}') || return 1
 			desired=$(jq -c --argjson item "$item" '. + [$item]' <<<"$desired") || return 1
-		done < <(find "$WALLPAPER_LIBRARY_ROOT" -mindepth 2 -maxdepth 2 -type f -print0 | sort -z)
+		done < <(find "$WALLPAPER_LIBRARY_ROOT" -mindepth 2 -maxdepth 2 -type f -print0 | LC_ALL=C sort -z)
 	fi
-	WALLPAPER_DESIRED_JSON=$desired
+	WALLPAPER_DESIRED_JSON=$(jq -c 'sort_by(.path)' <<<"$desired")
 }
 
 wallpaper_receipt_target_is_exact() {
@@ -3424,7 +3436,7 @@ wallpaper_delete_live_file_verified() {
 wallpaper_generate_active_receipt() {
 	local transaction=$1 activated targets
 	activated=$(wallpaper_now) || return 1
-	targets=$(jq -c '[.[] | {path,digest}]' <<<"$WALLPAPER_DESIRED_JSON") || return 1
+	targets=$(jq -c 'sort_by(.path) | [.[] | {path,digest}]' <<<"$WALLPAPER_DESIRED_JSON") || return 1
 	jq -cn --argjson schema "$WALLPAPER_SCHEMA_VERSION" --arg transaction "$transaction" --arg activated "$activated" \
 		--argjson targets "$targets" --argjson created_root "$WALLPAPER_NEXT_CREATED_ROOT" \
 		--argjson directories "$WALLPAPER_NEXT_CREATED_DIRECTORIES" \
@@ -3665,7 +3677,7 @@ wallpaper_recover_deployment() {
 
 apply_wallpapers() {
 	WALLPAPER_OPERATION_CONTEXT=$WALLPAPER_OPERATION_CONTEXT_ORDINARY
-	local argument state_status plan_before fingerprint_before library_before transaction item action relative digest source outcome=0 active next_active=null expected_identity expected_active published_active active_stage active_stage_identity
+	local argument state_status plan_before fingerprint_before library_before library_after transaction item action relative digest source outcome=0 active next_active=null expected_identity expected_active published_active active_stage active_stage_identity
 	WALLPAPER_OPTION_YES=false WALLPAPER_OPTION_OVERRIDE=false
 	for argument in "$@"; do wallpaper_parse_common_flag "$argument" || { printf 'Error: unknown apply_wallpapers option: %s\n' "$argument" >&2; return 2; }; done
 	if wallpaper_recover_before_preflight "$WALLPAPER_OPTION_YES" "$WALLPAPER_OPTION_OVERRIDE"; then return 0; else state_status=$?; fi
@@ -3673,7 +3685,7 @@ apply_wallpapers() {
 	wallpaper_initialize_paths || return 1
 	if ! wallpaper_inspect_state; then printf 'Error: invalid wallpaper state blocks Apply: %s\n' "$WALLPAPER_STATE_ERROR" >&2; return 1; fi
 	wallpaper_build_desired_inventory || { printf 'Error: %s\n' "$WALLPAPER_PLAN_ERROR" >&2; return 1; }
-	library_before=$(wallpaper_library_snapshot) || return 1
+	library_before=$(wallpaper_library_snapshot_fast) || return 1
 	wallpaper_build_apply_plan || { printf 'Error: %s\n' "$WALLPAPER_PLAN_ERROR" >&2; return 1; }
 	if [[ $(jq 'length' <<<"$WALLPAPER_PLAN_JSON") -eq 0 ]]; then
 		if [[ -z $WALLPAPER_ACTIVE_JSON && $(jq 'length' <<<"$WALLPAPER_DESIRED_JSON") -eq 0 ]]; then
@@ -3696,9 +3708,15 @@ apply_wallpapers() {
 	if ! wallpaper_recheck_approved_omarchy; then wallpaper_release_lock; return 1; fi
 	if ! wallpaper_inspect_state; then printf 'Error: invalid wallpaper state blocks Apply: %s\n' "$WALLPAPER_STATE_ERROR" >&2; wallpaper_release_lock; return 1; fi
 	if [[ -n $WALLPAPER_PENDING_JSON || -n $WALLPAPER_RECOVERY_JSON ]]; then wallpaper_recover_interrupted; outcome=$?; wallpaper_release_lock; return "$outcome"; fi
-	wallpaper_build_desired_inventory || { wallpaper_release_lock; return 1; }
+	library_after=$(wallpaper_library_snapshot_fast) || { wallpaper_release_lock; return 1; }
+	if [[ $library_after != "$library_before" ]]; then
+		printf 'Error: confirmed wallpaper Apply plan changed before mutation.\n' >&2
+		wallpaper_release_lock
+		return 1
+	fi
+	# Reuse WALLPAPER_DESIRED_JSON; snapshot unchanged so desired inventory is still valid (saves 25s ImageMagick validation)
 	wallpaper_build_apply_plan || { printf 'Error: %s\n' "$WALLPAPER_PLAN_ERROR" >&2; wallpaper_release_lock; return 1; }
-	if [[ $(wallpaper_library_snapshot) != "$library_before" || $(jq -Sc . <<<"$WALLPAPER_PLAN_JSON") != "$plan_before" ||
+	if [[ $(jq -Sc . <<<"$WALLPAPER_PLAN_JSON") != "$plan_before" ||
 		$WALLPAPER_DEPLOYMENT_FINGERPRINT != "$fingerprint_before" ]]; then
 		printf 'Error: confirmed wallpaper Apply plan changed before mutation.\n' >&2
 		wallpaper_release_lock
