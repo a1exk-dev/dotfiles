@@ -142,6 +142,7 @@ wizard_run_action() {
 		wallpapers) manage_wallpapers ;;
 		wallpapers-apply) apply_wallpapers ;;
 		wallpapers-remove) remove_wallpapers ;;
+		shell-layout) apply_shell_layout ;;
 		screensaver-effects) manage_screensaver_effects ;;
 		screensaver-effects-migrate) migrate_screensaver_effects --interactive ;;
 		settings) manage_settings ;;
@@ -285,8 +286,9 @@ wizard() {
 		'Manage wallpapers'
 		'Apply wallpapers'
 		'Remove deployed wallpapers'
+		'Apply Shell layout'
 	)
-	local -a actions=(guided status check apply migrate remove prerequisites cleanup applications skills skills-update modem brave telegram-theme wallpapers wallpapers-apply wallpapers-remove)
+	local -a actions=(guided status check apply migrate remove prerequisites cleanup applications skills skills-update modem brave telegram-theme wallpapers wallpapers-apply wallpapers-remove shell-layout)
 	screensaver_effects_set_paths
 	screensaver_effects_find_competing_clones
 	if ((${#SCREENSAVER_EFFECTS_COMPETING_CLONES[@]} > 0)); then

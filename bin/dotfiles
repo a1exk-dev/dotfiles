@@ -28,6 +28,8 @@ source "$DOTFILES_ENTRY_ROOT/lib/dotfiles/power-policy.sh"
 source "$DOTFILES_ENTRY_ROOT/lib/dotfiles/telegram-theme.sh"
 # shellcheck source=../lib/dotfiles/wallpapers.sh
 source "$DOTFILES_ENTRY_ROOT/lib/dotfiles/wallpapers.sh"
+# shellcheck source=../lib/dotfiles/shell-layout.sh
+source "$DOTFILES_ENTRY_ROOT/lib/dotfiles/shell-layout.sh"
 # shellcheck source=../lib/dotfiles/wizard.sh
 source "$DOTFILES_ENTRY_ROOT/lib/dotfiles/wizard.sh"
 
@@ -37,10 +39,11 @@ elif (($# == 2)) && [[ $1 == --action ]]; then
 	wizard_run_action "$2"
 else
 	printf '%s\n' \
-		'Usage: bin/dotfiles [--action <guided|status|check|apply|migrate|remove|prerequisites|cleanup|applications|skills|skills-update|modem|brave|telegram-theme|wallpapers|wallpapers-apply|wallpapers-remove|screensaver-effects|screensaver-effects-migrate|power-policy|settings|input-languages>]' \
+		'Usage: bin/dotfiles [--action <guided|status|check|apply|migrate|remove|prerequisites|cleanup|applications|skills|skills-update|modem|brave|telegram-theme|wallpapers|wallpapers-apply|wallpapers-remove|shell-layout|screensaver-effects|screensaver-effects-migrate|power-policy|settings|input-languages>]' \
 		'  wallpapers: curate the repository Wallpaper library' \
 		'  wallpapers-apply: deploy the Wallpaper library' \
 		'  wallpapers-remove: remove receipt-owned deployed wallpapers' \
+		'  shell-layout: place the language indicator before the tray through Omarchy' \
 		'  screensaver-effects: manage and preview the deployed effect allowlist' \
 		'  screensaver-effects-migrate: migrate competing Omarchy idle or Indicators clones' \
 		'  input-languages: manage portable US and Russian desktop input' >&2

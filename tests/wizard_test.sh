@@ -96,14 +96,14 @@ test_top_level_menu_starts_with_guided_setup() {
 	run_dotfiles "$FIXTURE_ROOT"
 
 	assert_eq 0 "$COMMAND_STATUS" 'an empty menu choice should safely exit' || return 1
-	assert_contains "$COMMAND_OUTPUT" $'  1. Guided setup\n  2. Package status\n  3. Run structural checks\n  4. Apply Stow packages\n  5. Migrate existing target\n  6. Remove Stow package\n  7. Prepare prerequisites\n  8. Clean up Omarchy applications\n  9. Install optional applications\n  10. Install pinned global skills\n  11. Update pinned global skills\n  12. Recover ZTE USB modem\n  13. Manage Brave policy\n  14. Manage Telegram theme\n  15. Manage wallpapers\n  16. Apply wallpapers\n  17. Remove deployed wallpapers\n  18. Manage screensaver effects\n  19. Manage laptop power policy\n  20. Settings\n  21. Exit' \
+	assert_contains "$COMMAND_OUTPUT" $'  1. Guided setup\n  2. Package status\n  3. Run structural checks\n  4. Apply Stow packages\n  5. Migrate existing target\n  6. Remove Stow package\n  7. Prepare prerequisites\n  8. Clean up Omarchy applications\n  9. Install optional applications\n  10. Install pinned global skills\n  11. Update pinned global skills\n  12. Recover ZTE USB modem\n  13. Manage Brave policy\n  14. Manage Telegram theme\n  15. Manage wallpapers\n  16. Apply wallpapers\n  17. Remove deployed wallpapers\n  18. Apply Shell layout\n  19. Manage screensaver effects\n  20. Manage laptop power policy\n  21. Settings\n  22. Exit' \
 		'optional applications should follow cleanup and later actions should remain available' || return 1
 	assert_contains "$COMMAND_OUTPUT" 'No action selected.' 'no action should be selected by default'
 }
 
 test_input_languages_menu_hierarchy_and_make_route() {
 	new_fixture
-	DOTFILES_TEST_INPUT='20\n1\n4\n2\n21\n' run_dotfiles "$FIXTURE_ROOT"
+	DOTFILES_TEST_INPUT='21\n1\n4\n2\n22\n' run_dotfiles "$FIXTURE_ROOT"
 	assert_eq 0 "$COMMAND_STATUS" 'Settings and Input Languages Back should each return one level' || return 1
 	assert_contains "$COMMAND_OUTPUT" $'Settings\n  1. Input Languages\n  2. Back' 'Settings should contain only Input Languages and Back' || return 1
 	assert_contains "$COMMAND_OUTPUT" $'Input Languages\n  1. Status\n  2. Apply\n  3. Remove\n  4. Back' 'Input Languages should expose the settled operation order' || return 1
@@ -217,7 +217,7 @@ test_legacy_and_invalid_entry_forms_are_rejected() {
 	run_dotfiles "$FIXTURE_ROOT" status
 	assert_eq 2 "$COMMAND_STATUS" 'a removed public route should be rejected' || return 1
 	assert_contains "$COMMAND_OUTPUT" 'Usage: bin/dotfiles [--action' 'invalid entry use should explain the supported interface' || return 1
-	assert_contains "$COMMAND_OUTPUT" 'applications|skills|skills-update|modem|brave|telegram-theme|wallpapers|wallpapers-apply|wallpapers-remove|screensaver-effects|screensaver-effects-migrate|power-policy|settings|input-languages>]' \
+	assert_contains "$COMMAND_OUTPUT" 'applications|skills|skills-update|modem|brave|telegram-theme|wallpapers|wallpapers-apply|wallpapers-remove|shell-layout|screensaver-effects|screensaver-effects-migrate|power-policy|settings|input-languages>]' \
 		'usage should advertise every existing action and the Input Languages routes' || return 1
 	assert_contains "$COMMAND_OUTPUT" 'wallpapers-apply: deploy the Wallpaper library' \
 		'usage should distinguish deployment Apply from curation' || return 1
@@ -290,7 +290,7 @@ test_power_policy_public_action_preselection_dispatches() {
 
 test_power_policy_menu_selection_dispatches_to_four_choice_manager() {
 	new_fixture
-	DOTFILES_TEST_INPUT='19\n4\n' run_dotfiles "$FIXTURE_ROOT"
+	DOTFILES_TEST_INPUT='20\n4\n' run_dotfiles "$FIXTURE_ROOT"
 
 	assert_eq 0 "$COMMAND_STATUS" 'the appended laptop power-policy menu selection should dispatch successfully' || return 1
 	assert_contains "$COMMAND_OUTPUT" $'Manage laptop power policy\n  1. Status\n  2. Apply\n  3. Remove\n  4. Back' \
