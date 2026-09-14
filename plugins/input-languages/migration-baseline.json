@@ -20,11 +20,12 @@
 		"bin/omarchy-refresh-config": "d20b953a776b5adc681dfed4c839df2bff999989ad96ccbcc51853ea7f1ab92f",
 		"bin/omarchy-refresh-hyprland": "4860c774ac268786edc869f43466a4ffccd6eed34e9310afe8a7f843a2108417",
 		"config/omarchy/shell.json": "b16dc9646bf68e81643522cef504795d97cb5016d80d8b65784bde44f2c0883f",
-		"shell/plugins/bar/Bar.qml": "1f345f795fe6633a7eb0934b677b86f6c359e0b062567521eeeec7dbf46987c1",
+		"shell/Ui/PluginBarApi.qml": "91964a42b92c58476a4f961df35148d4c94071344ef1a69eab1563d1496705a7",
+		"shell/plugins/bar/Bar.qml": "9874c0f36271840b43002890ae333c83097df7f4cff0bade81536a41ed83590b",
 		"shell/plugins/bar/widgets/KeyboardLayout.manifest.json": "51613070b3b2774c4b7ab4a7c5b2b52319a030f5350485e95dba62fae819723a",
 		"shell/plugins/bar/widgets/KeyboardLayout.qml": "9a80f7e73da4c2c280268d1e9152045697cf1c4f118e2be5cb32a43c07e8f6bb",
 		"shell/plugins/bar/widgets/KeyboardLayoutModel.js": "722e0e4eeaac0fa01660175d2da7fc6a2ba5f2b01d71843a8c731591979d2c2d",
-		"shell/services/PluginRegistry.qml": "63371e4224f948e5444531282ad9f7c74ca2e578470b549f4c6b898c3a15c50f",
-		"shell/shell.qml": "9f1db77dcc3c111ceccc860ac472d19b35d385958a63d270ea51e413ab86f1f0"
+		"shell/services/PluginRegistry.qml": "8466127c53037b80b582544610b0bdf78a86764e4f037a3b9ce360d107359803",
+		"shell/shell.qml": "4a4b7694e5b9e0bd952ce0efa2d6dc2cea44cdfa98cc2f442e40fe41cbc1beab"
 	}
 }

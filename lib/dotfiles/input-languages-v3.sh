@@ -1934,6 +1934,30 @@ input_languages_v3_active_receipt_matches_pending() {
 	' "$INPUT_LANGUAGES_ACTIVE" >/dev/null 2>&1
 }
 
+input_languages_v3_remove_adjacent_fcitx_matches() {
+	local response=$1 phase=$2 before ancestry
+	before=$(jq -c .fcitx_before "$INPUT_LANGUAGES_PENDING") || return 1
+	ancestry=$(jq -c .fcitx_before "$(jq -r .prior_active "$INPUT_LANGUAGES_PENDING")") || return 1
+	jq -e --arg phase "$phase" --arg name "$INPUT_LANGUAGES_V3_MANAGED_GROUP" --argjson before "$before" --argjson ancestry "$ancestry" '
+		.snapshot as $current |
+		$ancestry.current_group as $group |
+		($before.groups[] | select(.name == $group)) as $prior |
+		($ancestry.observed_method | select(. != null)) as $method |
+		(if $phase == "authority-quiesced" then
+			($current.groups | sort_by(.name)) == ($before.groups | sort_by(.name)) and
+			$current.current_group == $group and
+			($current.observed_method == $prior.default_im or ($before.observed_method == "" and $current.observed_method == ""))
+		 elif ($phase == "prior-group-selected" or $phase == "prior-method-restored" or $phase == "managed-group-removed") then
+			($before.groups | map(
+				if .name == $group and $method != "" then .default_im=$method else . end
+			) | if $phase == "prior-group-selected" then . else map(select(.name != $name)) end) as $expected |
+			($current.groups | sort_by(.name)) == ($expected | sort_by(.name)) and
+			$current.current_group == $group and
+			($current.observed_method == $method or ($method == "" and $current.observed_method == $prior.default_im))
+		 else false end)
+	' <<<"$response" >/dev/null 2>&1
+}
+
 input_languages_v3_recorded_phase_matches_fcitx() {
 	local phase expected actual before target
 	phase=$(jq -r .phase "$INPUT_LANGUAGES_PENDING") || return 1
@@ -1941,19 +1965,24 @@ input_languages_v3_recorded_phase_matches_fcitx() {
 	[[ -n $expected ]] || return 0
 	actual=$(input_languages_v3_fcitx_phase_digest "$(jq -c .snapshot <<<"$1")") || return 1
 	[[ $actual == "$expected" ]] && return 0
+	if [[ $(jq -r .operation "$INPUT_LANGUAGES_PENDING") == remove ]]; then
+		input_languages_v3_remove_adjacent_fcitx_matches "$1" "$phase"
+		return
+	fi
 	before=$(jq -c .fcitx_before "$INPUT_LANGUAGES_PENDING") || return 1
 	target=$(jq -c .managed_group_target "$INPUT_LANGUAGES_PENDING") || return 1
 	jq -e --arg phase "$phase" --arg name "$INPUT_LANGUAGES_V3_MANAGED_GROUP" --argjson before "$before" --argjson target "$target" '
 		.snapshot as $current |
+		[$current.groups[] | select(.name == $name) | {name,default_layout,default_im,items:[.items[] | {method,layout_override}]}] as $managed |
 		all($before.groups[]; . as $group | any($current.groups[]; .name == $group.name and . == $group)) and
 		(if $phase == "prior-helper-quiesced" then
-			([$current.groups[] | select(.name == $name)] == [($target | .default_im="" | .items=[])]) and
+			($managed == [($target | .default_im="" | .items=[])]) and
 			$current.current_group == $before.current_group and $current.observed_method == $before.observed_method
 		 elif $phase == "managed-group-created" then
-			([$current.groups[] | select(.name == $name)] == [$target]) and
+			($managed == [$target]) and
 			$current.current_group == $before.current_group and $current.observed_method == $before.observed_method
 		 elif ($phase == "managed-group-populated" or $phase == "managed-group-selected") then
-			([$current.groups[] | select(.name == $name)] == [$target]) and
+			($managed == [$target]) and
 			$current.current_group == $name and
 			($current.observed_method == $target.default_im or ($before.observed_method == "" and $current.observed_method == ""))
 		 else false end)
@@ -2186,16 +2215,37 @@ input_languages_rollback_pending_v3() {
 }
 
 input_languages_v3_recovery_state_safe() {
-	local phase expected direct helper receipt=null changed=0 prior current_widget runtime_root
+	local phase expected direct helper receipt=null changed=0 prior current_widget runtime_root current_helper normalized_helper
 	phase=$(jq -r .phase "$INPUT_LANGUAGES_PENDING") || return 1
 	expected=$(jq -c --arg phase "$phase" '.expected_states[] | select(.phase == $phase)' "$INPUT_LANGUAGES_PENDING") || return 1
 	direct=$(input_languages_v3_state_digest "$(input_languages_tree_digest "$INPUT_LANGUAGES_LIVE" 2>/dev/null || printf absent)|$(sha256sum "$INPUT_LANGUAGES_POINTER" 2>/dev/null || true)") || return 1
 	runtime_root=$(input_languages_v3_runtime_root_from_ownership "$(jq -c .helper_target "$INPUT_LANGUAGES_PENDING")") || return 1
-	helper=$(input_languages_v3_json_digest "$(input_languages_v3_helper_ownership "$runtime_root")") || return 1
+	current_helper=$(input_languages_v3_helper_ownership "$runtime_root") || return 1
+	helper=$(input_languages_v3_json_digest "$current_helper") || return 1
 	if [[ -f $INPUT_LANGUAGES_ACTIVE ]]; then receipt=$(sha256sum "$INPUT_LANGUAGES_ACTIVE" | cut -d' ' -f1) || return 1; fi
 	[[ $direct == "$(jq -r .direct_digest <<<"$expected")" ]] || changed=$((changed + 1))
 	[[ $helper == "$(jq -r .helper_digest <<<"$expected")" ]] || changed=$((changed + 1))
 	[[ $receipt == "$(jq -r '.receipt_digest // "null"' <<<"$expected")" ]] || changed=$((changed + 1))
+	if [[ $(jq -r .operation "$INPUT_LANGUAGES_PENDING") == remove ]]; then
+		[[ $receipt == "$(jq -r '.receipt_digest // "null"' <<<"$expected")" ]] || return 1
+		if [[ $direct != "$(jq -r .direct_digest <<<"$expected")" ]]; then
+			[[ $phase == managed-group-saved ]] || return 1
+			input_languages_v3_remove_rollback_direct_safe "$(jq -r .prior_active "$INPUT_LANGUAGES_PENDING")" || return 1
+		fi
+		if [[ $helper != "$(jq -r .helper_digest <<<"$expected")" ]]; then
+			[[ $phase == prepared || $phase == managed-group-saved || $phase == hyprland-restored ]] || return 1
+			input_languages_v3_helper_state_between "$(jq -c .helper_before "$INPUT_LANGUAGES_PENDING")" "$(jq -c .helper_target "$INPUT_LANGUAGES_PENDING")" || return 1
+		fi
+		return 0
+	fi
+	# One pointer publication appears in both the direct and helper projections.
+	# Accept that paired change only when every other helper edge is unchanged.
+	if [[ $changed == 2 && $phase == socket-started && $receipt == "$(jq -r '.receipt_digest // "null"' <<<"$expected")" ]]; then
+		jq -e --argjson target "$(jq -c .helper_target.artifact_pointer "$INPUT_LANGUAGES_PENDING")" '.artifact_pointer == $target' <<<"$current_helper" >/dev/null || return 1
+		normalized_helper=$(jq -c --argjson prior "$(jq -c .helper_before.artifact_pointer "$INPUT_LANGUAGES_PENDING")" '.artifact_pointer=$prior' <<<"$current_helper") || return 1
+		[[ $(input_languages_v3_json_digest "$normalized_helper") == "$(jq -r .helper_digest <<<"$expected")" ]] || return 1
+		changed=1
+	fi
 	[[ $changed -le 1 ]] || return 1
 	[[ $changed == 1 ]] || return 0
 	prior=$(jq -r .direct_ancestry.receipt "$INPUT_LANGUAGES_PENDING") || return 1
@@ -2266,7 +2316,7 @@ input_languages_reconcile_pending_v3() {
 	input_languages_validate_pending_file_v3 "$INPUT_LANGUAGES_PENDING" || { input_languages_unlock || true; return 1; }
 	if [[ -e $INPUT_LANGUAGES_RECOVERY || -L $INPUT_LANGUAGES_RECOVERY ]]; then
 		input_languages_validate_recovery_file_v3 "$INPUT_LANGUAGES_RECOVERY" || { input_languages_unlock || true; return 1; }
-	elif [[ $operation != apply ]] || ! input_languages_v3_recovery_state_safe; then
+	elif ! input_languages_v3_recovery_state_safe; then
 		input_languages_record_recovery_v3 "$transaction" verified || { input_languages_unlock || true; return 1; }
 		printf 'Recovery required: observed direct/helper state does not match recorded phase %s; no rollback write was attempted.\n' "$(jq -r .phase "$INPUT_LANGUAGES_PENDING")" >&2
 		input_languages_unlock || true

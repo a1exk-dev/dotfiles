@@ -186,7 +186,7 @@ done
 	exit 1
 }
 jq -e '.version == 1 and (.files | keys | sort) == ([".luarc.json","autostart.lua","bindings.lua","hypridle.conf","hyprland.lua","hyprlock.conf","hyprsunset.conf","input.lua","looknfeel.lua","monitors.lua","xdph.conf"] | sort) and all(.files[]; test("^[0-9a-f]{64}$"))' "$plugin_root/migration-baseline.json" >/dev/null
-jq -e '(.seams | keys | sort) == (["bin/omarchy-bar","bin/omarchy-plugin-disable","bin/omarchy-plugin-enable","bin/omarchy-refresh-config","bin/omarchy-refresh-hyprland","config/omarchy/shell.json","shell/plugins/bar/Bar.qml","shell/plugins/bar/widgets/KeyboardLayout.manifest.json","shell/plugins/bar/widgets/KeyboardLayout.qml","shell/plugins/bar/widgets/KeyboardLayoutModel.js","shell/services/PluginRegistry.qml","shell/shell.qml"] | sort) and all(.seams[]; test("^[0-9a-f]{64}$"))' "$plugin_root/migration-baseline.json" >/dev/null
+jq -e '(.seams | keys | sort) == (["bin/omarchy-bar","bin/omarchy-plugin-disable","bin/omarchy-plugin-enable","bin/omarchy-refresh-config","bin/omarchy-refresh-hyprland","config/omarchy/shell.json","shell/Ui/PluginBarApi.qml","shell/plugins/bar/Bar.qml","shell/plugins/bar/widgets/KeyboardLayout.manifest.json","shell/plugins/bar/widgets/KeyboardLayout.qml","shell/plugins/bar/widgets/KeyboardLayoutModel.js","shell/services/PluginRegistry.qml","shell/shell.qml"] | sort) and all(.seams[]; test("^[0-9a-f]{64}$"))' "$plugin_root/migration-baseline.json" >/dev/null
 
 contract_files=(
 	active-fixtures.json
@@ -245,7 +245,7 @@ protocol_identity=$(jq -r .identity "$contract_root/protocol.json")
 	exit 1
 }
 jq -e --slurpfile authority "$contract_root/authority.json" '
-	.compatibility.upstream_version == "5.1.21" and .compatibility.arch_release_suffix_is_semantic == false and
+	.compatibility.upstream_version == "5.1.22" and .compatibility.arch_release_suffix_is_semantic == false and
 	.compatibility.transport_library == "libsystemd" and .compatibility.bus_api == "sd-bus" and .compatibility.event_api == "sd-event" and
 	.controller.well_known_name == "org.fcitx.Fcitx5" and .controller.object_path == "/controller" and .controller.interface == "org.fcitx.Fcitx.Controller1" and
 	.controller.members == {
@@ -313,6 +313,8 @@ jq -e '
 	.version_2.exact_keys.active == ["version","operation","transaction_id","backup_transaction_id","source_id","build_id","artifact","artifact_sha256","widget_sha256","compatibility_hash","compiler","compiler_warning","dependencies","backup","backup_digest","backup_existed","widget_source","widget_section","widget_index","widget_entry","prior_stock_present","prior_stock_section","prior_stock_index","prior_stock_entry"] and
 	.objects.active.constants == {version:3,operation:"active"} and .objects.pending.constants.version == 3 and .objects.pending.enums.operation == ["apply","remove"] and
 	.types["input-group"] == {type:"integer",enum:[0,1]} and .objects.device_group == {keys:["device","group"],references:{device:"string",group:"input-group"}} and
+	.types["semantic-rollback-phase"] == {type:"string",enum:["authority-quiesced","direct-restored","fcitx-semantic-delta-reversed","helper-state-restored","operation-start-language-restored","verified"]} and
+	.objects.recovery_required.references.failed_phase == "semantic-rollback-phase" and
 	.objects.recovery_required.constants == {version:3,state:"recovery-required"} and .objects.remove_cleanup.constants == {version:3,state:"remove-cleanup"} and
 	.raw_profile_restoration_allowed == false and .active_receipt_publish_order == "last"
 ' "$contract_root/evidence-v3.json" >/dev/null || { printf 'Error: Fcitx version-3 evidence schema or version-2 ancestry contract changed.\n' >&2; exit 1; }

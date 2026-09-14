@@ -33,10 +33,10 @@ readonly INPUT_LANGUAGES_INTEGRATION_HELPER_FLAGS='-std=c++23,-Wall,-Wextra,-Wpe
 
 input_languages_integration_contract_expected_digest() {
 	case $1 in
-		active-fixtures.json) printf '%s\n' c8135a04fb250bf523831709f13905a1fbfef513855e4443d906d82c3b64599f ;;
+		active-fixtures.json) printf '%s\n' 859f33ebc4a188e407dc9bd02b7c45f19cfc2b5958f55ff989e1bd00864f4414 ;;
 		authority.json) printf '%s\n' 3c7670889f080f5b03c26a51b77a402267c6cb566f7727631717fc33de3f4526 ;;
-		evidence-v3.json) printf '%s\n' c645c7a66becd531e13786cc7842caf9d2334f59ff6cc17e1db258aa3548a5e6 ;;
-		fcitx.json) printf '%s\n' 113df77363f2d4d1552eacad65170f11bc6c66f842b7369941dc830336e92315 ;;
+		evidence-v3.json) printf '%s\n' 676486eaa0dfd42deb0b5626de803c6468efe5bff55ee5368d15fc52fb8ac232 ;;
+		fcitx.json) printf '%s\n' 1840eee93e89ac118283981668fdf181933f4fc6a83e24b371b8ac2323fb61f3 ;;
 		health.json) printf '%s\n' 7444c1a034fd595f5d93fd14c15389efccc6cc892755b0c77174758d2daad193 ;;
 		manifest.json) printf '%s\n' 84714ebf5bb3d3b2d49c13b72a692da66fea91d896199ea668af384b4eebaaa8 ;;
 		protocol.json) printf '%s\n' 4b45f0d68339d8f51df3d0c8132abb40429f2ecc9e4eb8aa9dd8588f8f76e041 ;;
@@ -564,7 +564,7 @@ input_languages_validate_integration_artifact_values() {
 		$(jq -r .protocol "$root/contracts/health.json") == "$protocol" &&
 		$(jq -r .protocol "$root/contracts/systemd.json") == "$protocol" ]] || return 1
 	jq -e '
-		.compatibility.upstream_version == "5.1.21" and .compatibility.transport_library == "libsystemd" and
+		.compatibility.upstream_version == "5.1.22" and .compatibility.transport_library == "libsystemd" and
 		.compatibility.bus_api == "sd-bus" and .compatibility.event_api == "sd-event" and .compatibility.fcitx_cpp_abi_linkage == false and
 		.controller.well_known_name == "org.fcitx.Fcitx5" and .controller.object_path == "/controller" and
 		.controller.interface == "org.fcitx.Fcitx.Controller1" and .controller.activation == "no-auto-start" and

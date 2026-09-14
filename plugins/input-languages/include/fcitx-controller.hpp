@@ -11,7 +11,7 @@
 
 namespace InputLanguages::Fcitx {
 
-inline constexpr auto SUPPORTED_UPSTREAM_VERSION = "5.1.21";
+inline constexpr auto SUPPORTED_UPSTREAM_VERSION = "5.1.22";
 inline constexpr auto MANAGED_GROUP_NAME = "Dotfiles Input Languages";
 inline constexpr auto US_METHOD = "keyboard-us";
 inline constexpr auto RUSSIAN_METHOD = "keyboard-ru";

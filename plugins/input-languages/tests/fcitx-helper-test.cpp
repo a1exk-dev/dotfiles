@@ -403,10 +403,10 @@ void installedVersionEvidence() {
 	const char* created = mkdtemp(pattern.data());
 	require(created != nullptr, "temporary package database is created");
 	const std::filesystem::path root(created);
-	std::filesystem::create_directory(root / "fcitx5-configtool-5.1.21-1");
-	std::ofstream(root / "fcitx5-configtool-5.1.21-1" / "desc") << "%NAME%\nfcitx5-configtool\n\n%VERSION%\n5.1.21-1\n";
-	std::filesystem::create_directory(root / "fcitx5-5.1.21-3");
-	std::ofstream(root / "fcitx5-5.1.21-3" / "desc") << "%NAME%\nfcitx5\n\n%VERSION%\n5.1.21-3\n";
+	std::filesystem::create_directory(root / "fcitx5-configtool-5.1.22-1");
+	std::ofstream(root / "fcitx5-configtool-5.1.22-1" / "desc") << "%NAME%\nfcitx5-configtool\n\n%VERSION%\n5.1.22-1\n";
+	std::filesystem::create_directory(root / "fcitx5-5.1.22-1");
+	std::ofstream(root / "fcitx5-5.1.22-1" / "desc") << "%NAME%\nfcitx5\n\n%VERSION%\n5.1.22-1\n";
 	require(installedFcitxUpstreamVersion(root.string()) == SUPPORTED_UPSTREAM_VERSION,
 		"installed upstream version is derived from exact package metadata without confusing sibling packages");
 	std::filesystem::remove_all(root);

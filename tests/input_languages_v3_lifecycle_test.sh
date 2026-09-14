@@ -216,7 +216,8 @@ runtime_cleanup_preserves_replaced_private_directory() (
 
 direct_v2_expands_to_v3() (
 	set -euo pipefail
-	local lifecycle_mode=$1 root home transaction backup_transaction build source artifact_sha widget_sha artifact_dir backup digest profile_digest fresh_entry=false
+	local lifecycle_mode=$1 rollback_boundary=false root home transaction backup_transaction build source artifact_sha widget_sha artifact_dir backup digest profile_digest fresh_entry=false
+	if [[ $lifecycle_mode == rollback-boundary ]]; then rollback_boundary=true; lifecycle_mode=rollback; fi
 	[[ $lifecycle_mode != fresh && $lifecycle_mode != fresh-rollback && $lifecycle_mode != fresh-post-reset-rollback &&
 		$lifecycle_mode != fresh-cancel && $lifecycle_mode != fresh-archive-recovery ]] || fresh_entry=true
 	root=$(mktemp -d)
@@ -680,17 +681,18 @@ direct_v2_expands_to_v3() (
 		if apply_input_languages --yes --packages-prepared >/dev/null 2>&1; then return 1; fi
 		[[ -e $INPUT_LANGUAGES_PENDING && ! -e $INPUT_LANGUAGES_RECOVERY ]] || return 1
 		if [[ $lifecycle_mode == adjacent-phase-interrupt ]]; then
-			if [[ $INPUT_LANGUAGES_TEST_INTERRUPT_PHASE == managed-group-created ]]; then
-				[[ $(jq -r .phase "$INPUT_LANGUAGES_PENDING") == prior-helper-quiesced ]] || return 1
-				jq -e --arg name "$INPUT_LANGUAGES_V3_MANAGED_GROUP" 'any(.groups[]; .name == $name)' "$root/controller.json" >/dev/null || return 1
-			else
-				[[ $INPUT_LANGUAGES_TEST_INTERRUPT_PHASE == active-published && $(jq -r .phase "$INPUT_LANGUAGES_PENDING") == verified && -f $INPUT_LANGUAGES_ACTIVE ]] || return 1
-			fi
+			local prior_phase
+			prior_phase=$(jq -r --arg phase "$INPUT_LANGUAGES_TEST_INTERRUPT_PHASE" '.phase_order.apply | .[index($phase)-1]' "$SOURCE_REPO/plugins/input-languages/contracts/evidence-v3.json")
+			[[ $(jq -r .phase "$INPUT_LANGUAGES_PENDING") == "$prior_phase" ]] || return 1
 		fi
 		eval "$rollback_definition"
 		unset INPUT_LANGUAGES_INTEGRATION_ARTIFACT_DIR INPUT_LANGUAGES_INTEGRATION_ARTIFACT INPUT_LANGUAGES_INTEGRATION_HELPER INPUT_LANGUAGES_INTEGRATION_BUILD_ID
 		apply_input_languages --recovery-approved >/dev/null || return 1
-		cmp -s "$INPUT_LANGUAGES_ACTIVE" "$root/original-v2.json" || return 1
+		if [[ $lifecycle_mode == phase-interrupt && $INPUT_LANGUAGES_TEST_INTERRUPT_PHASE == active-published ]]; then
+			input_languages_validate_active_file_v3 "$INPUT_LANGUAGES_ACTIVE" artifact || return 1
+		else
+			cmp -s "$INPUT_LANGUAGES_ACTIVE" "$root/original-v2.json" || return 1
+		fi
 		[[ ! -e $INPUT_LANGUAGES_PENDING && ! -e $INPUT_LANGUAGES_RECOVERY ]] || return 1
 		return 0
 	fi
@@ -776,8 +778,45 @@ direct_v2_expands_to_v3() (
 		return 0
 	fi
 
+	if [[ $rollback_boundary == true ]]; then
+		local boundary_function boundary_definition boundary_enabled=true boundary_rollback
+		case $INPUT_LANGUAGES_TEST_INTERRUPT_PHASE in
+			authority-quiesced) boundary_function=input_languages_v3_quiesce_helper ;;
+			direct-restored) boundary_function=input_languages_copy_atomic ;;
+			fcitx-semantic-delta-reversed) boundary_function=input_languages_v3_controller_execute ;;
+			helper-state-restored) boundary_function=input_languages_v3_remove_runtime_edges ;;
+			operation-start-language-restored) boundary_function=input_languages_reset_group ;;
+			verified) boundary_function=input_languages_v3_verify_apply_rollback ;;
+		esac
+		boundary_definition=$(declare -f "$boundary_function")
+		eval "${boundary_definition/$boundary_function /input_languages_test_boundary_original }"
+		boundary_rollback=$(declare -f input_languages_rollback_pending_v3)
+		eval "${boundary_rollback/input_languages_rollback_pending_v3 /input_languages_test_rollback_original }"
+		input_languages_rollback_pending_v3() {
+			local INPUT_LANGUAGES_TEST_IN_ROLLBACK=true
+			input_languages_test_rollback_original
+		}
+		input_languages_test_boundary() {
+			local inject=false
+			if [[ ${INPUT_LANGUAGES_TEST_IN_ROLLBACK-false} == true && $boundary_enabled == true ]]; then
+				if [[ $boundary_function != input_languages_v3_controller_execute || ${2-} == save ]]; then inject=true; fi
+			fi
+			if [[ $inject == true && $INPUT_LANGUAGES_TEST_BOUNDARY_SIDE == before ]]; then return 1; fi
+			input_languages_test_boundary_original "$@" || return 1
+			[[ $inject != true ]]
+		}
+		eval "$boundary_function() { input_languages_test_boundary \"\$@\"; }"
+	fi
+
 	if [[ $lifecycle_mode == rollback || $lifecycle_mode == fresh-rollback || $lifecycle_mode == fresh-post-reset-rollback || $lifecycle_mode == recovery || $lifecycle_mode == recovery-environment-changed ]]; then
 		if apply_input_languages --yes --packages-prepared >/dev/null 2>&1; then return 1; fi
+		if [[ $rollback_boundary == true ]]; then
+			input_languages_validate_pending_file_v3 "$INPUT_LANGUAGES_PENDING" || return 1
+			input_languages_validate_recovery_file_v3 "$INPUT_LANGUAGES_RECOVERY" || return 1
+			[[ $(jq -r .failed_phase "$INPUT_LANGUAGES_RECOVERY") == "$INPUT_LANGUAGES_TEST_INTERRUPT_PHASE" ]] || return 1
+			boundary_enabled=false
+			apply_input_languages --recovery-approved >"$root/boundary-recovery.out" 2>&1 || { cat "$root/boundary-recovery.out"; return 1; }
+		fi
 		if [[ $lifecycle_mode == recovery || $lifecycle_mode == recovery-environment-changed ]]; then
 			input_languages_validate_pending_file_v3 "$INPUT_LANGUAGES_PENDING" || return 1
 			input_languages_validate_recovery_file_v3 "$INPUT_LANGUAGES_RECOVERY" || return 1
@@ -976,6 +1015,73 @@ direct_v2_expands_to_v3() (
 		return 0
 	fi
 
+	if [[ $lifecycle_mode == remove-cleanup-boundary ]]; then
+		local boundary_function boundary_definition boundary_rollback boundary_committed=false active_before
+		active_before=$(sha256sum "$INPUT_LANGUAGES_ACTIVE" | cut -d' ' -f1)
+		case $INPUT_LANGUAGES_TEST_CLEANUP_EDGE in
+			archive) boundary_function=input_languages_archive_remove_evidence ;;
+			publish) boundary_function=input_languages_v3_publish_cleanup ;;
+			*) boundary_function=input_languages_remove_file_verified ;;
+		esac
+		boundary_definition=$(declare -f "$boundary_function")
+		eval "${boundary_definition/$boundary_function /input_languages_test_cleanup_original }"
+		boundary_rollback=$(declare -f input_languages_rollback_pending_v3)
+		input_languages_rollback_pending_v3() { return 1; }
+		input_languages_test_cleanup_boundary() {
+			local inject=false
+			case $INPUT_LANGUAGES_TEST_CLEANUP_EDGE in
+				archive|publish) inject=true ;;
+				active) [[ $1 != "$INPUT_LANGUAGES_ACTIVE" ]] || inject=true ;;
+				pending) [[ $1 != "$INPUT_LANGUAGES_PENDING" ]] || inject=true ;;
+				cleanup) [[ $1 != "$INPUT_LANGUAGES_CLEANUP" ]] || inject=true ;;
+			esac
+			if [[ $inject == true && $INPUT_LANGUAGES_TEST_BOUNDARY_SIDE == before ]]; then return 1; fi
+			input_languages_test_cleanup_original "$@" || return 1
+			[[ $inject != true ]]
+		}
+		eval "$boundary_function() { input_languages_test_cleanup_boundary \"\$@\"; }"
+		if remove_input_languages --yes >"$root/cleanup-interrupted.out" 2>&1; then return 1; fi
+		[[ ! -f $INPUT_LANGUAGES_CLEANUP ]] || boundary_committed=true
+		if [[ $INPUT_LANGUAGES_TEST_CLEANUP_EDGE == cleanup && $INPUT_LANGUAGES_TEST_BOUNDARY_SIDE == after ]]; then boundary_committed=true; fi
+		eval "$boundary_definition"
+		eval "$boundary_rollback"
+		remove_input_languages --recovery-approved >"$root/cleanup-recovery.out" 2>&1 || { cat "$root/cleanup-recovery.out"; return 1; }
+		[[ ! -e $INPUT_LANGUAGES_PENDING && ! -e $INPUT_LANGUAGES_RECOVERY && ! -e $INPUT_LANGUAGES_CLEANUP ]] || return 1
+		if [[ $boundary_committed == true ]]; then
+			[[ ! -e $INPUT_LANGUAGES_ACTIVE && ! -e $INPUT_LANGUAGES_POINTER && ! -e $INPUT_LANGUAGES_WIDGET_LIVE ]] || return 1
+			jq -e '[.groups[].name] == ["Default"] and .current_group == "Default" and .observed_method == "keyboard-ru"' "$root/controller.json" >/dev/null || return 1
+		else
+			[[ $(sha256sum "$INPUT_LANGUAGES_ACTIVE" | cut -d' ' -f1) == "$active_before" ]] || return 1
+			input_languages_validate_active_file_v3 "$INPUT_LANGUAGES_ACTIVE" artifact || return 1
+		fi
+		[[ -d $backup ]] || return 1
+		return 0
+	fi
+
+	if [[ $lifecycle_mode == remove-phase-interrupt || $lifecycle_mode == remove-adjacent-interrupt ]]; then
+		local update_definition rollback_definition active_before
+		active_before=$(sha256sum "$INPUT_LANGUAGES_ACTIVE" | cut -d' ' -f1)
+		update_definition=$(declare -f input_languages_v3_update_pending)
+		rollback_definition=$(declare -f input_languages_rollback_pending_v3)
+		eval "${update_definition/input_languages_v3_update_pending /input_languages_v3_update_pending_recorded }"
+		input_languages_v3_update_pending() {
+			if [[ $lifecycle_mode == remove-adjacent-interrupt && $1 == "$INPUT_LANGUAGES_TEST_INTERRUPT_PHASE" ]]; then return 1; fi
+			input_languages_v3_update_pending_recorded "$@" || return 1
+			[[ $1 != "$INPUT_LANGUAGES_TEST_INTERRUPT_PHASE" ]]
+		}
+		input_languages_rollback_pending_v3() { return 1; }
+		if remove_input_languages --yes >"$root/remove-interrupted.out" 2>&1; then return 1; fi
+		[[ -f $INPUT_LANGUAGES_PENDING ]] || return 1
+		eval "$update_definition"
+		eval "$rollback_definition"
+		remove_input_languages --recovery-approved >"$root/remove-recovery.out" 2>&1 || { cat "$root/remove-recovery.out"; return 1; }
+		[[ $(sha256sum "$INPUT_LANGUAGES_ACTIVE" | cut -d' ' -f1) == "$active_before" ]] || return 1
+		[[ ! -e $INPUT_LANGUAGES_PENDING && ! -e $INPUT_LANGUAGES_RECOVERY ]] || return 1
+		input_languages_validate_active_file_v3 "$INPUT_LANGUAGES_ACTIVE" artifact || return 1
+		[[ $(<"$root/group") == 0 && $(<"$root/plugin-state") == active ]] || return 1
+		return 0
+	fi
+
 	if [[ $lifecycle_mode == remove || $lifecycle_mode == remove-cleanup-recovery || $lifecycle_mode == remove-rollback || $lifecycle_mode == remove-unsupported || $lifecycle_mode == remove-unrelated-edit || $lifecycle_mode == remove-defaultim-drift || $lifecycle_mode == remove-environment-changed ]]; then
 		local installed_active=$root/installed-v3.json remove_archive
 		cp "$INPUT_LANGUAGES_ACTIVE" "$installed_active"
@@ -984,7 +1090,7 @@ direct_v2_expands_to_v3() (
 			XDG_RUNTIME_DIR=$root/other-runtime
 		fi
 		if [[ $lifecycle_mode == remove-unsupported ]]; then
-			jq '.identity.upstream_version="5.1.22" | .available_methods=[] | .addons=[]' "$root/controller.json" >"$root/controller.next"
+			jq '.identity.upstream_version="5.1.21" | .available_methods=[] | .addons=[]' "$root/controller.json" >"$root/controller.next"
 			mv "$root/controller.next" "$root/controller.json"
 		fi
 		if [[ $lifecycle_mode == remove-unrelated-edit ]]; then
@@ -1080,18 +1186,6 @@ direct_v2_semantic_phase_drift_stops() { direct_v2_expands_to_v3 semantic-phase-
 direct_v2_corrupt_recovery_artifact_stops() { direct_v2_expands_to_v3 corrupt-recovery; }
 direct_v2_transitional_helper_quiesces() { direct_v2_expands_to_v3 transitional-quiesce; }
 direct_v2_post_pause_failure_restores_autoreload() { direct_v2_expands_to_v3 post-pause-failure; }
-direct_v2_durable_phase_interruptions_recover() {
-	local phase
-	for phase in prior-helper-quiesced managed-group-created managed-group-populated managed-group-selected managed-group-saved units-published manager-reloaded socket-started helper-ready; do
-		INPUT_LANGUAGES_TEST_INTERRUPT_PHASE=$phase direct_v2_expands_to_v3 phase-interrupt || return 1
-	done
-}
-direct_v2_adjacent_phase_interruption_recovers() {
-	local phase
-	for phase in managed-group-created active-published; do
-		INPUT_LANGUAGES_TEST_INTERRUPT_PHASE=$phase direct_v2_expands_to_v3 adjacent-phase-interrupt || return 1
-	done
-}
 direct_v2_stale_helper_plan_blocks() { direct_v2_expands_to_v3 stale-helper; }
 direct_v2_stale_controller_plan_blocks() { direct_v2_expands_to_v3 stale-controller; }
 direct_v2_invalid_runtime_blocks_before_mutation() { direct_v2_expands_to_v3 runtime-invalid; }
@@ -1102,48 +1196,94 @@ direct_v3_noop_rejects_package_drift() { direct_v2_expands_to_v3 noop-package-dr
 direct_v3_status_classifies_runtime_read_only() { direct_v2_expands_to_v3 status-runtime-invalid; }
 direct_v3_replaced_runtime_requires_recovery() { direct_v2_expands_to_v3 remove-runtime-replaced; }
 
-run_test direct_v2_expands_to_acknowledged_v3 'healthy direct-v2 installation expands transactionally to acknowledged version 3 and exact no-op'
-run_test fresh_install_reaches_acknowledged_v3 'one confirmed fresh Apply installs acknowledged version 3 directly and exact reapply is a no-op'
-run_test fresh_install_failure_restores_original_state 'failed fresh Apply restores original direct, indicator, Fcitx, helper, and language state'
-run_test fresh_install_post_reset_failure_restores_original_state 'post-reset fresh Apply failure restores the operation-start language'
-run_test fresh_install_cancellation_is_pre_mutation 'fresh version-3 Apply cancellation leaves live state untouched'
-run_test direct_v2_expands_to_v3_with_package_preparation 'standalone version-3 Apply plans, delegates, and verifies missing packages'
-run_test direct_v2_expands_to_idle_v3 'idle-no-context direct-v2 installation expands transactionally and remains an exact no-op'
-run_test direct_v2_failure_rolls_back 'reachable expansion failure restores direct-v2 state and preserves an unrelated Fcitx group'
-run_test direct_v2_failed_rollback_recovers 'failed semantic rollback records recovery-required and retries from retained evidence'
-run_test direct_v2_recovery_uses_saved_runtime 'recovery uses receipt-saved runtime after environment changes'
-run_test direct_v2_stale_build_input_blocks 'confirmed version-3 Apply rechecks build inputs before pending evidence or mutation'
-run_test direct_v2_partial_helper_publication_rolls_back 'partial helper publication rolls back every owned edge'
-run_test direct_v3_active_publication_recovers_archive 'interrupted active publication archives retained Apply evidence during recovery'
-run_test fresh_v3_active_publication_recovers_existing_archive 'fresh active publication finalizes from its existing ancestry-free archive'
-run_test direct_v3_removes_transactionally 'version-3 Remove restores direct and Fcitx ancestry and archives the receipt last'
-run_test direct_v3_remove_cleanup_recovers 'version-3 Remove cleanup evidence resumes after interrupted retirement'
-run_test direct_v3_failed_remove_reconstructs 'failed version-3 Remove reconstructs the installed integration and Remove-start language'
-run_test direct_v3_remove_uses_restoration_gate 'receipt-backed Remove uses the narrow Controller restoration gate'
-run_test direct_v2_invalid_evidence_blocks 'invalid version-3 lifecycle evidence blocks Apply without mutation'
-run_test direct_v3_pending_ancestry_is_bound 'version-3 pending evidence is bound to its validated prior receipt'
-run_test direct_v3_remove_preserves_unrelated_edits 'version-3 Remove preserves unrelated group edits made after Apply'
-run_test direct_v3_defaultim_drift_remains_owned 'managed-group DefaultIM drift blocks exact no-op while preserving receipt-backed Remove'
-run_test direct_v2_indeterminate_write_stops 'indeterminate Controller write records recovery without another write'
-run_test direct_v2_unproved_quiescence_stops 'unproved helper quiescence records recovery before Controller mutation'
-run_test direct_v2_ambiguous_phase_stops 'unrecorded durable-state drift records recovery without rollback mutation'
-run_test direct_v2_semantic_phase_drift_stops 'semantic phase drift records recovery before direct restoration writes'
-run_test direct_v2_corrupt_recovery_artifact_stops 'fresh recovery rejects corrupted retained helper bytes before execution'
-run_test direct_v2_transitional_helper_quiesces 'transitional helper units are stopped and reinspected before Controller mutation'
-run_test direct_v2_post_pause_failure_restores_autoreload 'post-pause Apply failure restores the original autoreload value'
-run_test direct_v2_durable_phase_interruptions_recover 'every durable Fcitx and helper Apply phase supports verified rollback'
-run_test direct_v2_adjacent_phase_interruption_recovers 'recovery reconciles a uniquely observed mutation completed before phase publication'
-run_test direct_v2_stale_helper_plan_blocks 'locked Apply rejects changed helper ownership before pending evidence'
-run_test direct_v2_stale_controller_plan_blocks 'locked Apply rejects changed Controller semantics before pending evidence'
-run_test direct_v2_invalid_runtime_blocks_before_mutation 'invalid runtime blocks Apply before persistent mutation'
-run_test direct_v2_changed_runtime_plan_blocks 'Apply reinspects the runtime root before pending evidence'
-run_test direct_v3_remove_uses_saved_runtime 'Remove uses the receipt-saved runtime after environment changes'
-run_test direct_v3_noop_rejects_invalid_runtime 'a proposed exact no-op rejects an invalid current runtime without mutation'
-run_test direct_v3_noop_rejects_package_drift 'a proposed exact no-op rejects package identity drift without mutation'
-run_test direct_v3_status_classifies_runtime_read_only 'Status classifies runtime conflict without lifecycle mutation'
-run_test direct_v3_replaced_runtime_requires_recovery 'Remove retains foreign runtime state and records recovery after post-quiescence replacement'
-run_test health_contract_rejects_inconsistent_snapshots 'version-3 health accepts only exact internally consistent cached snapshots'
-run_test runtime_contract_classifies_without_mutation 'runtime roots and private endpoints are classified without mutation'
-run_test runtime_cleanup_preserves_replaced_private_directory 'runtime cleanup preserves a same-type private directory that replaced the receipt-owned endpoint'
+direct_v3_phase_interruption_case() {
+	local mode=${1%%:*} INPUT_LANGUAGES_TEST_INTERRUPT_PHASE=${1#*:}
+	direct_v2_expands_to_v3 "$mode"
+}
+
+direct_v3_rollback_boundary_case() {
+	local INPUT_LANGUAGES_TEST_BOUNDARY_SIDE=${1%%:*} INPUT_LANGUAGES_TEST_INTERRUPT_PHASE=${1#*:}
+	direct_v2_expands_to_v3 rollback-boundary
+}
+
+direct_v3_cleanup_boundary_case() {
+	local INPUT_LANGUAGES_TEST_BOUNDARY_SIDE=${1%%:*} INPUT_LANGUAGES_TEST_CLEANUP_EDGE=${1#*:}
+	direct_v2_expands_to_v3 remove-cleanup-boundary
+}
+
+# Reuse the shared worker lifecycle; every case keeps its own temporary home,
+# runtime, Controller, and retained evidence. Limit concurrent fixture groups.
+DOTFILES_TEST_PARALLEL_LIMIT=${DOTFILES_TEST_PARALLEL_LIMIT:-10}
+input_languages_test_group=0
+queue_input_languages_test() {
+	input_languages_test_group=$((input_languages_test_group % 10 + 1))
+	run_test_group "$input_languages_test_group" "$@"
+}
+
+queue_input_languages_test direct_v2_expands_to_acknowledged_v3 'healthy direct-v2 installation expands transactionally to acknowledged version 3 and exact no-op'
+queue_input_languages_test fresh_install_reaches_acknowledged_v3 'one confirmed fresh Apply installs acknowledged version 3 directly and exact reapply is a no-op'
+queue_input_languages_test fresh_install_failure_restores_original_state 'failed fresh Apply restores original direct, indicator, Fcitx, helper, and language state'
+queue_input_languages_test fresh_install_post_reset_failure_restores_original_state 'post-reset fresh Apply failure restores the operation-start language'
+queue_input_languages_test fresh_install_cancellation_is_pre_mutation 'fresh version-3 Apply cancellation leaves live state untouched'
+queue_input_languages_test direct_v2_expands_to_v3_with_package_preparation 'standalone version-3 Apply plans, delegates, and verifies missing packages'
+queue_input_languages_test direct_v2_expands_to_idle_v3 'idle-no-context direct-v2 installation expands transactionally and remains an exact no-op'
+queue_input_languages_test direct_v2_failure_rolls_back 'reachable expansion failure restores direct-v2 state and preserves an unrelated Fcitx group'
+queue_input_languages_test direct_v2_failed_rollback_recovers 'failed semantic rollback records recovery-required and retries from retained evidence'
+queue_input_languages_test direct_v2_recovery_uses_saved_runtime 'recovery uses receipt-saved runtime after environment changes'
+queue_input_languages_test direct_v2_stale_build_input_blocks 'confirmed version-3 Apply rechecks build inputs before pending evidence or mutation'
+queue_input_languages_test direct_v2_partial_helper_publication_rolls_back 'partial helper publication rolls back every owned edge'
+queue_input_languages_test direct_v3_active_publication_recovers_archive 'interrupted active publication archives retained Apply evidence during recovery'
+queue_input_languages_test fresh_v3_active_publication_recovers_existing_archive 'fresh active publication finalizes from its existing ancestry-free archive'
+queue_input_languages_test direct_v3_removes_transactionally 'version-3 Remove restores direct and Fcitx ancestry and archives the receipt last'
+queue_input_languages_test direct_v3_remove_cleanup_recovers 'version-3 Remove cleanup evidence resumes after interrupted retirement'
+queue_input_languages_test direct_v3_failed_remove_reconstructs 'failed version-3 Remove reconstructs the installed integration and Remove-start language'
+queue_input_languages_test direct_v3_remove_uses_restoration_gate 'receipt-backed Remove uses the narrow Controller restoration gate'
+queue_input_languages_test direct_v2_invalid_evidence_blocks 'invalid version-3 lifecycle evidence blocks Apply without mutation'
+queue_input_languages_test direct_v3_pending_ancestry_is_bound 'version-3 pending evidence is bound to its validated prior receipt'
+queue_input_languages_test direct_v3_remove_preserves_unrelated_edits 'version-3 Remove preserves unrelated group edits made after Apply'
+queue_input_languages_test direct_v3_defaultim_drift_remains_owned 'managed-group DefaultIM drift blocks exact no-op while preserving receipt-backed Remove'
+queue_input_languages_test direct_v2_indeterminate_write_stops 'indeterminate Controller write records recovery without another write'
+queue_input_languages_test direct_v2_unproved_quiescence_stops 'unproved helper quiescence records recovery before Controller mutation'
+queue_input_languages_test direct_v2_ambiguous_phase_stops 'unrecorded durable-state drift records recovery without rollback mutation'
+queue_input_languages_test direct_v2_semantic_phase_drift_stops 'semantic phase drift records recovery before direct restoration writes'
+queue_input_languages_test direct_v2_corrupt_recovery_artifact_stops 'fresh recovery rejects corrupted retained helper bytes before execution'
+queue_input_languages_test direct_v2_transitional_helper_quiesces 'transitional helper units are stopped and reinspected before Controller mutation'
+queue_input_languages_test direct_v2_post_pause_failure_restores_autoreload 'post-pause Apply failure restores the original autoreload value'
+queue_input_languages_test direct_v2_stale_helper_plan_blocks 'locked Apply rejects changed helper ownership before pending evidence'
+queue_input_languages_test direct_v2_stale_controller_plan_blocks 'locked Apply rejects changed Controller semantics before pending evidence'
+queue_input_languages_test direct_v2_invalid_runtime_blocks_before_mutation 'invalid runtime blocks Apply before persistent mutation'
+queue_input_languages_test direct_v2_changed_runtime_plan_blocks 'Apply reinspects the runtime root before pending evidence'
+queue_input_languages_test direct_v3_remove_uses_saved_runtime 'Remove uses the receipt-saved runtime after environment changes'
+queue_input_languages_test direct_v3_noop_rejects_invalid_runtime 'a proposed exact no-op rejects an invalid current runtime without mutation'
+queue_input_languages_test direct_v3_noop_rejects_package_drift 'a proposed exact no-op rejects package identity drift without mutation'
+queue_input_languages_test direct_v3_status_classifies_runtime_read_only 'Status classifies runtime conflict without lifecycle mutation'
+queue_input_languages_test direct_v3_replaced_runtime_requires_recovery 'Remove retains foreign runtime state and records recovery after post-quiescence replacement'
+queue_input_languages_test health_contract_rejects_inconsistent_snapshots 'version-3 health accepts only exact internally consistent cached snapshots'
+queue_input_languages_test runtime_contract_classifies_without_mutation 'runtime roots and private endpoints are classified without mutation'
+queue_input_languages_test runtime_cleanup_preserves_replaced_private_directory 'runtime cleanup preserves a same-type private directory that replaced the receipt-owned endpoint'
+
+for operation in apply remove; do
+	for side in published adjacent; do
+		while IFS= read -r phase; do
+			[[ $side != adjacent || $phase != prepared ]] || continue
+			if [[ $operation == apply ]]; then
+				mode=phase-interrupt
+				[[ $side != adjacent ]] || mode=adjacent-phase-interrupt
+			else
+				mode=remove-phase-interrupt
+				[[ $side != adjacent ]] || mode=remove-adjacent-interrupt
+			fi
+			queue_input_languages_test direct_v3_phase_interruption_case "$operation $side phase $phase recovers from recorded ownership" "$mode:$phase"
+		done < <(jq -r --arg operation "$operation" '.phase_order[$operation][]' "$SOURCE_REPO/plugins/input-languages/contracts/evidence-v3.json")
+	done
+done
+for side in before after; do
+	while IFS= read -r phase; do
+		queue_input_languages_test direct_v3_rollback_boundary_case "rollback $side $phase retains recoverable evidence" "$side:$phase"
+	done < <(jq -r '.phase_order.rollback[]' "$SOURCE_REPO/plugins/input-languages/contracts/evidence-v3.json")
+	for edge in archive publish active pending cleanup; do
+		queue_input_languages_test direct_v3_cleanup_boundary_case "Remove cleanup $side $edge preserves the transaction boundary" "$side:$edge"
+	done
+done
 
 finish_tests

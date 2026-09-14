@@ -3,8 +3,8 @@
 	"integration": "dotfiles-input-languages-fcitx-v1",
 	"identity": "dotfiles-input-languages-fcitx-controller-v1",
 	"compatibility": {
-		"upstream_version": "5.1.21",
-		"upstream_tag_commit": "1319952f284eae17a36cba9e800843ca61a163c1",
+		"upstream_version": "5.1.22",
+		"upstream_tag_commit": "c7ecdb931d8b378ccdcd87382a3ef7ff0bd10def",
 		"arch_release_suffix_is_semantic": false,
 		"transport_library": "libsystemd",
 		"bus_api": "sd-bus",

@@ -28,7 +28,7 @@ Snapshot exactSnapshot() {
 			.uniqueOwner = ":1.42",
 			.ownerEpoch = 1,
 			.supervised = true,
-			.upstreamVersion = "5.1.21",
+			.upstreamVersion = "5.1.22",
 			.controllerShape = ControllerShape::Supported,
 		},
 		.profile = {.safe = true, .device = 1, .inode = 2, .mode = 0600, .ownerUid = 1000, .sha256 = std::string(64, 'a')},
@@ -309,7 +309,7 @@ int main(int argc, char** argv) {
 	{
 		for (const auto& mutate : std::vector<std::function<void(Snapshot&)>>{
 				[](Snapshot& snapshot) { snapshot.identity.supervised = false; },
-				[](Snapshot& snapshot) { snapshot.identity.upstreamVersion = "5.1.22"; },
+				[](Snapshot& snapshot) { snapshot.identity.upstreamVersion = "5.1.21"; },
 				[](Snapshot& snapshot) { snapshot.identity.controllerShape = ControllerShape::Unsupported; },
 				[](Snapshot& snapshot) { snapshot.profile.safe = false; },
 				[](Snapshot& snapshot) { snapshot.availableMethods.pop_back(); },
@@ -327,7 +327,7 @@ int main(int argc, char** argv) {
 
 	{
 		ScriptedTransport transport;
-		transport.snapshot.identity.upstreamVersion = "5.1.22";
+		transport.snapshot.identity.upstreamVersion = "5.1.21";
 		transport.snapshot.availableMethods.clear();
 		transport.snapshot.enabledAddons.clear();
 		Snapshot prior = transport.snapshot;

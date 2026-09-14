@@ -10,7 +10,7 @@ WIDGET_SOURCE := widget/$(WIDGET_ID)
 COORDINATED_SOURCE_FILES := Makefile include/input-language-model.hpp include/input-language-health.hpp include/fcitx-follower.hpp include/fcitx-protocol.hpp src/input-language-model.cpp src/input-language-health.cpp src/plugin.cpp src/fcitx-follower.cpp src/fcitx-protocol.cpp
 COORDINATED_SOURCE_ID := $(shell sha256sum -- $(COORDINATED_SOURCE_FILES) | sha256sum | cut -d' ' -f1)
 
-.PHONY: test check helper coordinated-plugin artifact clean
+.PHONY: test check interface-test helper coordinated-plugin artifact clean
 
 test: $(BUILD_DIR)/input-language-model-test $(BUILD_DIR)/input-language-health-test $(BUILD_DIR)/fcitx-controller-test $(BUILD_DIR)/fcitx-helper-test $(BUILD_DIR)/fcitx-follower-test $(BUILD_DIR)/input-language-integration-test
 	@$(BUILD_DIR)/input-language-model-test
@@ -42,13 +42,31 @@ $(BUILD_DIR)/fcitx-follower-test: tests/fcitx-follower-test.cpp src/fcitx-follow
 	@mkdir -p "$(BUILD_DIR)"
 	$(CXX) $(CPPFLAGS) $(CXXFLAGS) tests/fcitx-follower-test.cpp src/fcitx-follower.cpp src/fcitx-protocol.cpp src/input-language-model.cpp -o "$@" -pthread
 
-$(BUILD_DIR)/input-language-integration-test: tests/input-language-integration-test.cpp src/input-language-model.cpp src/fcitx-follower.cpp src/fcitx-helper.cpp src/fcitx-protocol.cpp src/fcitx-controller.cpp include/input-language-model.hpp include/fcitx-follower.hpp include/fcitx-helper.hpp include/fcitx-protocol.hpp include/fcitx-controller.hpp
+$(BUILD_DIR)/input-language-integration-test: tests/input-language-integration-test.cpp tests/fcitx-integration-fixture.hpp src/input-language-model.cpp src/fcitx-follower.cpp src/fcitx-helper.cpp src/fcitx-protocol.cpp src/fcitx-controller.cpp include/input-language-model.hpp include/fcitx-follower.hpp include/fcitx-helper.hpp include/fcitx-protocol.hpp include/fcitx-controller.hpp
 	@mkdir -p "$(BUILD_DIR)"
 	$(CXX) $(CPPFLAGS) $(CXXFLAGS) tests/input-language-integration-test.cpp src/input-language-model.cpp src/fcitx-follower.cpp src/fcitx-helper.cpp src/fcitx-protocol.cpp src/fcitx-controller.cpp -o "$@" -pthread \
 		$$(pkg-config --cflags --libs libcrypto)
 
+# Installed headers and libraries are outside Make prerequisites: rebuild the host
+# on every invocation so it cannot retain an earlier stack ABI.
+.PHONY: $(BUILD_DIR)/plugin-interface-test
+
+# Load the production shared object in an isolated exact-header compositor host.
+interface-test: $(BUILD_DIR)/plugin-interface-test
+	@tmp=$$(mktemp -d "$${TMPDIR:-/tmp}/input-languages-interface.XXXXXX"); \
+	trap 'rm -rf -- "$$tmp"' EXIT; \
+	$(MAKE) --no-print-directory coordinated-plugin OUTPUT_FILE="$$tmp/input-languages.so" \
+		BUILD_ID=bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb \
+		COORDINATED_SOURCE_ID=cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc && \
+	"$(BUILD_DIR)/plugin-interface-test" "$$tmp/input-languages.so"
+
+$(BUILD_DIR)/plugin-interface-test: tests/plugin-interface-test.cpp tests/fcitx-integration-fixture.hpp src/fcitx-helper.cpp src/fcitx-protocol.cpp src/fcitx-controller.cpp include/fcitx-helper.hpp include/fcitx-protocol.hpp include/fcitx-controller.hpp
+	@mkdir -p "$(BUILD_DIR)"
+	$(CXX) $(CPPFLAGS) $(CXXFLAGS) tests/plugin-interface-test.cpp src/fcitx-helper.cpp src/fcitx-protocol.cpp src/fcitx-controller.cpp -o "$@" \
+		-rdynamic -pthread -ldl $$(pkg-config --cflags --libs $(PLUGIN_PACKAGES) libcrypto)
+
 check:
-	@tmp=$$(mktemp -d "$${TMPDIR:-/tmp}/input-languages-check.XXXXXX"); \
+	@set -eu; tmp=$$(mktemp -d "$${TMPDIR:-/tmp}/input-languages-check.XXXXXX"); \
 	trap 'rm -rf -- "$$tmp"' EXIT; \
 	$(MAKE) --no-print-directory artifact OUTPUT_DIR="$$tmp" BUILD_ID=static-check SOURCE_ID=static-check COMPILER_ID="$(COMPILER_ID)"; \
 	$(MAKE) --no-print-directory coordinated-plugin OUTPUT_FILE="$$tmp/input-languages-coordinated.so" \
@@ -67,7 +85,7 @@ check:
 	for symbol in pluginAPIVersion pluginInit pluginExit; do \
 		nm -D --defined-only "$$tmp/input-languages-coordinated.so" | grep -Eq "[[:space:]]$$symbol$$" || exit 1; \
 	done; \
-	! nm -D -C "$$tmp/input-languages.so" | grep -F 'InputLanguages::Fcitx::FcitxFollower' >/dev/null; \
+	! nm -D -C "$$tmp/input-languages.so" | grep -F 'InputLanguages::Fcitx::FcitxFollower' >/dev/null || exit 1; \
 	nm -D -C "$$tmp/input-languages-coordinated.so" | grep -F 'InputLanguages::Fcitx::FcitxFollower' >/dev/null; \
 	for symbol in g_pInputManager g_pKeybindManager; do \
 		nm -D --defined-only "$$tmp/input-languages.so" | grep -Eq "[[:space:]][uV][[:space:]]$$symbol$$" || exit 1; \

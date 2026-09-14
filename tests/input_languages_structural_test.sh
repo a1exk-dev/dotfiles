@@ -15,7 +15,7 @@ new_structural_fixture() {
 	STRUCTURAL_FIXTURE=$(mktemp -d)
 	mkdir -p "$STRUCTURAL_FIXTURE/config" "$STRUCTURAL_FIXTURE/plugins" "$STRUCTURAL_FIXTURE/lib/dotfiles" \
 		"$STRUCTURAL_FIXTURE/omarchy/config/omarchy" "$STRUCTURAL_FIXTURE/omarchy/bin" "$STRUCTURAL_FIXTURE/omarchy/shell/plugins/bar/widgets" \
-		"$STRUCTURAL_FIXTURE/omarchy/shell/services"
+		"$STRUCTURAL_FIXTURE/omarchy/shell/services" "$STRUCTURAL_FIXTURE/omarchy/shell/Ui"
 	cp -a "$REPOSITORY_ROOT/config/hyprland" "$STRUCTURAL_FIXTURE/config/"
 	cp -a "$REPOSITORY_ROOT/plugins/input-languages" "$STRUCTURAL_FIXTURE/plugins/"
 	cp -a /usr/share/omarchy/config/hypr "$STRUCTURAL_FIXTURE/omarchy/config/"
@@ -23,6 +23,7 @@ new_structural_fixture() {
 	cp /usr/share/omarchy/bin/omarchy-bar /usr/share/omarchy/bin/omarchy-plugin-disable /usr/share/omarchy/bin/omarchy-plugin-enable /usr/share/omarchy/bin/omarchy-refresh-config \
 		/usr/share/omarchy/bin/omarchy-refresh-hyprland "$STRUCTURAL_FIXTURE/omarchy/bin/"
 	cp /usr/share/omarchy/shell/plugins/bar/Bar.qml "$STRUCTURAL_FIXTURE/omarchy/shell/plugins/bar/"
+	cp /usr/share/omarchy/shell/Ui/PluginBarApi.qml "$STRUCTURAL_FIXTURE/omarchy/shell/Ui/"
 	cp /usr/share/omarchy/shell/plugins/bar/widgets/KeyboardLayout.qml /usr/share/omarchy/shell/plugins/bar/widgets/KeyboardLayout.manifest.json \
 		/usr/share/omarchy/shell/plugins/bar/widgets/KeyboardLayoutModel.js "$STRUCTURAL_FIXTURE/omarchy/shell/plugins/bar/widgets/"
 	cp /usr/share/omarchy/shell/services/PluginRegistry.qml "$STRUCTURAL_FIXTURE/omarchy/shell/services/"
@@ -168,7 +169,7 @@ contract_constants_and_compatibility_drift_are_rejected() (
 	mv "$contracts/changed.json" "$contracts/protocol.json"
 	fixture_validator_reports 'private protocol frame schema or fixed constants changed' || return 1
 	cp "$REPOSITORY_ROOT/plugins/input-languages/contracts/protocol.json" "$contracts/protocol.json"
-	jq '.compatibility.upstream_version = "5.1.22"' "$contracts/fcitx.json" >"$contracts/changed.json"
+	jq '.compatibility.upstream_version = "5.1.21"' "$contracts/fcitx.json" >"$contracts/changed.json"
 	mv "$contracts/changed.json" "$contracts/fcitx.json"
 	fixture_validator_reports 'compatibility, Controller shape, managed group, or delivery constants changed' || return 1
 	cp "$REPOSITORY_ROOT/plugins/input-languages/contracts/fcitx.json" "$contracts/fcitx.json"
@@ -322,6 +323,13 @@ follower_source_contract_is_enforced() (
 	fixture_validator_reports 'Fcitx follower mailbox, wake, IPC, or plugin coordination contract changed'
 )
 
+recovery_evidence_uses_semantic_rollback_phases() (
+	jq -e '
+		.types["semantic-rollback-phase"] == {type:"string",enum:["authority-quiesced","direct-restored","fcitx-semantic-delta-reversed","helper-state-restored","operation-start-language-restored","verified"]} and
+		.objects.recovery_required.references.failed_phase == "semantic-rollback-phase"
+	' "$REPOSITORY_ROOT/plugins/input-languages/contracts/evidence-v3.json" >/dev/null
+)
+
 run_test healthy_sources_validate 'complete Input Languages sources validate'
 run_test group_toggle_is_rejected 'XKB group-toggle options are rejected'
 run_test invalid_lua_is_rejected 'invalid Hyprland Lua syntax is rejected'
@@ -340,5 +348,6 @@ run_test integration_source_identity_covers_complete_artifact_sources 'integrati
 run_test controller_adapter_source_contract_is_enforced 'Controller adapter source and transport contract are enforced'
 run_test helper_source_and_unit_contract_is_enforced 'helper protocol, source, and systemd unit contracts are enforced'
 run_test follower_source_contract_is_enforced 'follower mailbox, wake, IPC, and plugin coordination are enforced'
+run_test recovery_evidence_uses_semantic_rollback_phases 'recovery evidence uses the six semantic rollback phases'
 
 finish_tests

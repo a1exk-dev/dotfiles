@@ -45,6 +45,7 @@
 		"phase": {"type": "string", "enum_ref": "phase_order"},
 		"regular": {"type": "string", "const": "regular"},
 		"runtime-identity-or-null": {"one_of": [{"object_ref": "runtime_identity"}, {"type": "null"}]},
+		"semantic-rollback-phase": {"type": "string", "enum": ["authority-quiesced", "direct-restored", "fcitx-semantic-delta-reversed", "helper-state-restored", "operation-start-language-restored", "verified"]},
 		"string": {"type": "string", "minimum_length": 1}
 	},
 	"objects": {
@@ -143,7 +144,7 @@
 		},
 		"recovery_required": {
 			"keys": ["version", "state", "transaction_id", "failed_phase", "pending", "pending_digest", "restoration"],
-			"references": {"transaction_id": "string", "failed_phase": "phase", "pending": "path", "pending_digest": "digest", "restoration": "restoration"},
+			"references": {"transaction_id": "string", "failed_phase": "semantic-rollback-phase", "pending": "path", "pending_digest": "digest", "restoration": "restoration"},
 			"constants": {"version": 3, "state": "recovery-required"}
 		},
 		"integration_cleanup": {

@@ -15,6 +15,10 @@ exact_stack_plugin_compiles() {
 	make --no-print-directory -C "$REPOSITORY_ROOT/plugins/input-languages" check >/dev/null
 }
 
+loaded_plugin_interfaces_pass() {
+	make --no-print-directory -C "$REPOSITORY_ROOT/plugins/input-languages" interface-test >/dev/null
+}
+
 flag_widget_model_matches_stock() {
 	node "$REPOSITORY_ROOT/plugins/input-languages/tests/keyboard-layout-model-test.cjs" \
 		"$REPOSITORY_ROOT/plugins/input-languages/widget/dotfiles.keyboard-layout/KeyboardLayoutModel.js" \
@@ -23,6 +27,7 @@ flag_widget_model_matches_stock() {
 
 run_test plugin_behavior_harness_passes 'plugin behavior harness passes'
 run_test exact_stack_plugin_compiles 'exact-stack plugin compiles and exports its API'
+run_test loaded_plugin_interfaces_pass 'loaded exact-stack plugin interfaces preserve input, delivery, health, and unload'
 run_test flag_widget_model_matches_stock 'flag widget model preserves stock behavior'
 
 finish_tests

@@ -49,7 +49,7 @@ complete_immutable_integration_artifact_is_published_inertly() {
 		.version == 1 and .integration == "dotfiles-input-languages-fcitx-v1" and
 		(.source_id | test("^[0-9a-f]{64}$")) and (.build_id | test("^[0-9a-f]{64}$")) and
 		([.package_identity,.library_identity,.generated_files_identity,.inventory_identity] | all(type == "string" and length > 0)) and
-		(.dependencies | contains("fcitx-upstream=5.1.21")) and
+		(.dependencies | contains("fcitx-upstream=5.1.22")) and
 		(.dependencies | contains("libsystemd=")) and (.dependencies | contains("libcrypto=")) and
 		(.linker | startswith("GNU ld ")) and
 		(.inventory | index("file|444|self|build.json"))
