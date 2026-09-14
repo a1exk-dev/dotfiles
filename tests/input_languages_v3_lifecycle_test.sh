@@ -314,7 +314,7 @@ direct_v2_expands_to_v3() (
 	jq -n --arg profile "$XDG_CONFIG_HOME/fcitx5/profile" --arg digest "$profile_digest" --arg method "$([[ $lifecycle_mode == idle ]] && printf '' || printf keyboard-ru)" '
 		{identity:{unique_owner:":1.42",owner_epoch:1,supervised:true,upstream_version:"5.1.22",controller_shape:"supported"},
 		profile:{path:$profile,safe:true,device:1,inode:2,mode:384,uid:1000,digest:$digest},
-		groups:[{name:"Default",default_layout:"us",default_im:"keyboard-ru",properties:{},items:[{method:"keyboard-us",layout_override:"",display_name:"English (US)",native_name:"English (US)",language_code:"en",addon:"keyboard",configurable:true,variant:null,properties:{}},{method:"keyboard-ru",layout_override:"",display_name:"Russian",native_name:"Russian",language_code:"ru",addon:"keyboard",configurable:true,variant:null,properties:{}}]}],
+		groups:[{name:"Default",default_layout:"us",default_im:"keyboard-ru",properties:{},items:[{method:"keyboard-us",layout_override:"",display_name:"English (US)",native_name:"",language_code:"en",addon:"keyboard",configurable:true,variant:null,properties:{}},{method:"keyboard-ru",layout_override:"",display_name:"Russian",native_name:"",language_code:"ru",addon:"keyboard",configurable:true,variant:null,properties:{}}]}],
 		available_methods:["keyboard-us","keyboard-ru"],addons:[{name:"keyboard",enabled:true,available:true},{name:"dbus",enabled:true,available:true},{name:"dbusfrontend",enabled:true,available:true}],current_group:"Default",observed_method:$method}' >"$root/controller.json"
 
 	omarchy() {

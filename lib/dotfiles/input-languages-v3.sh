@@ -147,7 +147,7 @@ input_languages_v3_semantics_valid() {
 	jq -e '
 		def exact($wanted): (keys | sort) == ($wanted | sort);
 		def item: exact(["method","layout_override","display_name","native_name","language_code","addon","configurable","variant","properties"]) and
-			([.method,.display_name,.native_name,.language_code,.addon] | all(type == "string" and length > 0)) and
+			([.method,.display_name,.language_code,.addon] | all(type == "string" and length > 0)) and (.native_name | type == "string") and
 			(.layout_override == null or (.layout_override | type == "string")) and (.configurable | type == "boolean") and
 			(.variant == null or (.variant | type == "string")) and (.properties | type == "object");
 		def group: exact(["name","default_layout","default_im","properties","items"]) and
