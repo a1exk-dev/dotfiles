@@ -608,6 +608,14 @@ test_foreign_policy_safety_matrix() {
 	done
 }
 
+test_apply_accepts_root_owned_omarchy_color_policy() {
+	setup_supported_brave brave-bin
+	add_brave_color_policy '{"BrowserThemeColor":"#123456","BrowserColorScheme":1}' 0 0
+	DOTFILES_TEST_INPUT='y\n' run_brave_operation "$FIXTURE_ROOT" apply_brave_policy
+	assert_eq 0 "$COMMAND_STATUS" 'root-owned Omarchy color policy should not block apply' || return 1
+	assert_not_contains "$COMMAND_OUTPUT" 'Collision or foreign-policy safety error:' 'root-owned color.json should pass the foreign-policy check'
+}
+
 test_apply_preview_publish_preservation_and_idempotence() {
 	setup_supported_brave brave-bin
 	add_brave_color_policy
@@ -1768,6 +1776,7 @@ run_test_parallel test_destination_no_follow_and_metadata_matrix 'destination no
 run_test_parallel test_receipt_owned_regular_target_drift_is_repairable_and_removable 'receipt-owned regular content and metadata drift are repairable and removable'
 run_test_parallel test_arbitrary_target_metadata_rolls_back_before_delete_and_after_publish 'arbitrary target metadata rolls back safely before deletion and after publication'
 run_test_parallel test_foreign_policy_safety_matrix 'foreign policy collision, parser, type, and write-safety matrix blocks apply'
+run_test_parallel test_apply_accepts_root_owned_omarchy_color_policy 'apply accepts the root-owned color.json that Omarchy 4.0.3 writes'
 run_test_parallel test_apply_preview_publish_preservation_and_idempotence 'apply previews, publishes atomically, preserves canaries, and is idempotent'
 run_test_parallel test_apply_decline_gum_root_and_mismatch_confirmation 'decline, Gum, root, and mismatch confirmation outcomes are safe'
 run_test_parallel test_apply_rechecks_all_confirmed_state_families 'apply rechecks every confirmed state family after privilege acquisition'

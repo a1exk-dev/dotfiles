@@ -1544,11 +1544,10 @@ install_brave_consumer() {
 }
 
 add_brave_color_policy() {
-	local content=${1-'{"BrowserThemeColor":"#123456","BrowserColorScheme":1}'} uid
-	uid=$(id -u)
+	local content=${1-'{"BrowserThemeColor":"#123456","BrowserColorScheme":1}'} uid=${2-$(id -u)} gid=${3-$(id -g)}
 	printf '%s\n' "$content" >"$FIXTURE_BRAVE_SYSTEM/policies/managed/color.json"
 	chmod 0644 "$FIXTURE_BRAVE_SYSTEM/policies/managed/color.json"
-	set_brave_metadata /etc/brave/policies/managed/color.json "$uid" "$(id -g)" 0644
+	set_brave_metadata /etc/brave/policies/managed/color.json "$uid" "$gid" 0644
 }
 
 add_brave_foreign_policy() {

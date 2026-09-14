@@ -812,8 +812,9 @@ brave_scan_foreign_policies() {
 		BRAVE_FOREIGN_LINES+=("$name: type=regular file owner=$uid:$gid mode=$mode digest=$digest keys=$keys")
 		mode_value=$(brave_mode_value "$mode") || return 1
 		if [[ $name == color.json ]]; then
-			if [[ $uid != "$invoking_uid" || $((mode_value & 0200)) -eq 0 || $((mode_value & 0022)) -ne 0 ]]; then
-				BRAVE_FOREIGN_ERRORS+=("color.json: must be invoking-user-owned, owner-writable, and not group/other-writable")
+			# Omarchy 4.0.3 writes color.json as root through omarchy-theme-set-browser-policy; earlier releases wrote it as the user.
+			if [[ ( $uid != 0 && ( $uid != "$invoking_uid" || $((mode_value & 0200)) -eq 0 ) ) || $((mode_value & 0022)) -ne 0 ]]; then
+				BRAVE_FOREIGN_ERRORS+=("color.json: must be root-owned or invoking-user-owned and owner-writable, and not group/other-writable")
 				BRAVE_FOREIGN_SAFE=false
 			fi
 		else
