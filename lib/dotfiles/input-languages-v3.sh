@@ -734,8 +734,10 @@ input_languages_v3_systemctl() {
 			active=$(awk -F= '$1 == "ActiveState" {print substr($0,index($0,"=")+1)}' <<<"$properties")
 			sub=$(awk -F= '$1 == "SubState" {print substr($0,index($0,"=")+1)}' <<<"$properties")
 			pid=$(awk -F= '$1 == "MainPID" {print $2}' <<<"$properties")
+			# Socket units have no main process and omit MainPID even when loaded.
+			[[ -n $pid || $unit != *.socket ]] || pid=0
 			[[ $status == 0 || $load == not-found ]] || return 1
-			[[ -n $load && -n $active && ${pid:-} =~ ^[0-9]+$ ]] || return 1
+			[[ -n $load && -n $active && $pid =~ ^[0-9]+$ ]] || return 1
 			jq -cn --arg unit "$unit" --arg load_state "$load" --arg fragment_path "$fragment" --arg active_state "$active" --arg sub_state "$sub" --argjson main_pid "$pid" \
 				'{unit:$unit,load_state:$load_state,fragment_path:$fragment_path,active_state:$active_state,sub_state:$sub_state,main_pid:$main_pid}'
 			;;

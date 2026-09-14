@@ -48,6 +48,21 @@ health_contract_rejects_inconsistent_snapshots() (
 	done
 )
 
+systemctl_show_accepts_units_without_main_pid() (
+	set -euo pipefail
+	REPOSITORY_ROOT=$SOURCE_REPO
+	source "$SOURCE_REPO/lib/dotfiles/core.sh"
+	source "$SOURCE_REPO/lib/dotfiles/input-languages.sh"
+	local stub_properties
+	/usr/bin/systemctl() { printf '%s\n' "$stub_properties"; }
+	stub_properties=$'LoadState=loaded\nActiveState=active\nSubState=listening\nFragmentPath=/x.socket'
+	[[ $(input_languages_v3_systemctl show x.socket | jq .main_pid) == 0 ]] || return 1
+	stub_properties=$'LoadState=not-found\nActiveState=inactive\nSubState=dead\nFragmentPath='
+	[[ $(input_languages_v3_systemctl show x.socket | jq .main_pid) == 0 ]] || return 1
+	stub_properties=$'LoadState=loaded\nActiveState=active\nSubState=running\nFragmentPath=/x.service\nMainPID=42'
+	[[ $(input_languages_v3_systemctl show x.service | jq .main_pid) == 42 ]] || return 1
+)
+
 runtime_contract_classifies_without_mutation() (
 	set -euo pipefail
 	local root runtime private socket before test_runtime_path test_private_path test_socket_path socket_pid=''
@@ -1221,6 +1236,7 @@ queue_input_languages_test() {
 }
 
 queue_input_languages_test direct_v2_expands_to_acknowledged_v3 'healthy direct-v2 installation expands transactionally to acknowledged version 3 and exact no-op'
+queue_input_languages_test systemctl_show_accepts_units_without_main_pid 'systemd readback accepts socket units that report no main process'
 queue_input_languages_test fresh_install_reaches_acknowledged_v3 'one confirmed fresh Apply installs acknowledged version 3 directly and exact reapply is a no-op'
 queue_input_languages_test fresh_install_failure_restores_original_state 'failed fresh Apply restores original direct, indicator, Fcitx, helper, and language state'
 queue_input_languages_test fresh_install_post_reset_failure_restores_original_state 'post-reset fresh Apply failure restores the operation-start language'
