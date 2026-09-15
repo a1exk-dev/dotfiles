@@ -12,6 +12,7 @@ readonly SUITES=(
 	opencode_test.sh
 	claude_test.sh
 	discord_test.sh
+	discord_system24_test.sh
 	tmux_test.sh
 	packages_test.sh
 	skills_test.sh
