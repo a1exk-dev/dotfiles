@@ -804,6 +804,31 @@ setup_prerequisites() {
 	printf 'Prerequisites installed and verified: GNU Stow, ImageMagick (magick), Node.js %s, npm, and npx.\n' "$node_version"
 }
 
+readonly CLAUDE_SUPPORTED_SERIES=2.1
+readonly CLAUDE_MINIMUM_VERSION=2.1.270
+
+# Blocks below the floor; another minor series only warns so the human can re-check defaults.
+claude_version_gate() {
+	local detected
+	detected=$(claude --version) || detected=''
+	detected=${detected%% *}
+	printf 'Supported Claude Code: %s series, %s or later\n' "$CLAUDE_SUPPORTED_SERIES" "$CLAUDE_MINIMUM_VERSION"
+	if [[ ! $detected =~ ^[0-9]+\.[0-9]+\.[0-9]+ ]]; then
+		printf 'Error: cannot read the Claude Code version from claude --version.\n' >&2
+		return 1
+	fi
+	printf 'Detected Claude Code: %s\n' "$detected"
+	if ! version_in_series "$CLAUDE_SUPPORTED_SERIES" "$detected"; then
+		printf 'Warning: detected Claude Code %s is outside the supported %s series; re-check Claude Code default settings as described in docs/claude.md.\n' \
+			"$detected" "$CLAUDE_SUPPORTED_SERIES"
+		return 0
+	fi
+	if ! version_at_least "$detected" "$CLAUDE_MINIMUM_VERSION"; then
+		printf 'Error: Claude Code %s is below the minimum supported version %s.\n' "$detected" "$CLAUDE_MINIMUM_VERSION" >&2
+		return 1
+	fi
+}
+
 apply_packages() {
 	validate_catalog || return 1
 	if (($# == 0)); then
@@ -839,6 +864,10 @@ apply_packages() {
 		[[ $package != screensaver-effects ]] || includes_screensaver_effects=true
 	done
 	for package in "${packages[@]}"; do
+		if [[ $package == claude ]] && ! claude_version_gate; then
+			phase_error plan "$package" 'update Claude Code through Mise, then choose Apply Stow packages in the Dotfiles wizard'
+			return 1
+		fi
 		if [[ $package == screensaver-effects ]]; then
 			screensaver_effects_prepare_apply false || {
 				phase_error plan "$package" 'resolve the reported lifecycle conflict, then choose Apply Stow packages in the Dotfiles wizard'

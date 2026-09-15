@@ -155,5 +155,18 @@
 		"cleanup": [
 			"Removal unlinks the repository-managed ~/.config/hypr files; Omarchy defaults apply until user files are restored"
 		]
+	}, {
+		"name": "claude",
+		"path": "config/claude",
+		"description": "Claude Code user settings with the declared claude-hud plugin and status line",
+		"dependencies": [],
+		"arch_packages": [],
+		"prerequisites": ["claude", "node"],
+		"validators": [],
+		"documentation": "docs/claude.md",
+		"cleanup": [
+			"Removal leaves ~/.claude/settings.json absent, so Claude Code uses its default settings until the package is applied again",
+			"Claude Code, its state under ~/.claude, installed plugins, and skill links remain in place"
+		]
 	}]
 }

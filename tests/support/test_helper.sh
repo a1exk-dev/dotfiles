@@ -2773,6 +2773,8 @@ if [[ ${1-} == clone ]]; then
 	case $* in
 		*blader/humanizer*) printf "humanizer\n" >"$destination/.test-source" ;;
 		*mattpocock/skills*) printf "matt\n" >"$destination/.test-source" ;;
+		*vercel-labs/skills*) printf "find-skills\n" >"$destination/.test-source" ;;
+		*coleam00/excalidraw-diagram-skill*) printf "excalidraw-diagram\n" >"$destination/.test-source" ;;
 	esac
 fi'
 	make_fake npx 'printf "npx %s|HOME=%s|STATE=%s|CACHE=%s|TELEMETRY=%s\n" "$*" "$HOME" "$XDG_STATE_HOME" "$npm_config_cache" "$DISABLE_TELEMETRY" >>"$DOTFILES_TEST_CALL_LOG"
@@ -2784,6 +2786,9 @@ if [[ $source_name == humanizer ]]; then
 	mkdir -p "$target/humanizer/references"
 	printf "approved humanizer\n" >"$target/humanizer/SKILL.md"
 	printf "support file\n" >"$target/humanizer/references/style.md"
+elif [[ $source_name == find-skills || $source_name == excalidraw-diagram ]]; then
+	mkdir -p "$target/$source_name"
+	printf "approved %s\n" "$source_name" >"$target/$source_name/SKILL.md"
 else
 	count=35
 	if [[ $DOTFILES_TEST_SKILL_COUNT_DRIFT == true ]]; then count=34; fi
@@ -2823,9 +2828,11 @@ if [[ ${1-} == clone ]]; then
 	case $* in
 		*blader/humanizer*) printf "humanizer\n" >"$destination/.test-source"; revision=$old_humanizer ;;
 		*mattpocock/skills*) printf "matt\n" >"$destination/.test-source"; revision=$new_matt ;;
+		*vercel-labs/skills*) printf "find-skills\n" >"$destination/.test-source"; revision=d6b37f62ae23c3825b0ed16c73e123eee0a41fdc ;;
+		*coleam00/excalidraw-diagram-skill*) printf "excalidraw-diagram\n" >"$destination/.test-source"; revision=8646fcc9f74f38539c6cdb4c969723336a96ddcd ;;
 	esac
-	if [[ $DOTFILES_TEST_SKILL_UPDATE_NO_CHANGE == true ]]; then
-		[[ $(<"$destination/.test-source") == humanizer ]] && revision=$old_humanizer || revision=$old_matt
+	if [[ $DOTFILES_TEST_SKILL_UPDATE_NO_CHANGE == true && $(<"$destination/.test-source") == matt ]]; then
+		revision=$old_matt
 	fi
 	printf "%s\n" "$revision" >"$destination/.test-revision"
 	exit 0
@@ -2850,6 +2857,9 @@ if [[ $source_name == humanizer ]]; then
 	mkdir -p "$target/humanizer/references"
 	printf "approved humanizer\n" >"$target/humanizer/SKILL.md"
 	printf "support file\n" >"$target/humanizer/references/style.md"
+elif [[ $source_name == find-skills || $source_name == excalidraw-diagram ]]; then
+	mkdir -p "$target/$source_name"
+	printf "approved %s\n" "$source_name" >"$target/$source_name/SKILL.md"
 else
 	old_matt=068b6e0c62393147daf03530149cdce209c93da8
 	if [[ $revision == "$old_matt" ]]; then
@@ -2899,6 +2909,10 @@ seed_current_global_skills() {
 		mkdir -p "$FIXTURE_HOME/.agents/skills/$name/assets"
 		printf 'approved %s\n' "$name" >"$FIXTURE_HOME/.agents/skills/$name/SKILL.md"
 		printf 'payload %s\n' "$name" >"$FIXTURE_HOME/.agents/skills/$name/assets/example.txt"
+	done
+	for name in find-skills excalidraw-diagram; do
+		mkdir -p "$FIXTURE_HOME/.agents/skills/$name"
+		printf 'approved %s\n' "$name" >"$FIXTURE_HOME/.agents/skills/$name/SKILL.md"
 	done
 }
 

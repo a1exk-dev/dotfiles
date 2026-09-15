@@ -477,10 +477,10 @@ test_catalog_declares_package_specific_arch_requirements() {
 		'tmux should declare exact base-runtime command prerequisites without owning their packages' || return 1
 	assert_eq 'docs/tmux.md' "$(jq -r '.packages[] | select(.name == "tmux") | .documentation' "$FIXTURE_REPO/packages.json")" \
 		'tmux should reference its package guide' || return 1
-	assert_eq 'screensaver-effects' "$(jq -r '.packages[-2].name' "$FIXTURE_REPO/packages.json")" \
-		'screensaver-effects should retain its position after hyprland is appended' || return 1
-	assert_eq 'hyprland' "$(jq -r '.packages[-1].name' "$FIXTURE_REPO/packages.json")" \
-		'hyprland should be appended without renumbering existing packages' || return 1
+	assert_eq 'screensaver-effects' "$(jq -r '.packages[7].name' "$FIXTURE_REPO/packages.json")" \
+		'screensaver-effects should retain its position after later packages are appended' || return 1
+	assert_eq 'hyprland' "$(jq -r '.packages[8].name' "$FIXTURE_REPO/packages.json")" \
+		'hyprland should keep its appended position without renumbering existing packages' || return 1
 	assert_eq '["hyprland"]' \
 		"$(jq -c '.packages[] | select(.name == "hyprland") | .arch_packages' "$FIXTURE_REPO/packages.json")" \
 		'hyprland should declare only Hyprland as a plain Stow package' || return 1

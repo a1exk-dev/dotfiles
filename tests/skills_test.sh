@@ -10,6 +10,10 @@ test_skills_manifest_records_and_validates_approved_contract() {
 	assert_eq '~/.agents/skills' "$(jq -r '.target' "$FIXTURE_REPO/skills.json")" 'manifest should declare the global user target' || return 1
 	assert_eq '523374dee72d67c7b2b5f858ea0094ffda49c3ac' "$(jq -r '.sources[0].revision' "$FIXTURE_REPO/skills.json")" 'manifest should pin Humanizer evidence' || return 1
 	assert_eq '068b6e0c62393147daf03530149cdce209c93da8' "$(jq -r '.sources[1].revision' "$FIXTURE_REPO/skills.json")" 'manifest should pin Matt Pocock evidence' || return 1
+	assert_eq 'https://github.com/vercel-labs/skills|d6b37f62ae23c3825b0ed16c73e123eee0a41fdc|1' \
+		"$(jq -r '.sources[2] | "\(.url)|\(.revision)|\(.expectedSkills)"' "$FIXTURE_REPO/skills.json")" 'manifest should pin the Vercel Labs find-skills source' || return 1
+	assert_eq 'https://github.com/coleam00/excalidraw-diagram-skill|8646fcc9f74f38539c6cdb4c969723336a96ddcd|1' \
+		"$(jq -r '.sources[3] | "\(.url)|\(.revision)|\(.expectedSkills)"' "$FIXTURE_REPO/skills.json")" 'manifest should pin the Excalidraw diagram source' || return 1
 
 	local filter expected original
 	original=$(<"$FIXTURE_REPO/skills.json")

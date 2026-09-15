@@ -2,7 +2,7 @@
 
 # Agent setup
 
-The Dotfiles wizard installs pinned global agent skills from the official Humanizer and Matt Pocock repositories. Each repository's official installer controls skill discovery and supporting files. This repository adds version tracking, difference review, confirmation, backup, verification, and recovery.
+The Dotfiles wizard installs pinned global agent skills from four official repositories: Humanizer, Matt Pocock's skills, Vercel Labs' skills, and the Excalidraw diagram skill. Each repository's official installer controls skill discovery and supporting files. This repository adds version tracking, difference review, confirmation, backup, verification, and recovery.
 
 ## Requirements
 
@@ -42,6 +42,8 @@ The root `skills.json` file stores each source URL, approved full Git commit ID,
 | --- | --- | --- |
 | `blader/humanizer` | `523374dee72d67c7b2b5f858ea0094ffda49c3ac` | 1 |
 | `mattpocock/skills` | `068b6e0c62393147daf03530149cdce209c93da8` | 35 |
+| `vercel-labs/skills` | `d6b37f62ae23c3825b0ed16c73e123eee0a41fdc` | 1 |
+| `coleam00/excalidraw-diagram-skill` | `8646fcc9f74f38539c6cdb4c969723336a96ddcd` | 1 |
 
 The pinned Skills CLI version is `1.5.22`. Skills install below `~/.agents/skills/`.
 

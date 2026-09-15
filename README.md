@@ -24,6 +24,8 @@ The `hyprland` Stow package links your complete `~/.config/hypr` user configurat
 
 The `opencode` Stow package owns complete global OpenCode runtime and TUI settings, including the Ponytail plugin. It requires OpenCode installed through Omarchy 4's Mise flow, but it does not install or update OpenCode.
 
+The `claude` Stow package owns Claude Code user settings, including the claude-hud plugin and status line. It requires Claude Code 2.1.270 or later in the 2.1 series from Mise, and Node.js 18 or later on `PATH`. It does not install or update Claude Code.
+
 The `telegram-theme` Stow package supports Omarchy 4.0 and Telegram Desktop 7.2. It was tested with Omarchy `4.0.3-1` and Telegram Desktop `7.2.5-1`. It requires Node.js 22.20.0 or newer, `zip`, `flock`, and writable absolute XDG state and runtime directories. The package plan installs `telegram-desktop` and `zip` through Omarchy after confirmation.
 
 The `screensaver-effects` Stow package was verified with Omarchy `4.0.3-1` and `ttfx 0.3.2-1`. Version mismatches produce warnings, but source, command, ownership, mapping, and lifecycle failures block the operation. The package requires Node.js 22.20.0 or newer, `omarchy`, `omarchy-shell`, `xdg-terminal-exec`, `hyprctl`, `omarchy-screensaver`, `omarchy-toggle-enabled`, and `omarchy-hyprland-monitor-focused`. Its package plan installs `ttfx`, `jq`, and `socat` through Omarchy after confirmation. Gum is optional.

@@ -8,3 +8,8 @@ tab_width = 4
 [config/hyprland/**]
 indent_style = space
 indent_size = unset
+
+# Claude Code rewrites settings.json through the Stow link with two-space indentation.
+[config/claude/**]
+indent_style = space
+indent_size = 2

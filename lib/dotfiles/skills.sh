@@ -11,13 +11,16 @@ validate_skill_manifest() {
 		printf 'Error: invalid global target; expected ~/.agents/skills\n' >&2
 		return 1
 	fi
-	if ! jq -e '.sources | length == 2 and
-		(map(.url) | sort) == (["https://github.com/blader/humanizer", "https://github.com/mattpocock/skills"] | sort) and
+	if ! jq -e '.sources | length == 4 and
+		(map(.url) | sort) == (["https://github.com/blader/humanizer", "https://github.com/mattpocock/skills",
+			"https://github.com/vercel-labs/skills", "https://github.com/coleam00/excalidraw-diagram-skill"] | sort) and
 		(map(.url) | unique | length) == length and
 		(map(.name) | unique | length) == length and
 		any(.[]; .name == "humanizer" and .url == "https://github.com/blader/humanizer") and
-		any(.[]; .name == "matt-pocock-skills" and .url == "https://github.com/mattpocock/skills")' "$SKILL_MANIFEST" >/dev/null; then
-		printf 'Error: unsupported skill source URL; expected the approved Humanizer and Matt Pocock sources\n' >&2
+		any(.[]; .name == "matt-pocock-skills" and .url == "https://github.com/mattpocock/skills") and
+		any(.[]; .name == "vercel-labs-skills" and .url == "https://github.com/vercel-labs/skills") and
+		any(.[]; .name == "excalidraw-diagram-skill" and .url == "https://github.com/coleam00/excalidraw-diagram-skill")' "$SKILL_MANIFEST" >/dev/null; then
+		printf 'Error: unsupported skill source URL; expected the approved Humanizer, Matt Pocock, Vercel Labs, and Excalidraw diagram sources\n' >&2
 		return 1
 	fi
 	if ! jq -e 'all(.sources[]; .method == "skills-cli")' "$SKILL_MANIFEST" >/dev/null; then
