@@ -48,14 +48,14 @@ discord_system24_prepare_remove() {
 		printf 'Plan: skip the Vencord unpatch; no Discord app-* directory exists\n'
 	elif [[ ! -e $app_dir/resources/_app.asar ]]; then
 		printf 'Plan: skip the Vencord unpatch; %s is not patched\n' "$app_dir"
-	elif ! command -v vencord-installer-cli >/dev/null 2>&1; then
-		printf 'Error: vencord-installer-cli is missing, so %s cannot be unpatched.\n' "$app_dir" >&2
+	elif ! command -v vencordinstallercli >/dev/null 2>&1; then
+		printf 'Error: vencordinstallercli is missing, so %s cannot be unpatched.\n' "$app_dir" >&2
 		return 1
 	else
 		DISCORD_SYSTEM24_UNPATCH_DIR=$app_dir
 		printf 'Plan: unpatch the newest Discord app directory\n'
 		printf '  Discord app: %s (patched)\n' "$app_dir"
-		printf '  Run: vencord-installer-cli --uninstall --location %s\n' "$app_dir"
+		printf '  Run: vencordinstallercli --uninstall --location %s\n' "$app_dir"
 		printf '  Verify: %s/resources/_app.asar is gone.\n' "$app_dir"
 	fi
 	printf 'Plan: delete %s\n' "$(discord_system24_theme_path)"
@@ -66,8 +66,8 @@ discord_system24_prepare_remove() {
 discord_system24_remove_client_state() {
 	local app_dir=$DISCORD_SYSTEM24_UNPATCH_DIR
 	if [[ -n $app_dir ]]; then
-		if ! vencord-installer-cli --uninstall --location "$app_dir"; then
-			printf 'Error: vencord-installer-cli could not unpatch %s.\n' "$app_dir" >&2
+		if ! vencordinstallercli --uninstall --location "$app_dir"; then
+			printf 'Error: vencordinstallercli could not unpatch %s.\n' "$app_dir" >&2
 			return 1
 		fi
 		if [[ -e $app_dir/resources/_app.asar ]]; then
@@ -81,8 +81,8 @@ discord_system24_remove_client_state() {
 
 patch_discord_with_vencord() {
 	local app_dir
-	if ! command -v vencord-installer-cli >/dev/null 2>&1; then
-		printf 'Error: vencord-installer-cli is missing.\n' >&2
+	if ! command -v vencordinstallercli >/dev/null 2>&1; then
+		printf 'Error: vencordinstallercli is missing.\n' >&2
 		printf 'Recovery: apply the discord-system24 package to install vencord-installer-cli-bin, then choose Patch Discord with Vencord in the Dotfiles wizard.\n' >&2
 		return 1
 	fi
@@ -94,7 +94,7 @@ patch_discord_with_vencord() {
 	inspect_omarchy stdout
 	printf 'Plan: patch the newest Discord app directory with Vencord\n'
 	printf '  Discord app: %s\n' "$app_dir"
-	printf '  Run: vencord-installer-cli --repair --location %s\n' "$app_dir"
+	printf '  Run: vencordinstallercli --repair --location %s\n' "$app_dir"
 	printf '  Verify: %s/resources/_app.asar exists.\n' "$app_dir"
 	printf '  Discord will not be started or stopped.\n'
 	if ! wizard_confirm 'Patch Discord with Vencord?'; then
@@ -105,8 +105,8 @@ patch_discord_with_vencord() {
 		printf 'Recovery: review compatibility, then choose Patch Discord with Vencord in the Dotfiles wizard.\n' >&2
 		return 1
 	fi
-	if ! vencord-installer-cli --repair --location "$app_dir"; then
-		printf 'Error: vencord-installer-cli could not patch %s.\n' "$app_dir" >&2
+	if ! vencordinstallercli --repair --location "$app_dir"; then
+		printf 'Error: vencordinstallercli could not patch %s.\n' "$app_dir" >&2
 		printf 'Recovery: resolve the installer error, then choose Patch Discord with Vencord in the Dotfiles wizard.\n' >&2
 		return 1
 	fi

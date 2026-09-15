@@ -303,13 +303,13 @@ add_discord_app_dirs() {
 	done
 }
 
-# A fake vencord-installer-cli that logs its arguments. Like the real CLI,
+# A fake vencordinstallercli that logs its arguments. Like the real CLI,
 # --repair creates _app.asar unless the first argument is false, and
 # --uninstall restores app.asar from _app.asar unless the second argument is
 # fails (exit 1) or keeps (exit 0 with _app.asar left in place).
 make_fake_vencord_cli() {
 	local creates_backup=${1:-true} uninstall=${2:-restores}
-	make_fake vencord-installer-cli "printf 'vencord-installer-cli %s\n' \"\$*\" >>\"\$DOTFILES_TEST_CALL_LOG\"
+	make_fake vencordinstallercli "printf 'vencordinstallercli %s\n' \"\$*\" >>\"\$DOTFILES_TEST_CALL_LOG\"
 [[ \${2-} == --location && -d \${3-}/resources ]] || exit 64
 case \$1 in
 	--repair) [[ $creates_backup == false ]] || printf 'stock asar\n' >\"\$3/resources/_app.asar\" ;;
@@ -349,7 +349,7 @@ setup_discord_patch_fixture() {
 }
 
 vencord_cli_calls() {
-	grep '^vencord-installer-cli ' "$CALL_LOG" || true
+	grep '^vencordinstallercli ' "$CALL_LOG" || true
 }
 
 test_patch_previews_then_repairs_the_newest_app_after_confirmation() {
@@ -358,10 +358,10 @@ test_patch_previews_then_repairs_the_newest_app_after_confirmation() {
 	DOTFILES_TEST_INPUT='y\n' run_dotfiles "$FIXTURE_ROOT" --action discord-patch
 	assert_eq 0 "$COMMAND_STATUS" "the patch action should succeed: $COMMAND_OUTPUT" || return 1
 	assert_contains "$COMMAND_OUTPUT" "Discord app: $NEWEST_DISCORD_APP" 'the preview should name the newest app-*' || return 1
-	assert_contains "$COMMAND_OUTPUT" "Run: vencord-installer-cli --repair --location $NEWEST_DISCORD_APP" \
+	assert_contains "$COMMAND_OUTPUT" "Run: vencordinstallercli --repair --location $NEWEST_DISCORD_APP" \
 		'the preview should show the command' || return 1
 	assert_contains "$COMMAND_OUTPUT" 'Detected Omarchy: 4.0.0-1' 'the preview should show the detected Omarchy version' || return 1
-	assert_eq "vencord-installer-cli --repair --location $NEWEST_DISCORD_APP" "$(vencord_cli_calls)" \
+	assert_eq "vencordinstallercli --repair --location $NEWEST_DISCORD_APP" "$(vencord_cli_calls)" \
 		'the action should repair only the newest app-*' || return 1
 	[[ -f $NEWEST_DISCORD_APP/resources/_app.asar ]] || {
 		printf '  the newest app-* should be patched\n' >&2
@@ -408,17 +408,29 @@ test_patch_asks_for_consent_on_an_omarchy_mismatch() {
 
 	DOTFILES_TEST_OMARCHY_VERSION=4.1.0-1 DOTFILES_TEST_INPUT='y\ny\n' run_dotfiles "$FIXTURE_ROOT" --action discord-patch
 	assert_eq 0 "$COMMAND_STATUS" "granted consent should continue: $COMMAND_OUTPUT" || return 1
-	assert_eq "vencord-installer-cli --repair --location $NEWEST_DISCORD_APP" "$(vencord_cli_calls)" \
+	assert_eq "vencordinstallercli --repair --location $NEWEST_DISCORD_APP" "$(vencord_cli_calls)" \
 		'granted consent should run the CLI once'
+}
+
+# Prints a PATH of fake-bin and every host /usr/bin command except the real
+# vencordinstallercli, so a removed fake leaves the CLI missing on any host.
+discord_test_path_without_cli() {
+	local restricted_bin=$FIXTURE_ROOT/discord-restricted-bin source
+	mkdir -p "$restricted_bin"
+	for source in /usr/bin/*; do
+		[[ ${source##*/} != vencordinstallercli ]] || continue
+		ln -s "$source" "$restricted_bin/"
+	done
+	printf '%s:%s\n' "$FIXTURE_BIN" "$restricted_bin"
 }
 
 test_patch_stops_when_the_cli_is_missing() {
 	setup_discord_patch_fixture || return 1
-	rm "$FIXTURE_BIN/vencord-installer-cli"
+	rm "$FIXTURE_BIN/vencordinstallercli"
 
-	DOTFILES_TEST_INPUT='y\n' run_dotfiles "$FIXTURE_ROOT" --action discord-patch
+	DOTFILES_TEST_PATH=$(discord_test_path_without_cli) DOTFILES_TEST_INPUT='y\n' run_dotfiles "$FIXTURE_ROOT" --action discord-patch
 	assert_eq 1 "$COMMAND_STATUS" 'a missing CLI should stop the action' || return 1
-	assert_contains "$COMMAND_OUTPUT" 'vencord-installer-cli is missing' 'the action should name the missing CLI' || return 1
+	assert_contains "$COMMAND_OUTPUT" 'vencordinstallercli is missing' 'the action should name the missing CLI' || return 1
 	if [[ $COMMAND_OUTPUT == *'Patch Discord with Vencord?'* ]]; then
 		printf '  a missing CLI should stop before the confirmation\n' >&2
 		return 1
@@ -515,10 +527,10 @@ test_remove_unpatches_then_deletes_the_theme_then_unlinks_after_one_confirmation
 	DOTFILES_TEST_INPUT='y\n' run_operation "$FIXTURE_ROOT" remove_package discord-system24 --interactive
 	assert_eq 0 "$COMMAND_STATUS" "removal should succeed: $COMMAND_OUTPUT" || return 1
 	assert_contains "$COMMAND_OUTPUT" "Discord app: $NEWEST_DISCORD_APP (patched)" 'the plan should show the patched newest app-*' || return 1
-	assert_contains "$COMMAND_OUTPUT" "Run: vencord-installer-cli --uninstall --location $NEWEST_DISCORD_APP" \
+	assert_contains "$COMMAND_OUTPUT" "Run: vencordinstallercli --uninstall --location $NEWEST_DISCORD_APP" \
 		'the plan should show the unpatch command' || return 1
 	assert_contains "$COMMAND_OUTPUT" "Plan: delete $DISCORD_THEME" 'the plan should show the theme deletion' || return 1
-	assert_eq "vencord-installer-cli --uninstall --location $NEWEST_DISCORD_APP" "$(vencord_cli_calls)" \
+	assert_eq "vencordinstallercli --uninstall --location $NEWEST_DISCORD_APP" "$(vencord_cli_calls)" \
 		'removal should unpatch only the newest app-*' || return 1
 	assert_eq $'uninstall theme=present\nstow delete theme=absent app_asar=absent' "$(removal_order_calls)" \
 		'removal should unpatch, then delete the theme, then unlink' || return 1
@@ -549,7 +561,7 @@ assert_remove_stops_with_client_state_in_place() {
 test_remove_stops_when_the_unpatch_fails() {
 	setup_discord_remove_fixture || return 1
 	make_fake_vencord_cli true fails
-	assert_remove_stops_with_client_state_in_place "vencord-installer-cli could not unpatch $NEWEST_DISCORD_APP"
+	assert_remove_stops_with_client_state_in_place "vencordinstallercli could not unpatch $NEWEST_DISCORD_APP"
 }
 
 test_remove_stops_when_app_asar_backup_remains_after_the_unpatch() {
@@ -560,8 +572,9 @@ test_remove_stops_when_app_asar_backup_remains_after_the_unpatch() {
 
 test_remove_stops_when_the_cli_is_missing() {
 	setup_discord_remove_fixture || return 1
-	rm "$FIXTURE_BIN/vencord-installer-cli"
-	assert_remove_stops_with_client_state_in_place 'vencord-installer-cli is missing' || return 1
+	rm "$FIXTURE_BIN/vencordinstallercli"
+	DOTFILES_TEST_PATH=$(discord_test_path_without_cli) \
+		assert_remove_stops_with_client_state_in_place 'vencordinstallercli is missing' || return 1
 	assert_contains "$COMMAND_OUTPUT" 'reinstall vencord-installer-cli-bin' 'the recovery should name the CLI package'
 }
 

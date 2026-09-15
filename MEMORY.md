@@ -248,6 +248,14 @@ Guidance: Declare official repository packages in `arch_packages` and AUR packag
 
 Reason: `omarchy pkg add` runs Pacman alone, so AUR packages need the separate Omarchy AUR route. Arch and AUR packages have independent ownership and can be shared. Package-specific planning avoids global installs, while retention avoids removing software without installation provenance.
 
+## Take package command names from the installed package
+
+Applies when: Code or a test fake calls a command supplied by an Arch or AUR package.
+
+Guidance: Read the command name from the package's file list (`pacman -Ql <package>`) or its upstream docs, never from the package name, and use that exact name in code and fakes. Missing-command tests must build a PATH that omits the host's real command as well as the fake.
+
+Reason: AUR `vencord-installer-cli-bin` installs `vencordinstallercli`, and code plus fakes written as `vencord-installer-cli` passed every test until the real client check. Once the real command is installed, deleting only the fake leaves the host binary on PATH and the missing-command tests fail.
+
 ## Keep optional application installation separate
 
 Applies when: Adding standalone software that is desired on a fresh machine but is not a repository prerequisite or coupled to repository-owned configuration.
