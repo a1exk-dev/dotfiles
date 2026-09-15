@@ -1374,7 +1374,7 @@ if [[ \$identify == true ]]; then printf '%s|4|3\n' "\$format"; fi
 	cp "$SOURCE_REPO/bin/dotfiles" "$FIXTURE_REPO/bin/dotfiles"
 	if [[ ${DOTFILES_TEST_MINIMAL_WALLPAPER_FIXTURE:-false} == true ]]; then
 		cp "$SOURCE_REPO/lib/dotfiles/core.sh" "$SOURCE_REPO/lib/dotfiles/wallpapers.sh" \
-			"$SOURCE_REPO/lib/dotfiles/input-languages.sh" "$SOURCE_REPO/lib/dotfiles/wizard.sh" "$FIXTURE_REPO/lib/dotfiles/"
+			"$SOURCE_REPO/lib/dotfiles/wizard.sh" "$FIXTURE_REPO/lib/dotfiles/"
 	else
 		cp "$SOURCE_REPO/lib/dotfiles/"*.sh "$FIXTURE_REPO/lib/dotfiles/"
 	fi
@@ -2029,9 +2029,6 @@ run_operation() {
 			source "$repository/lib/dotfiles/applications.sh"
 			if [[ -f $repository/lib/dotfiles/screensaver-effects.sh ]]; then
 				source "$repository/lib/dotfiles/screensaver-effects.sh"
-			fi
-			if [[ -f $repository/lib/dotfiles/input-languages.sh ]]; then
-				source "$repository/lib/dotfiles/input-languages.sh"
 			fi
 			source "$repository/lib/dotfiles/packages.sh"
 			source "$repository/lib/dotfiles/skills.sh"

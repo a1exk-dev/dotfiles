@@ -59,8 +59,6 @@ Phase 4 calls the same operation as `Install optional applications`. Its multi-s
 
 Phase 5 shows one package multi-select screen. No package is selected by default. An empty selection skips the Stow phase. An operational failure stops Guided setup and names the standalone wizard action for recovery.
 
-Selecting `hyprland` in phase 5 calls the same transactional backend as `Settings -> Input Languages -> Apply`. It does not use the generic Stow-only lifecycle.
-
 After the Stow phase, phase 6 calls the same operation as `Apply wallpapers`. A declined plan, an empty unowned Wallpaper library, and an exact deployment no-op are successful skips. An operational failure stops Guided setup and directs you to `Apply wallpapers` for recovery.
 
 Phase 7 calls the same apply operation as `Manage Brave policy`. It skips successfully when no supported browser is installed or you decline the plan. It succeeds if the active policy already matches the shared Brave policy exactly or if the apply completes. An operational failure stops Guided setup and directs you to `Manage Brave policy` for recovery.
@@ -83,7 +81,7 @@ The Wallpaper library is also outside Stow. Git tracks source assignments under 
 
 The `screensaver-effects` package owns its allowlist, canonical plugin clone sources, launcher, runtime shim, and selector through Stow. Its lifecycle creates two complete live plugin-directory symlinks and manages only the `system.screensaver` entry that it inserted into the shared Omarchy menu extension. It does not own `shell.json`, the complete menu extension, Stay Awake state, lifecycle receipts, migration backups, diagnostics, preview state, or live plugin links through Stow.
 
-The `hyprland` package owns the complete 11-file `~/.config/hypr` tree through leaf links. Its lifecycle also owns the immutable Input Languages plugin and stock-derived monochrome flag widget artifacts, active pointer, live widget link, receipts, backups, and diagnostics. It replaces only the exact stock keyboard-layout entry and restores that entry or its prior absence on Remove. See [Portable input languages](input-languages.md).
+The `hyprland` package links the complete 11-file `~/.config/hypr` tree. Its `input.lua` sets the `us,ru` layouts and Omarchy's `grp:alts_toggle` option.
 
 Stop before adding machine-specific values, generated files, or sensitive data. Decide how to handle the concrete case first.
 
@@ -94,8 +92,6 @@ Choose `Package status` to inspect all packages in the package catalog. The wiza
 This action does not require GNU Stow.
 
 For `screensaver-effects`, Package status also reports the lifecycle as `active`, `inactive`, `drifted`, `conflicting`, or `recovery-required`. Use the printed standalone action before another mutation when the lifecycle is not active or inactive.
-
-For `hyprland`, Package status uses the Input Languages lifecycle. Use `Settings -> Input Languages -> Status` for build identity, plugin health, keyboard classification, active language, stock indicator health, and recovery state.
 
 ## Structural checks
 
@@ -114,7 +110,6 @@ Choose `Run structural checks` to validate:
 - ImageMagick and the Wallpaper library
 - GNU Stow availability
 - The complete screensaver package inventory, copied Omarchy plugin baselines, host seams, allowlist, effect mappings, executable modes, and lifecycle ownership boundaries
-- The complete Portable input language tree, migration baseline, plugin source, exact Omarchy seams, Lua and XKB syntax, and exact-stack plugin build
 
 `Run structural checks` can run without GNU Stow, but it reports a structural error if GNU Stow is missing. It does not require an installed browser. It requires Node.js and npx. Brave source validation does not require a deployed policy or privilege and does not change system or user files. Laptop power-policy source validation has no battery, deployed-system, service, privilege, or lifecycle-state dependency or mutation.
 
@@ -141,8 +136,6 @@ The plan identifies selected packages and required dependencies. Existing normal
 Package-specific Arch requirements are part of the Stow plan and use the same confirmation. The wizard installs missing packages with `omarchy pkg add`, verifies them, and repeats the Stow simulation before it changes links.
 
 After Stow links and validators pass for `screensaver-effects`, the package lifecycle publishes both complete live plugin links. It performs one plugin rescan when needed, preserves the existing Indicators position and options, enables the idle clone, and adds the managed System-menu action. An exact repeated Apply is a no-op. Another idle or Indicators clone blocks normal Apply and directs recovery to `Migrate competing screensaver clones`.
-
-For `hyprland`, Apply performs one transaction through the Input Languages backend. It verifies the complete live tree and supported stack, creates an exact backup, builds an immutable plugin artifact, links all 11 files, preserves or narrowly inserts the stock keyboard-layout widget, reloads Hyprland once, verifies runtime health, resets the changed setup to US, and publishes the active receipt. An exact repeated Apply preserves the active language and performs no mutation.
 
 An empty selection or a declined plan makes no changes.
 
@@ -277,8 +270,6 @@ If Omarchy installs a missing Arch package, the wizard repeats the simulation be
 Choose `Migrate existing target`, select a package, and enter the `Home-relative target path`.
 
 Do not use generic target migration for `screensaver-effects`. When competing idle or Indicators clones are present, use `Migrate competing screensaver clones`. This operation records the prior activation state, stores complete clone backups below the lifecycle XDG state directory, and restores the prior state if migration fails.
-
-Do not use generic target migration for `hyprland`. Input Languages accepts only an absent complete tree or the reviewed complete migration baseline.
 
 Migration accepts one existing regular file below the user's home directory. Inspect the file for credentials, account data, machine-specific values, and generated content before approval.
 

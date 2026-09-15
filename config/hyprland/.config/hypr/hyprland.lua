@@ -22,19 +22,6 @@ require("hypr.bindings")
 require("hypr.looknfeel")
 require("hypr.autostart")
 
--- Input Languages publishes this file only after validating an immutable build.
-local data_home = os.getenv("XDG_DATA_HOME") or (os.getenv("HOME") .. "/.local/share")
-local artifact_pointer = data_home .. "/dotfiles/input-languages/active-artifact.lua"
-local pointer = io.open(artifact_pointer, "r")
-if pointer then
-  pointer:close()
-  local artifact = dofile(artifact_pointer)
-  if type(artifact) ~= "string" or artifact:sub(1, 1) ~= "/" then
-    error("Input Languages artifact pointer is invalid: " .. artifact_pointer)
-  end
-  hl.plugin.load(artifact)
-end
-
 -- Toggle config flags dynamically.
 require("default.hypr.toggles")
 

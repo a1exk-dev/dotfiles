@@ -145,22 +145,9 @@ wizard_run_action() {
 		shell-layout) apply_shell_layout ;;
 		screensaver-effects) manage_screensaver_effects ;;
 		screensaver-effects-migrate) migrate_screensaver_effects --interactive ;;
-		settings) manage_settings ;;
-		input-languages) manage_input_languages ;;
 		exit) printf 'No action selected.\n' ;;
 		*) printf 'Error: unknown wizard action: %s\n' "$action" >&2; return 2 ;;
 	esac
-}
-
-manage_settings() {
-	local choice
-	while :; do
-		choice=$(wizard_choose_repeating 'Settings' 'Input Languages' Back) || choice=Back
-		case $choice in
-			'Input Languages') manage_input_languages ;;
-			Back) return 0 ;;
-		esac
-	done
 }
 
 guided_setup() {
@@ -295,23 +282,18 @@ wizard() {
 		labels+=('Migrate competing screensaver clones')
 		actions+=(screensaver-effects-migrate)
 	fi
-	labels+=('Manage screensaver effects' 'Manage laptop power policy' 'Settings' 'Exit')
-	actions+=(screensaver-effects power-policy settings exit)
-	while :; do
-		if ! choice=$(wizard_choose 'Choose an action (none selected by default)' "${labels[@]}"); then
-			printf 'No action selected.\n'
-			return 0
+	labels+=('Manage screensaver effects' 'Manage laptop power policy' 'Exit')
+	actions+=(screensaver-effects power-policy exit)
+	if ! choice=$(wizard_choose 'Choose an action (none selected by default)' "${labels[@]}"); then
+		printf 'No action selected.\n'
+		return 0
+	fi
+	local index
+	for index in "${!labels[@]}"; do
+		if [[ ${labels[$index]} == "$choice" ]]; then
+			wizard_run_action "${actions[$index]}"
+			return
 		fi
-		local index
-		for index in "${!labels[@]}"; do
-			if [[ ${labels[$index]} == "$choice" ]]; then
-				wizard_run_action "${actions[$index]}"
-				if [[ ${actions[$index]} == settings ]]; then
-					break
-				fi
-				return 0
-			fi
-		done
-		[[ $choice == Settings ]] || { printf 'No action selected.\n'; return 0; }
 	done
+	printf 'No action selected.\n'
 }

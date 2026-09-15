@@ -20,7 +20,7 @@ Reason: The archived files do not represent the intended repository.
 
 Applies when: Checking Omarchy compatibility, detecting a version mismatch, changing the supported target, or maintaining a full replacement.
 
-Guidance: Maintain one explicit current target and change it only through a deliberate repository decision. Before mutation under a detected mismatch, show the target and detected versions and follow the integration's approved compatibility policy; when no policy exists, obtain an explicit human decision. The Selective screensaver integration warns and continues without extra confirmation, keeps previously mapped discovered effects available, and excludes new Unmapped effects. Compare every full replacement with the applicable packaged defaults and accept or reject each difference deliberately. Surface managed-path conflicts for a human decision and prefer stable Omarchy overrides. After a target change, run structural checks, all affected validators and focused tests, and the complete suite.
+Guidance: The current target is Omarchy major version 4: accept any `4.x` release and compare only the major version, never exact minor or package-release pins. Maintain one explicit current target and change it only through a deliberate repository decision. Before mutation under a detected mismatch, show the target and detected versions and follow the integration's approved compatibility policy; when no policy exists, obtain an explicit human decision. The Selective screensaver integration warns and continues without extra confirmation, keeps previously mapped discovered effects available, and excludes new Unmapped effects. Compare every full replacement with the applicable packaged defaults and accept or reject each difference deliberately. Surface managed-path conflicts for a human decision and prefer stable Omarchy overrides. After a target change, run structural checks, all affected validators and focused tests, and the complete suite.
 
 Reason: One target keeps compatibility bounded; version differences can invalidate full replacements and managed-path assumptions before ordinary validation exposes them.
 
@@ -28,9 +28,17 @@ Reason: One target keeps compatibility bounded; version differences can invalida
 
 Applies when: Cloning or maintaining a built-in Omarchy shell service.
 
-Guidance: Trace every direct service consumer as well as generic plugin-id routing. On Omarchy 4.0.1, `StayAwake.qml` looks up `omarchy.idle` directly, while the active clone is stored under its personal plugin id, so the Stay Awake indicator stops controlling the cloned service. Before accepting a clone, make each direct consumer resolve the active implementation or approve a specific compatibility route.
+Guidance: Trace every direct service consumer as well as generic plugin-id routing. From Omarchy 4.0.3, consumers that use `firstPartyServiceFor("<built-in id>")` resolve the enabled clone through `resolveEnabledId`, so the upstream `StayAwake.qml` controls a `dotfiles.idle` clone unchanged; the older `serviceFor("omarchy.idle")` route returns null under the plugin sandbox. Before accepting a clone, make each direct consumer resolve the active implementation or approve a specific compatibility route.
 
-Reason: Omarchy's generic clone routing does not cover consumers that read the service registry by the built-in id.
+Reason: Consumers that read the service registry by the built-in id bypass generic clone routing unless they go through the first-party proxy.
+
+## Port user plugin clones to the Omarchy 4.0.3 sandbox
+
+Applies when: Writing or updating a user Omarchy Shell plugin, or a clone of a built-in plugin, on Omarchy 4.0.3 or later.
+
+Guidance: Expect a scoped `PluginShellApi` instead of the full shell: it has no `shellConfig`, exposes `idleConfig` only to plugins declaring `clonedFrom: "omarchy.idle"`, and grants host capabilities only through `omarchy.clonedFrom`. Read configuration through the sandboxed accessors with upstream's fallbacks (for example `shell.idleConfig`), and compare each clone against the new upstream source after an Omarchy update.
+
+Reason: Clones written against the unsandboxed API silently lose user settings or services after the 4.0.3 update rather than failing loudly.
 
 ## Treat native touchpad typing suppression as partial
 
@@ -39,38 +47,6 @@ Applies when: Planning, implementing, or diagnosing built-in touchpad suppressio
 Guidance: On Hyprland 0.56.2 with libinput 1.31.3, first inspect the effective `input:touchpad:disable_while_typing` value instead of assuming the switch is missing. Native DWT uses a 200 ms first-key window and a 500 ms continued-typing timeout, keeps physical click buttons active, and exposes its 100-5000 ms timeout API only to the compositor; Hyprland 0.56.2 does not expose that timeout. A source-aware Hyprland plugin cannot guarantee complete event suppression or restoration through the available exact-stack APIs. No current mechanism meets the complete portable contract without relaxing its behavior or system boundaries, so retain native DWT unchanged and do not package a custom suppressor. Reconsider this decision only when the supported Hyprland or libinput version changes or the human explicitly changes those boundaries.
 
 Reason: Setting the existing Boolean cannot provide a configurable delay or complete suppression, config-only key events lack source identity, and the plugin's event-ordering and state-ownership gaps prevent reliable failure restoration.
-
-## Keep cancellable input switching in an exact-stack plugin
-
-Applies when: Planning, implementing, or validating the Portable input language setup's bare Left Ctrl+Left Shift shortcut or physical-keyboard synchronization.
-
-Guidance: Keep XKB free of group-toggle options and use a repository-owned Hyprland plugin built against the supported stack's installed headers. Support this integration on Omarchy `4.0.2` through `4.x` only while automatic checks prove its Hyprland, menu, stock-widget source, plugin-registry, bar, refresh, and full-replacement seams. Require the plugin's complete build compatibility hash to match the running compositor and the compiler family and major version to match the compositor build; warn on compiler point-release differences. Rebuild and retest manually through Input Languages after a Hyprland-stack update rather than installing an update hook. Observe source-bearing, non-consuming keyboard signals; accept only non-virtual libinput devices with `ID_INPUT_KEYBOARD=1`; maintain one canonical physical-keyboard group; compare reload identity across the distinct effective keymaps of every accepted physical keyboard; synchronize stock-derived-widget requests without retaining excluded devices in that group; and let Input Languages Apply request a US reset only after a real mutation. Pair direct `IKeyboard::updateModifiers` group changes with `CInputManager::onKeyboardMod` while the plugin's recursion guard remains active so seat clients, including XWayland, receive the new group.
-
-Reason: Native XKB switches on the second modifier press, while Hyprland binds and submaps lack cancellable chord history and Lua and IPC lack raw source-device provenance. The exact-stack plugin seam alone exposes the event history, device identity, layout control, and stock indicator events needed to preserve three-key shortcuts and synchronize physical keyboards.
-
-## Verify portable input languages in layers
-
-Applies when: Implementing, validating, or changing the supported stack for the Portable input language setup.
-
-Guidance: Require static plugin and configuration checks, isolated command tests across real lifecycle phase boundaries, and active checks with one real physical keyboard and the healthy stock-derived flag indicator. Prove two-physical-keyboard synchronization, hotplug, and unplug in automated plugin tests; record a two-real-keyboard run when hardware is available without making it a release gate. Run focused checks, the complete repository suite, and active checks before first release and after a Hyprland-stack change; after an Omarchy-only update, require the automatic integration-seam and full-replacement checks. Record exact versions, compatibility hashes, commands, and observations, and exclude failures unreachable through production inputs, dependencies, filesystem operations, reloads, or transaction phases.
-
-Reason: The unstable Hyprland plugin boundary and shared Omarchy seams need exact-stack and live-session evidence, while normal laptop use cannot guarantee second-keyboard hardware and exhaustive test-only fault states do not improve production confidence.
-
-## Keep the input-language lifecycle transactional
-
-Applies when: Implementing, applying, removing, or maintaining the Portable input language setup.
-
-Guidance: Own the complete reviewed Hyprland user tree in one `hyprland` Stow package and canonical plugin source under `plugins/input-languages/`. Build immutable artifacts into XDG data and keep receipts, full-tree backups, pending recovery evidence, and diagnostics in XDG state. Build from a verified source snapshot, include installed Hyprland header content in build identity, and recheck source and stack inputs before live mutation and receipt publication. Include the complete stock-derived `dotfiles.keyboard-layout` clone in each artifact, preserving stock model, device, and click behavior while rendering the target layouts as text-free monochrome flags in the current bar foreground. Publish it through one receipt-owned directory link and store the flag at `right[0]`. Omarchy pins `omarchy.tray` ahead of it, so the visible order is system tray, flag, then the other right-side controls. Restore the prior stock entry and position or its absence on Remove. Move an older receipt-owned flag to the target during Apply without changing unrelated Shell state. Wait for bounded plugin-registry convergence after clone publication, restoration, or removal. Keep complete shared Omarchy Shell state and unrelated plugins unowned. Use one confirmed full-tree migration, validate a new artifact before the live transition, and reload through its changed immutable path. Preserve exact no-ops. Automatically restore the complete pre-Apply state on failure, and block mutation behind `recovery-required` when restoration cannot be proved. Remove by restoring the verified pre-Apply tree without reclassifying it against current source; retain repository sources, Arch packages, backups, and lifecycle evidence. Route the package, Guided setup Stow selection, `make input-languages`, and the Dotfiles wizard's `Main Menu -> Settings -> Input Languages` path through one Status-first backend. Show complete default-No mutation plans, skip confirmation for exact no-ops and conflicts, preserve equivalent Gum and Bash choices and outcomes, and keep each result visible before return navigation. Warn that Omarchy refresh commands can write through Stow links, leaving review of resulting repository changes to the user.
-
-Reason: The full replacement must preserve personal Hyprland configuration, while Hyprland's unstable C++ ABI, path-based plugin reconciliation, shared Shell state, and refresh writers require one recoverable boundary without automatic update hooks or Git policy. Complete plans and visible outcomes keep mutation and recovery effects reviewable in both interactive control paths.
-
-## Correlate Unix listener identity through procfs
-
-Applies when: Validating a socket-activated Unix endpoint against its inherited listener descriptor and filesystem pathname.
-
-Guidance: Correlate the descriptor inode with exactly one listening row for the exact path, `SOCK_SEQPACKET` type, and listening flags in `/proc/net/unix`; separately pin the no-follow pathname device and inode before and after validation. A queued nonblocking client may add one connecting row with inode zero for the same path, but that row is valid only alongside the exact listener-inode row. Treat procfs access failure as operational. Do not compare descriptor and pathname device numbers directly because Linux reports them from different namespaces.
-
-Reason: A socket-activation listener and its filesystem node can have different `st_dev` values even when they are the same endpoint, while accepting a path-only connecting row would fail to prove that the inherited descriptor still owns the pathname.
 
 ## Carry screensaver overrides through Hyprland dispatch
 
@@ -188,7 +164,7 @@ Reason: Repository-owned links must not replace user files or claim parent direc
 
 Applies when: Implementing or maintaining the shared Brave configuration.
 
-Guidance: Keep one canonical managed-policy source and deploy a root-owned regular copy through a dedicated Dotfiles wizard operation. Keep it out of `config/` and `packages.json`; preserve Omarchy's color policy and launch flags, browser profiles, themes, and fonts. Apply one shared policy to every supported installed Brave consumer, block overlapping foreign policy, and use the approved preview, backup, verification, rollback, and removal lifecycle.
+Guidance: Keep one canonical managed-policy source and deploy a root-owned regular copy through a dedicated Dotfiles wizard operation. Keep it out of `config/` and `packages.json`; preserve Omarchy's color policy and launch flags, browser profiles, themes, and fonts. Apply one shared policy to every supported installed Brave consumer, block overlapping foreign policy, and use the approved preview, backup, verification, rollback, and removal lifecycle. Accept Omarchy's `color.json` as either root-owned or user-owned when it is not group- or other-writable: from 4.0.3, `omarchy-theme-set-browser-policy` rewrites it as `root:root 0644` on every theme refresh.
 
 Reason: Both Brave products consume one privileged system policy path. A Stow link would make active policy user-writable through the repository, while taking ownership of Omarchy's color policy would break browser recoloring.
 
@@ -423,3 +399,19 @@ Applies when: Changing or running an application cleanup mutation.
 Guidance: Show one complete plan grouped by web apps, TUIs, and packages before mutation. Delegate each item through `omarchy webapp remove <name>`, `omarchy tui remove <name>`, or `omarchy pkg drop <name>`. Verify that each item is absent before continuing. Stop on the first removal or verification failure, preserve earlier verified removals, report incomplete items, and direct recovery to `Clean up Omarchy applications`. Treat unavailable defaults and an empty selection as successful no-ops.
 
 Reason: Omarchy owns application removal. Per-item verification and bounded failure make a partial cleanup visible and safe to rerun.
+
+## Change Omarchy Shell layout through Omarchy commands
+
+Applies when: Placing, moving, or persisting Omarchy Shell bar widgets or other `~/.config/omarchy/shell.json` state.
+
+Guidance: Treat `shell.json` as Omarchy-owned. Change it with `omarchy bar` and `omarchy plugin` commands, and keep repository intent as an action that replays those commands (for example `shell-layout`) instead of a Stow link or a tracked copy.
+
+Reason: The shell writes `shell.json` with `atomicWrites: true`, which replaces a symlink with a regular file on the next save, and the screensaver-effects lifecycle backs up and restores it only as a regular file.
+
+## Keep keyboard layout switching native
+
+Applies when: Changing keyboard layouts, layout switching, or input-method behavior on the Omarchy desktop.
+
+Guidance: Configure layouts in the `hyprland` package's `input.lua` with Omarchy's native XKB options and leave stock Fcitx on its `Default` group with only `keyboard-us`. Build any custom switching or indicator behavior on top of the compositor layout rather than driving Fcitx.
+
+Reason: Stock Fcitx follows the compositor's XKB group in its own clients through `hl-virtual-keyboard-fcitx5`, verified in Ghostty and Brave on Omarchy 4.0.3 with Fcitx 5.1.22. The retired exact-stack plugin and Fcitx helper broke on a Hyprland ABI update and still left Fcitx clients typing Latin.
