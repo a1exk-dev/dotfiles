@@ -452,7 +452,7 @@ test_shim_warns_and_continues_for_mapped_effects_on_an_untested_version() {
 	local args=$FIXTURE_ROOT/ttfx-args output_file=$FIXTURE_ROOT/output status_file=$FIXTURE_ROOT/status
 	run_stock_shim "$args" "$output_file" "$status_file" env DOTFILES_TEST_TTFX_VERSION=0.4.0
 	assert_eq 0 "$(<"$status_file")" 'version drift alone should not block mapped execution' || return 1
-	assert_contains "$(<"$output_file")" 'Warning: supported ttfx CLI 0.3.2; detected ttfx 0.4.0.' \
+	assert_contains "$(<"$output_file")" 'Warning: supported ttfx CLI 0.3; detected ttfx 0.4.0.' \
 		'version drift should remain visible' || return 1
 	assert_contains "$(<"$args")" $'matrix\n--highlight-color' \
 		'a previously mapped discovered effect should still execute'

@@ -23,7 +23,7 @@ See [Stow workflow](stow.md) for the shared Stow package lifecycle.
 
 ## Requirements
 
-The package supports Omarchy 4 and btop 1.4.7.
+The package supports Omarchy 4.0 and btop 1.4.7.
 
 It declares the official Arch `btop` package. If btop is missing, the Dotfiles wizard includes it in the complete Stow plan, installs it through Omarchy after confirmation, and verifies the installation.
 

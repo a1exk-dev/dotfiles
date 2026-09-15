@@ -373,6 +373,21 @@ test_status_warns_about_version_mismatch_without_mutation() {
 		'inspection should not mutate user config, global skills, state, cache, or packaged Omarchy fixtures'
 }
 
+test_status_compares_major_and_minor_versions() {
+	new_fixture
+	DOTFILES_TEST_OMARCHY_VERSION=4.0.9-2 run_operation "$FIXTURE_CONFIG" status
+	assert_eq 0 "$COMMAND_STATUS" 'status should succeed for a later patch release' || return 1
+	assert_contains "$COMMAND_OUTPUT" 'Supported Omarchy: 4.0' 'status should report the supported minor series' || return 1
+	if [[ $COMMAND_OUTPUT == *'Warning: detected Omarchy'* ]]; then
+		printf '  a later patch release should match the supported minor series\n  output: %q\n' "$COMMAND_OUTPUT" >&2
+		return 1
+	fi
+
+	DOTFILES_TEST_OMARCHY_VERSION=4.1.0-1 run_operation "$FIXTURE_CONFIG" status
+	assert_contains "$COMMAND_OUTPUT" 'Warning: detected Omarchy does not match supported version 4.0' \
+		'a different minor release should be a mismatch'
+}
+
 test_check_rejects_malformed_catalog_without_mutation() {
 	new_fixture
 	mkdir -p "$FIXTURE_HOME/.agents/skills" "$FIXTURE_CONFIG/omarchy"
@@ -787,4 +802,5 @@ run_test test_check_rejects_invalid_arch_package_metadata 'check rejects invalid
 run_test test_check_reports_missing_declared_arch_package_without_mutation 'check reports a missing declared Arch package without mutation'
 run_test test_check_rejects_each_invalid_package_metadata_field 'check rejects invalid package metadata fields'
 run_test test_check_rejects_missing_dependency_and_cycle 'check rejects missing dependencies and cycles'
+run_test test_status_compares_major_and_minor_versions 'status compares Omarchy major and minor versions'
 finish_tests

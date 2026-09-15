@@ -20,7 +20,7 @@ Reason: The archived files do not represent the intended repository.
 
 Applies when: Checking Omarchy compatibility, detecting a version mismatch, changing the supported target, or maintaining a full replacement.
 
-Guidance: The current target is Omarchy major version 4: accept any `4.x` release and compare only the major version, never exact minor or package-release pins. Maintain one explicit current target and change it only through a deliberate repository decision. Before mutation under a detected mismatch, show the target and detected versions and follow the integration's approved compatibility policy; when no policy exists, obtain an explicit human decision. The Selective screensaver integration warns and continues without extra confirmation, keeps previously mapped discovered effects available, and excludes new Unmapped effects. Compare every full replacement with the applicable packaged defaults and accept or reject each difference deliberately. Surface managed-path conflicts for a human decision and prefer stable Omarchy overrides. After a target change, run structural checks, all affected validators and focused tests, and the complete suite.
+Guidance: The current target is the Omarchy 4.0 minor series: accept any `4.0.x` release and package release, and compare only major and minor versions. Apply the same major.minor rule to every other version gate (Telegram Desktop 7.2, `ttfx` 0.3) through `version_in_series` in `lib/dotfiles/core.sh`, or the same inline pattern in standalone deployed scripts. Each gate keeps its own mismatch severity: Laptop power policy blocks, the Telegram hook fails closed, mutating wizard operations ask for consent, and the Selective screensaver integration warns. Maintain one explicit current target and change it only through a deliberate repository decision. Before mutation under a detected mismatch, show the target and detected versions and follow the integration's approved compatibility policy; when no policy exists, obtain an explicit human decision. The Selective screensaver integration warns and continues without extra confirmation, keeps previously mapped discovered effects available, and excludes new Unmapped effects. Compare every full replacement with the applicable packaged defaults and accept or reject each difference deliberately. Surface managed-path conflicts for a human decision and prefer stable Omarchy overrides. After a target change, run structural checks, all affected validators and focused tests, and the complete suite.
 
 Reason: One target keeps compatibility bounded; version differences can invalidate full replacements and managed-path assumptions before ordinary validation exposes them.
 
@@ -60,7 +60,7 @@ Reason: Hyprland, not the launcher process, starts the terminal after receiving 
 
 Applies when: Building or validating effect-specific active-theme mappings for an Omarchy screensaver against `ttfx` 0.3.2.
 
-Guidance: Resolve Omarchy theme tokens at launch, put root color arguments before an explicit effect name, and put effect-specific arguments after it. Choose the effect outside `--random-effect`; describe only the 25 audited fully controllable effects as fully theme-compatible, and repeat the catalog, grammar, fixed-color, and bounded-invocation audit when the `ttfx` version changes.
+Guidance: Resolve Omarchy theme tokens at launch, put root color arguments before an explicit effect name, and put effect-specific arguments after it. Choose the effect outside `--random-effect`; describe only the 25 audited fully controllable effects as fully theme-compatible, and repeat the catalog, grammar, fixed-color, and bounded-invocation audit when the `ttfx` minor version changes. Keep the structural validator's `AUDITED_TTFX_CLI` at the audited release: catalog changes in other supported patches only warn, and a completed audit is what moves it.
 
 Reason: `ttfx` 0.3.2 reconstructs a randomly selected effect with default configuration, discarding effect-specific mappings, and 12 of its 37 effects retain visible fixed colors outside their accepted arguments.
 
@@ -159,6 +159,22 @@ Applies when: Adding, applying, editing, verifying, or removing a Stow package.
 Guidance: Edit tracked files inside the repository. Run every Stow operation with `--no-folding` so new deployments link leaf targets. Preserve valid older folded links until their package is removed and reapplied. Dry-run each change, stop and show any existing-file conflict, and verify the expected links and clean removal. Target the user's home directory by default; decide any other target with the human when a concrete need appears. Before migration, resolve symlinks and prove both the existing target and repository destination remain inside their canonical ownership roots.
 
 Reason: Repository-owned links must not replace user files or claim parent directories shared with other packages.
+
+## Keep live Hyprland config links continuous
+
+Applies when: Removing, renaming, or relinking files in the `hyprland` Stow package during a running Hyprland session.
+
+Guidance: Never unstow the whole package, even briefly. Delete the tracked source, then remove only its dangling leaf link (or restow with `stow -R --no-folding`). Afterwards run `hyprctl reload` and require empty `hyprctl configerrors` output.
+
+Reason: Hyprland auto-reloads on config changes. A `stow -D`/`stow -S` gap leaves `~/.config/hypr/hyprland.lua` missing at reload time, and the "cannot open hyprland.lua" error stays on screen until the next reload.
+
+## Re-pin screensaver plugin sources after any edit
+
+Applies when: Changing any file under the `screensaver-effects` package's `dotfiles.idle` or `dotfiles.indicators` plugin sources, or its selector.
+
+Guidance: Recompute `dotfilesSourceIdentity` in `dotfiles.idle/Service.qml` with `screensaver_effects_fingerprint_tree_pair` (normalized idle tree plus raw indicators tree, hashed as in `screensaver_effects_preflight`), and prove the method first by reproducing the `HEAD` identity from a `git archive` export. Then update every changed file's digest in the validator's `source_hashes`, including `Service.qml` itself, run the screensaver suites, and re-apply the package so its lifecycle returns to `active`.
+
+Reason: Apply refuses a plugin whose embedded identity differs from its normalized source fingerprint, and the structural validator rejects unpinned source drift; without both updates the live lifecycle stays `drifted`.
 
 ## Deploy shared Brave policy outside Stow
 

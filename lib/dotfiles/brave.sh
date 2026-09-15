@@ -6,7 +6,7 @@ readonly BRAVE_MANAGED='/etc/brave/policies/managed'
 readonly BRAVE_POLICY_TARGET='/etc/brave/policies/managed/dotfiles.json'
 readonly BRAVE_SOURCE_ID='brave/managed-policy.json'
 readonly BRAVE_SCHEMA_VERSION=1
-readonly BRAVE_SUPPORTED_OMARCHY_MAJOR=${SUPPORTED_OMARCHY_VERSION:-4}
+readonly BRAVE_SUPPORTED_OMARCHY_VERSION=${SUPPORTED_OMARCHY_VERSION:-4.0}
 readonly BRAVE_OMARCHY_BASELINE='4.0.0-1'
 readonly BRAVE_PRODUCT_BASELINE='1.93.136'
 readonly BRAVE_CHROMIUM_BASELINE='151.0.7922.137'
@@ -71,7 +71,6 @@ BRAVE_MANAGED_FINGERPRINT=''
 BRAVE_PARENT_MISSING=false
 BRAVE_PARENT_BLOCKING=false
 BRAVE_OMARCHY_VERSION=''
-BRAVE_OMARCHY_MAJOR=''
 BRAVE_OMARCHY_MISMATCH=false
 BRAVE_TRANSACTION_SYSTEM_MUTATED=false
 BRAVE_REMOVE_FINAL_ACTION=''
@@ -725,12 +724,8 @@ brave_inspect_omarchy() {
 		printf 'Error: could not inspect the Omarchy version for the Brave plan.\n' >&2
 		return 1
 	}
-	BRAVE_OMARCHY_MAJOR=''
 	BRAVE_OMARCHY_MISMATCH=false
-	if [[ $BRAVE_OMARCHY_VERSION =~ (^|[^[:digit:]])([[:digit:]]+)([.]|$) ]]; then
-		BRAVE_OMARCHY_MAJOR=${BASH_REMATCH[2]}
-	fi
-	[[ $BRAVE_OMARCHY_MAJOR == "$BRAVE_SUPPORTED_OMARCHY_MAJOR" ]] || BRAVE_OMARCHY_MISMATCH=true
+	version_in_series "$BRAVE_SUPPORTED_OMARCHY_VERSION" "$BRAVE_OMARCHY_VERSION" || BRAVE_OMARCHY_MISMATCH=true
 }
 
 brave_mode_value() {
@@ -1090,7 +1085,7 @@ brave_status_locked() {
 	fi
 	printf 'Validated evidence baseline: Omarchy %s, Brave %s, Chromium %s, package %s.\n' \
 		"$BRAVE_OMARCHY_BASELINE" "$BRAVE_PRODUCT_BASELINE" "$BRAVE_CHROMIUM_BASELINE" "$BRAVE_BROWSER_BASELINE"
-	printf 'Supported Omarchy major: %s.\n' "$BRAVE_SUPPORTED_OMARCHY_MAJOR"
+	printf 'Supported Omarchy series: %s.\n' "$BRAVE_SUPPORTED_OMARCHY_VERSION"
 	brave_print_consumers
 	brave_print_state_report
 	brave_print_system_report
@@ -1277,8 +1272,8 @@ brave_print_apply_plan() {
 	brave_print_consumers
 	printf 'Validated evidence baseline: Brave/Origin %s, Chromium %s, package baseline %s.\n' \
 		"$BRAVE_PRODUCT_BASELINE" "$BRAVE_CHROMIUM_BASELINE" "$BRAVE_ORIGIN_BASELINE"
-	printf 'Supported Omarchy: %s\nDetected Omarchy: %s\n' "$BRAVE_SUPPORTED_OMARCHY_MAJOR" "$BRAVE_OMARCHY_VERSION"
-	[[ $BRAVE_OMARCHY_MISMATCH == false ]] || printf 'Warning: this plan requires consent to continue despite the Omarchy major-version mismatch.\n'
+	printf 'Supported Omarchy: %s\nDetected Omarchy: %s\n' "$BRAVE_SUPPORTED_OMARCHY_VERSION" "$BRAVE_OMARCHY_VERSION"
+	[[ $BRAVE_OMARCHY_MISMATCH == false ]] || printf 'Warning: this plan requires consent to continue despite the Omarchy version mismatch.\n'
 	printf 'Source: %s\nSource digest: %s\nTarget: %s\nTarget digest: %s\n' \
 		"$BRAVE_SOURCE_ID" "$BRAVE_SOURCE_DIGEST" "$BRAVE_POLICY_TARGET" "${BRAVE_TARGET_DIGEST:-absent}"
 	brave_print_source_target_diff || {
@@ -1862,7 +1857,7 @@ brave_reconcile_interrupted() {
 			fi
 			if [[ -n $BRAVE_RECOVERY_JSON || $stage_present == true ]]; then needs_confirmation=true; fi
 			brave_inspect_omarchy || return 1
-			printf 'Supported Omarchy: %s\nDetected Omarchy: %s\n' "$BRAVE_SUPPORTED_OMARCHY_MAJOR" "$BRAVE_OMARCHY_VERSION"
+			printf 'Supported Omarchy: %s\nDetected Omarchy: %s\n' "$BRAVE_SUPPORTED_OMARCHY_VERSION" "$BRAVE_OMARCHY_VERSION"
 			if [[ $BRAVE_OMARCHY_MISMATCH == true ]]; then
 				printf 'Warning: confirmation includes consent to recover despite the Omarchy mismatch.\n'
 				needs_confirmation=true
@@ -1915,7 +1910,7 @@ brave_reconcile_interrupted() {
 			confirmed_state=$BRAVE_STATE_FINGERPRINT
 			confirmed_system=$BRAVE_SYSTEM_FINGERPRINT
 			brave_inspect_omarchy || return 1
-			printf 'Supported Omarchy: %s\nDetected Omarchy: %s\n' "$BRAVE_SUPPORTED_OMARCHY_MAJOR" "$BRAVE_OMARCHY_VERSION"
+			printf 'Supported Omarchy: %s\nDetected Omarchy: %s\n' "$BRAVE_SUPPORTED_OMARCHY_VERSION" "$BRAVE_OMARCHY_VERSION"
 			if [[ $BRAVE_OMARCHY_MISMATCH == true ]]; then
 				printf 'Warning: confirmation includes consent to recover despite the Omarchy mismatch.\n'
 				if ! brave_confirm 'Complete this displayed Brave recovery plan, including any displayed Omarchy mismatch?'; then
@@ -1943,7 +1938,7 @@ brave_reconcile_interrupted() {
 			fi
 			approved_remove_hardening=$BRAVE_REMOVE_FINAL_NEEDS_HARDENING
 			brave_inspect_omarchy || return 1
-			printf 'Supported Omarchy: %s\nDetected Omarchy: %s\n' "$BRAVE_SUPPORTED_OMARCHY_MAJOR" "$BRAVE_OMARCHY_VERSION"
+			printf 'Supported Omarchy: %s\nDetected Omarchy: %s\n' "$BRAVE_SUPPORTED_OMARCHY_VERSION" "$BRAVE_OMARCHY_VERSION"
 			[[ $BRAVE_OMARCHY_MISMATCH == false ]] || printf 'Warning: confirmation includes consent to recover despite the Omarchy mismatch.\n'
 			recovery_prompt='Complete this displayed Brave recovery plan, including any displayed Omarchy mismatch?'
 			if ! brave_confirm "$recovery_prompt"; then
@@ -1981,7 +1976,7 @@ brave_reconcile_interrupted() {
 		return 1
 	}
 	brave_inspect_omarchy || return 1
-	printf 'Supported Omarchy: %s\nDetected Omarchy: %s\n' "$BRAVE_SUPPORTED_OMARCHY_MAJOR" "$BRAVE_OMARCHY_VERSION"
+	printf 'Supported Omarchy: %s\nDetected Omarchy: %s\n' "$BRAVE_SUPPORTED_OMARCHY_VERSION" "$BRAVE_OMARCHY_VERSION"
 	[[ $BRAVE_OMARCHY_MISMATCH == false ]] || printf 'Warning: confirmation includes consent to recover despite the Omarchy mismatch.\n'
 	if ! brave_confirm 'Apply this displayed Brave recovery plan?'; then
 		printf 'No changes made; interrupted recovery remains pending.\n'
@@ -2107,8 +2102,8 @@ brave_print_remove_plan() {
 	local transaction=$1 original=$2
 	printf 'Plan: remove one shared Brave managed policy\n'
 	brave_print_consumers
-	printf 'Supported Omarchy: %s\nDetected Omarchy: %s\n' "$BRAVE_SUPPORTED_OMARCHY_MAJOR" "$BRAVE_OMARCHY_VERSION"
-	[[ $BRAVE_OMARCHY_MISMATCH == false ]] || printf 'Warning: this plan requires consent to continue despite the Omarchy major-version mismatch.\n'
+	printf 'Supported Omarchy: %s\nDetected Omarchy: %s\n' "$BRAVE_SUPPORTED_OMARCHY_VERSION" "$BRAVE_OMARCHY_VERSION"
+	[[ $BRAVE_OMARCHY_MISMATCH == false ]] || printf 'Warning: this plan requires consent to continue despite the Omarchy version mismatch.\n'
 	printf 'Receipt-owned target: %s\nCurrent target digest: %s\n' "$BRAVE_POLICY_TARGET" "${BRAVE_TARGET_DIGEST:-missing}"
 	[[ $BRAVE_TARGET_PRESENT == true ]] && printf 'Target drift from receipt/source is displayed and will be backed up before removal.\n' || printf 'Target is already missing; this plan clears stale receipt state without recreating policy.\n'
 	brave_print_system_report

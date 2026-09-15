@@ -8,9 +8,9 @@ Stock CLI screensaver commands remain unchanged. Omarchy continues to own lock a
 
 ## Requirements
 
-The package was verified with:
+The package supports Omarchy 4.0 and `ttfx` 0.3. It was verified with:
 
-- Omarchy `4.0.1-1`
+- Omarchy `4.0.3-1`
 - `ttfx` package `0.3.2-1`
 - `ttfx` CLI `0.3.2`
 

@@ -13,7 +13,7 @@ The package uses native OpenCode. It declares Ponytail as its only external plug
 
 ## Requirements
 
-The package supports Omarchy 4. It requires the `opencode` command from Omarchy's Mise flow. The package does not install an Arch package, install or update a Mise tool, or run `opencode upgrade`.
+The package supports Omarchy 4.0. It requires the `opencode` command from Omarchy's Mise flow. The package does not install an Arch package, install or update a Mise tool, or run `opencode upgrade`.
 
 Check the requirement before you apply or migrate the package:
 
@@ -25,14 +25,14 @@ mise current opencode
 opencode --version
 ```
 
-The Omarchy major version must be 4. Mise must report an active OpenCode installation. If the OpenCode wrapper is absent, restore it through Omarchy. Then run the checks again:
+The Omarchy version must be in the 4.0 series. Mise must report an active OpenCode installation. If the OpenCode wrapper is absent, restore it through Omarchy. Then run the checks again:
 
 ```bash
 omarchy-mise-install opencode
 opencode --version
 ```
 
-The package contract was verified with OpenCode 1.18.23. The Mise wrapper can update OpenCode without a change to this Stow package. Run the package validator after an OpenCode update.
+The package contract was verified with OpenCode 1.18.30. The Mise wrapper can update OpenCode without a change to this Stow package. Run the package validator after an OpenCode update.
 
 ## Settings
 
@@ -132,7 +132,7 @@ From the repository root, start the wizard and choose `Run structural checks`:
 make
 ```
 
-Continue only when the supported and detected Omarchy major versions are 4 and all structural checks pass. If OpenCode is absent, run `omarchy-mise-install opencode`. Verify it with `mise current opencode` and `opencode --version`, then repeat the structural checks.
+Continue only when the detected Omarchy version is in the supported 4.0 series and all structural checks pass. If OpenCode is absent, run `omarchy-mise-install opencode`. Verify it with `mise current opencode` and `opencode --version`, then repeat the structural checks.
 
 Start the wizard again and choose `Package status`. The `opencode` package must be `conflicting` only because these managed targets are regular files:
 

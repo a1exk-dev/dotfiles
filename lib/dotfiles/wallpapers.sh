@@ -2,7 +2,7 @@ readonly WALLPAPER_INBOX_ROOT="$REPOSITORY_ROOT/wallpapers/inbox"
 readonly WALLPAPER_LIBRARY_ROOT="$REPOSITORY_ROOT/wallpapers/library"
 readonly WALLPAPER_FILES_HELPER="$REPOSITORY_ROOT/lib/dotfiles/wallpaper-files.mjs"
 readonly WALLPAPER_SCHEMA_VERSION=1
-readonly WALLPAPER_SUPPORTED_OMARCHY_MAJOR=${SUPPORTED_OMARCHY_VERSION:-4}
+readonly WALLPAPER_SUPPORTED_OMARCHY_VERSION=${SUPPORTED_OMARCHY_VERSION:-4.0}
 readonly WALLPAPER_OPERATION_CONTEXT_ORDINARY='ordinary'
 readonly WALLPAPER_OPERATION_CONTEXT_RECOVERY_COMPLETED='recovery-completed'
 
@@ -437,7 +437,6 @@ WALLPAPER_LIVE_ROOT=''
 WALLPAPER_LOCK_FD=''
 WALLPAPER_LOCKED_STATE_ROOT_IDENTITY=''
 WALLPAPER_OMARCHY_VERSION=''
-WALLPAPER_OMARCHY_MAJOR=''
 WALLPAPER_OMARCHY_MISMATCH=false
 WALLPAPER_APPROVED_OMARCHY_VERSION=''
 WALLPAPER_OPERATION_CONTEXT=$WALLPAPER_OPERATION_CONTEXT_ORDINARY
@@ -519,20 +518,16 @@ wallpaper_inspect_omarchy() {
 		printf 'Error: could not inspect the Omarchy version for wallpaper mutation.\n' >&2
 		return 1
 	}
-	WALLPAPER_OMARCHY_MAJOR=''
 	WALLPAPER_OMARCHY_MISMATCH=false
-	if [[ $WALLPAPER_OMARCHY_VERSION =~ (^|[^[:digit:]])([[:digit:]]+)([.]|$) ]]; then
-		WALLPAPER_OMARCHY_MAJOR=${BASH_REMATCH[2]}
-	fi
-	[[ $WALLPAPER_OMARCHY_MAJOR == "$WALLPAPER_SUPPORTED_OMARCHY_MAJOR" ]] || WALLPAPER_OMARCHY_MISMATCH=true
-	printf 'Supported Omarchy: %s\nDetected Omarchy: %s\n' "$WALLPAPER_SUPPORTED_OMARCHY_MAJOR" "$WALLPAPER_OMARCHY_VERSION"
+	version_in_series "$WALLPAPER_SUPPORTED_OMARCHY_VERSION" "$WALLPAPER_OMARCHY_VERSION" || WALLPAPER_OMARCHY_MISMATCH=true
+	printf 'Supported Omarchy: %s\nDetected Omarchy: %s\n' "$WALLPAPER_SUPPORTED_OMARCHY_VERSION" "$WALLPAPER_OMARCHY_VERSION"
 }
 
 wallpaper_require_compatible_mutation() {
 	local unattended=$1 override=$2
 	wallpaper_inspect_omarchy || return 1
 	if [[ $WALLPAPER_OMARCHY_MISMATCH == true ]]; then
-		printf 'Warning: detected Omarchy does not match supported version %s.\n' "$WALLPAPER_SUPPORTED_OMARCHY_MAJOR"
+		printf 'Warning: detected Omarchy does not match supported version %s.\n' "$WALLPAPER_SUPPORTED_OMARCHY_VERSION"
 		if [[ $unattended == true && $override != true ]]; then
 			printf 'Error: unattended wallpaper mutation requires --allow-omarchy-mismatch for this version.\n' >&2
 			return 1

@@ -1,4 +1,4 @@
-readonly SUPPORTED_OMARCHY_VERSION=4
+readonly SUPPORTED_OMARCHY_VERSION=4.0
 readonly MINIMUM_NODE_VERSION=22.20.0
 readonly REPOSITORY_ROOT=$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")/../.." && pwd)
 readonly PACKAGE_CATALOG="$REPOSITORY_ROOT/packages.json"
@@ -6,7 +6,6 @@ readonly APPLICATION_CATALOG="$REPOSITORY_ROOT/applications.json"
 readonly SKILL_MANIFEST="$REPOSITORY_ROOT/skills.json"
 
 OMARCHY_DETECTED_VERSION=''
-OMARCHY_DETECTED_MAJOR=''
 OMARCHY_VERSION_MISMATCH=false
 
 declare -A DEPENDENCY_VISIT_STATE=()
@@ -160,14 +159,10 @@ inspect_omarchy() {
 	else
 		OMARCHY_DETECTED_VERSION=$(omarchy version)
 	fi
-	OMARCHY_DETECTED_MAJOR=''
 	OMARCHY_VERSION_MISMATCH=false
-	if [[ $OMARCHY_DETECTED_VERSION =~ (^|[^[:digit:]])([[:digit:]]+)([.]|$) ]]; then
-		OMARCHY_DETECTED_MAJOR=${BASH_REMATCH[2]}
-	fi
 	printf 'Supported Omarchy: %s\n' "$SUPPORTED_OMARCHY_VERSION"
 	printf 'Detected Omarchy: %s\n' "$OMARCHY_DETECTED_VERSION"
-	if [[ $OMARCHY_DETECTED_MAJOR != "$SUPPORTED_OMARCHY_VERSION" ]]; then
+	if ! version_in_series "$SUPPORTED_OMARCHY_VERSION" "$OMARCHY_DETECTED_VERSION"; then
 		OMARCHY_VERSION_MISMATCH=true
 		if [[ $warning_stream == stderr ]]; then
 			printf 'Warning: detected Omarchy does not match supported version %s\n' "$SUPPORTED_OMARCHY_VERSION" >&2
@@ -175,6 +170,12 @@ inspect_omarchy() {
 			printf 'Warning: detected Omarchy does not match supported version %s\n' "$SUPPORTED_OMARCHY_VERSION"
 		fi
 	fi
+}
+
+# Succeeds when a version such as 4.0.3-1 belongs to a major.minor series such as 4.0.
+version_in_series() {
+	local version=${2%%-*}
+	[[ $version == "$1" || $version == "$1".* ]]
 }
 
 inspect_environment() {

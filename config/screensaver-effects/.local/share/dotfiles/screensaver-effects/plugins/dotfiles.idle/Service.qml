@@ -26,7 +26,7 @@ Item {
   readonly property bool idleEnabled: stayAwakeStateLoaded && !stayAwake
   readonly property string screensaverClass: "org.omarchy.screensaver"
   readonly property string screensaverLauncherPath: decodeURIComponent(new URL(Qt.resolvedUrl("launch-screensaver")).pathname)
-  readonly property string dotfilesSourceIdentity: "46725dbe6dde8099ee84fd52fc96760799df72e1b86217a82331aefeed874061"
+  readonly property string dotfilesSourceIdentity: "0047f9de6187c24da222837c512f58a45f73dcc6bff0987b5dfd8b56cf0cd292"
   readonly property string dotfilesInstanceId: Date.now().toString(36) + "-" + Math.random().toString(36).slice(2)
 
   property bool stayAwake: false

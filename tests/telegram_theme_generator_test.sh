@@ -162,7 +162,7 @@ test_generator_accepts_every_stock_light_and_dark_palette() {
 		assert_valid_telegram_archive "$archive" "$manifest" || return 1
 		count=$((count + 1))
 	done
-	assert_eq 22 "$count" 'the exact Omarchy 4.0.1 stock theme set should be covered' || return 1
+	assert_eq 22 "$count" 'the exact Omarchy 4.0.3 stock theme set should be covered' || return 1
 	if ((light == 0 || dark == 0)); then
 		printf '  stock coverage must include both light and dark themes\n' >&2
 		return 1
@@ -535,7 +535,7 @@ test_generator_atomically_persists_status_before_replacing_stable_archive() {
 
 set -e
 run_test test_generator_cli_produces_deterministic_valid_archive 'generator CLI produces a deterministic validated archive'
-run_test test_generator_accepts_every_stock_light_and_dark_palette 'generator accepts every stock light and dark Omarchy 4.0.1 palette'
+run_test test_generator_accepts_every_stock_light_and_dark_palette 'generator accepts every stock light and dark Omarchy 4.0.3 palette'
 run_test test_generator_matches_approved_visual_role_mapping 'generator preserves the approved visual role mapping'
 run_test test_independent_assertions_reject_fully_collapsed_dialog_rows 'independent assertions reject fully collapsed dialog rows'
 run_test test_generator_accepts_valid_custom_light_and_dark_manifests 'generator accepts valid custom light and dark manifests'

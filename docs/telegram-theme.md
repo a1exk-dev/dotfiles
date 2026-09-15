@@ -8,10 +8,12 @@ The integration uses Omarchy's user theme template and `theme-set.d` hook. It do
 
 ## Requirements
 
-The integration supports these exact package versions:
+The integration requires Omarchy 4.0 and Telegram Desktop 7.2. It was tested with these package versions:
 
-- Omarchy `4.0.1-1`
-- Telegram Desktop `7.0.9-4`
+- Omarchy `4.0.3-1`
+- Telegram Desktop `7.2.5-1`
+
+Its color roles come from the pinned Telegram Desktop 7.0.9 Night baseline.
 
 It also requires:
 
@@ -24,7 +26,7 @@ It also requires:
 
 The package catalog declares `telegram-desktop` and `zip` as Arch requirements. If either is missing, the Dotfiles wizard includes it in the package plan and installs it through Omarchy after approval.
 
-A different Omarchy or Telegram Desktop package version fails closed. The integration retains the last valid generated theme until the compatibility baseline and tests are updated.
+A different Omarchy or Telegram Desktop minor version fails closed. The integration retains the last valid generated theme until the compatibility baseline and tests are updated.
 
 ## Owned files
 
@@ -72,7 +74,7 @@ make
 
 Choose `Manage Telegram theme`, then `Setup / refresh`.
 
-Setup verifies the exact supported package versions and shows this planned command:
+Setup verifies the supported Omarchy and Telegram Desktop minor versions and shows this planned command:
 
 ```text
 omarchy theme refresh
@@ -124,7 +126,7 @@ Before publication, the integration checks:
 - At least `4.50:1` contrast for every declared text and background pair
 - At least `0.025` OKLab separation for declared adjacent primary surfaces
 - Source-palette-only fallback colors
-- The exact supported Omarchy and Telegram package versions
+- The supported Omarchy and Telegram Desktop minor versions
 
 An invalid custom Omarchy palette is not published.
 

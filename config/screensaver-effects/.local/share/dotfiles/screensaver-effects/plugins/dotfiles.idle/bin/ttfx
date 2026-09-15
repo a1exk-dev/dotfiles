@@ -2,7 +2,7 @@
 
 set -u
 
-readonly SCREENSAVER_SUPPORTED_TTFX_CLI=0.3.2
+readonly SCREENSAVER_SUPPORTED_TTFX_CLI=0.3
 SCREENSAVER_MAP_STATUS=
 SCREENSAVER_MAP_ARGS=()
 
@@ -403,7 +403,7 @@ for effect in "${configured[@]}"; do
 done
 
 version=$({ "$real_ttfx" --version 2>/dev/null || true; } | tr -d '\r')
-if [[ $version != "ttfx $SCREENSAVER_SUPPORTED_TTFX_CLI" ]]; then
+if [[ $version != "ttfx $SCREENSAVER_SUPPORTED_TTFX_CLI" && $version != "ttfx $SCREENSAVER_SUPPORTED_TTFX_CLI".* ]]; then
 	printf 'Warning: supported ttfx CLI %s; detected %s. Using only tracked mapped effects still discovered.\n' \
 		"$SCREENSAVER_SUPPORTED_TTFX_CLI" "${version:-unknown}" >&2
 fi

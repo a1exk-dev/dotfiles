@@ -8,7 +8,7 @@ This optional policy configures native UPower to hibernate at the selected displ
 
 ## Requirements
 
-The manager supports Omarchy 4 and requires UPower through `upower.service`, logind, the system D-Bus, the Omarchy sleep-lock service, Node.js, `jq`, `flock`, `stat`, `date`, `mkdir`, `mktemp`, `mv`, `rm`, `systemctl`, `systemd-inhibit`, `busctl`, `sudo`, and fixed `/usr/bin` system tools. Apply also requires a built-in battery reported by `omarchy-battery-present`, working hibernation reported by `omarchy-hibernation-available`, and logind `CanHibernate=yes`. Each exact target must be absent or a `root:root 0644` regular file. Remove and recovery do not require current canonical sources, battery eligibility, working hibernation, or `CanHibernate=yes`.
+The manager supports Omarchy 4.0 and requires UPower through `upower.service`, logind, the system D-Bus, the Omarchy sleep-lock service, Node.js, `jq`, `flock`, `stat`, `date`, `mkdir`, `mktemp`, `mv`, `rm`, `systemctl`, `systemd-inhibit`, `busctl`, `sudo`, and fixed `/usr/bin` system tools. Apply also requires a built-in battery reported by `omarchy-battery-present`, working hibernation reported by `omarchy-hibernation-available`, and logind `CanHibernate=yes`. Each exact target must be absent or a `root:root 0644` regular file. Remove and recovery do not require current canonical sources, battery eligibility, working hibernation, or `CanHibernate=yes`.
 
 Run the manager as a regular user. Apply, remove, and recovery require a writable absolute `XDG_STATE_HOME`, or the default `~/.local/state`, and a safe root-owned `/run/lock` directory. The manager does not provision or repair hibernation, swap, resume, initramfs, or bootloader configuration.
 

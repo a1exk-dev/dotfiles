@@ -357,9 +357,9 @@ power_policy_inspect_runtime() {
 	POWER_POLICY_LOGIND_EFFECTIVE=$(power_policy_adapter inspect logind-effective) || return 1
 }
 
-power_policy_supported() { [[ ${POWER_POLICY_VERSION%%.*} == "${SUPPORTED_OMARCHY_VERSION:-4}" ]]; }
+power_policy_supported() { version_in_series "${SUPPORTED_OMARCHY_VERSION:-4.0}" "$POWER_POLICY_VERSION"; }
 power_policy_eligible() {
-	power_policy_supported || { printf 'Error: laptop power policy supports Omarchy %s, but detected %s.\n' "${SUPPORTED_OMARCHY_VERSION:-4}" "$POWER_POLICY_VERSION" >&2; return 1; }
+	power_policy_supported || { printf 'Error: laptop power policy supports Omarchy %s, but detected %s.\n' "${SUPPORTED_OMARCHY_VERSION:-4.0}" "$POWER_POLICY_VERSION" >&2; return 1; }
 	[[ $POWER_POLICY_BATTERY == yes ]] || { printf 'Ineligible laptop power-policy system: omarchy-battery-present did not find a built-in laptop battery.\n' >&2; return "$POWER_POLICY_OUTCOME_INELIGIBLE"; }
 	[[ $POWER_POLICY_HIBERNATION == yes ]] || { printf 'Ineligible laptop power-policy system: omarchy-hibernation-available did not report working hibernation.\n' >&2; return "$POWER_POLICY_OUTCOME_INELIGIBLE"; }
 	[[ $POWER_POLICY_CAN_HIBERNATE == yes ]] || { printf 'Error: logind CanHibernate must report "yes".\n' >&2; return 1; }
@@ -438,7 +438,7 @@ power_policy_collect_apply_snapshot() {
 
 power_policy_print_apply_plan() {
 	local transaction=$1 name source target
-	printf 'Plan: apply laptop power policy\nSupported Omarchy: %s\nDetected Omarchy: %s\n' "${SUPPORTED_OMARCHY_VERSION:-4}" "$POWER_POLICY_VERSION"
+	printf 'Plan: apply laptop power policy\nSupported Omarchy: %s\nDetected Omarchy: %s\n' "${SUPPORTED_OMARCHY_VERSION:-4.0}" "$POWER_POLICY_VERSION"
 	printf '  receipts: active=%s pending=%s\n' "$POWER_POLICY_ACTIVE_PATH" "$POWER_POLICY_PENDING_PATH"
 	for name in upower logind; do source=$(power_policy_source_path "$name"); target=$(power_policy_target_path "$name"); printf '  %s: source=%s digest=%s target=%s current=%s stage=%s backup=%s\n' "$name" "$source" "$(power_policy_digest_for "$name")" "$target" "${POWER_POLICY_TARGET[$name]}" "$(power_policy_stage_path "$name" "$transaction")" "$(power_policy_backup_path "$transaction" "$name")"; done
 	printf '  UPower relevant settings: %s\n' "$(power_policy_plan_classification "$POWER_POLICY_UPOWER_PLAN")"
@@ -716,7 +716,7 @@ apply_power_policy() {
 	power_policy_read_state || outcome=1
 	if ((outcome == 0)) && [[ -n $POWER_POLICY_PENDING ]]; then
 		POWER_POLICY_VERSION=$(power_policy_adapter inspect version) || outcome=1
-		if ((outcome == 0)) && ! power_policy_supported; then printf 'Error: laptop power policy supports Omarchy %s, but detected %s.\n' "${SUPPORTED_OMARCHY_VERSION:-4}" "$POWER_POLICY_VERSION" >&2; outcome=1; fi
+		if ((outcome == 0)) && ! power_policy_supported; then printf 'Error: laptop power policy supports Omarchy %s, but detected %s.\n' "${SUPPORTED_OMARCHY_VERSION:-4.0}" "$POWER_POLICY_VERSION" >&2; outcome=1; fi
 		if ((outcome == 0)); then power_policy_recover || outcome=$?; fi
 		power_policy_adapter lock release
 		return "$outcome"
@@ -766,7 +766,7 @@ remove_power_policy() {
 	power_policy_read_state || outcome=1
 	if ((outcome == 0)) && [[ -n $POWER_POLICY_PENDING ]]; then
 		POWER_POLICY_VERSION=$(power_policy_adapter inspect version) || outcome=1
-		if ((outcome == 0)) && ! power_policy_supported; then printf 'Error: laptop power policy supports Omarchy %s, but detected %s.\n' "${SUPPORTED_OMARCHY_VERSION:-4}" "$POWER_POLICY_VERSION" >&2; outcome=1; fi
+		if ((outcome == 0)) && ! power_policy_supported; then printf 'Error: laptop power policy supports Omarchy %s, but detected %s.\n' "${SUPPORTED_OMARCHY_VERSION:-4.0}" "$POWER_POLICY_VERSION" >&2; outcome=1; fi
 		if ((outcome == 0)); then power_policy_recover || outcome=$?; fi
 		power_policy_adapter lock release; return "$outcome"
 	fi
@@ -777,7 +777,7 @@ remove_power_policy() {
 	fi
 	((outcome == 0)) || { power_policy_adapter lock release; return "$outcome"; }
 	POWER_POLICY_VERSION=$(power_policy_adapter inspect version) || { power_policy_adapter lock release; return 1; }
-	power_policy_supported || { printf 'Error: laptop power policy supports Omarchy %s, but detected %s.\n' "${SUPPORTED_OMARCHY_VERSION:-4}" "$POWER_POLICY_VERSION" >&2; power_policy_adapter lock release; return 1; }
+	power_policy_supported || { printf 'Error: laptop power policy supports Omarchy %s, but detected %s.\n' "${SUPPORTED_OMARCHY_VERSION:-4.0}" "$POWER_POLICY_VERSION" >&2; power_policy_adapter lock release; return 1; }
 	power_policy_collect_remove_snapshot || { printf 'Error: receipt-owned target, backup, or restored effective configuration is invalid; Remove is blocked.\n' >&2; power_policy_adapter lock release; return 1; }
 	transaction=$(power_policy_transaction); snapshot=$(power_policy_snapshot)
 	printf 'Plan: remove laptop power policy\n'
@@ -848,7 +848,7 @@ power_policy_status() {
 	upower_status=$POWER_POLICY_UPOWER_EFFECTIVE; logind_status=$POWER_POLICY_LOGIND_EFFECTIVE
 	[[ -n $upower_status ]] || upower_status='{"effective":{},"files":[]}'
 	[[ -n $logind_status ]] || logind_status='{"effective":{},"files":[]}'
-	printf 'UPower source: %s\nlogind source: %s\nSupported Omarchy: %s\nDetected Omarchy: %s\n' "$upower_source_status" "$logind_source_status" "${SUPPORTED_OMARCHY_VERSION:-4}" "${POWER_POLICY_VERSION:-unavailable}"
+	printf 'UPower source: %s\nlogind source: %s\nSupported Omarchy: %s\nDetected Omarchy: %s\n' "$upower_source_status" "$logind_source_status" "${SUPPORTED_OMARCHY_VERSION:-4.0}" "${POWER_POLICY_VERSION:-unavailable}"
 	printf 'Eligibility: battery=%s hibernation=%s CanHibernate=%s\nUPower service: current=%s prior=%s\nOmarchy sleep lock: %s\nCritical action: %s\nLive lid settings: %s\nInhibit delay (us): %s\n' "${POWER_POLICY_BATTERY:-unavailable}" "${POWER_POLICY_HIBERNATION:-unavailable}" "${POWER_POLICY_CAN_HIBERNATE:-unavailable}" "${POWER_POLICY_SERVICE:-unavailable}" "$service_prior" "${POWER_POLICY_SLEEP_LOCK:-unavailable}" "${POWER_POLICY_CRITICAL_ACTION:-unavailable}" "${POWER_POLICY_LOGIND_RUNTIME:-unavailable}" "${POWER_POLICY_INHIBIT_DELAY_US:-unavailable}"
 	for name in upower logind; do printf '%s target: %s\n' "$name" "${POWER_POLICY_TARGET[$name]:-unavailable}"; done
 	printf 'UPower merged values: %s\nUPower relevant files/settings: %s\nlogind merged values: %s\nlogind relevant files/settings: %s\n' "$(jq -c '.effective // {}' <<<"$upower_status")" "$(power_policy_plan_summary "$upower_status")" "$(jq -c '.effective // {}' <<<"$logind_status")" "$(power_policy_plan_summary "$logind_status")"

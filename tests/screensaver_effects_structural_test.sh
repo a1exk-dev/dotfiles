@@ -69,8 +69,8 @@ test_structural_validator_accepts_the_tracked_package_without_a_live_leaf() {
 	assert_eq 0 "$COMMAND_STATUS" 'the tracked package should pass structural validation' || return 1
 	assert_contains "$COMMAND_OUTPUT" 'Supported Omarchy: 4' \
 		'the validator should report the supported Omarchy baseline' || return 1
-	assert_contains "$COMMAND_OUTPUT" 'Supported ttfx package/CLI: 0.3.2-1 / 0.3.2' \
-		'the validator should report both supported ttfx versions'
+	assert_contains "$COMMAND_OUTPUT" 'Supported ttfx: 0.3' \
+		'the validator should report the supported ttfx series'
 }
 
 test_structural_validator_rejects_inventory_mode_and_source_drift() {
@@ -139,12 +139,25 @@ test_structural_validator_treats_detected_version_drift_as_warning_only() {
 	STRUCTURAL_PATH=$FIXTURE_BIN:/usr/bin:/bin
 	run_structural_validator
 	assert_eq 0 "$COMMAND_STATUS" 'version drift alone should not fail structural validation' || return 1
-	assert_contains "$COMMAND_OUTPUT" 'Warning: supported Omarchy is 4;' \
+	assert_contains "$COMMAND_OUTPUT" 'Warning: supported Omarchy is 4.0;' \
 		'Omarchy drift should be visible' || return 1
-	assert_contains "$COMMAND_OUTPUT" 'Warning: supported ttfx package/CLI is 0.3.2-1 / 0.3.2' \
+	assert_contains "$COMMAND_OUTPUT" 'Warning: supported ttfx is 0.3;' \
 		'ttfx drift should be visible' || return 1
 	assert_contains "$COMMAND_OUTPUT" 'structural validation passed' \
 		'warning-only compatibility should still complete validation'
+}
+
+test_structural_validator_warns_for_catalog_changes_in_a_later_patch() {
+	setup_structural_fixture || return 1
+	# A later 0.3 patch that adds one effect to the audited catalog.
+	printf '#!/usr/bin/env bash\nset -u\ncase ${1-} in\n--version) printf "ttfx 0.3.5\\n" ;;\n--help) %q --help | sed "/^Commands:/a\\  newfx  New effect" ;;\n*) exec %q "$@" ;;\nesac\n' \
+		"$HOST_TTFX" "$HOST_TTFX" >"$FIXTURE_BIN/ttfx"
+	chmod 0755 "$FIXTURE_BIN/ttfx"
+	STRUCTURAL_PATH=$FIXTURE_BIN:/usr/bin:/bin
+	run_structural_validator
+	assert_eq 0 "$COMMAND_STATUS" 'a catalog change in a later patch should not fail structural validation' || return 1
+	assert_contains "$COMMAND_OUTPUT" 'Warning: detected ttfx exposed a new Unmapped effect: newfx' \
+		'the new effect should be reported as a warning'
 }
 
 set -e
@@ -158,4 +171,6 @@ run_test test_structural_validator_reports_complete_clone_surface_inventory_drif
 	'structural validator reports complete clone-surface inventory drift'
 run_test test_structural_validator_treats_detected_version_drift_as_warning_only \
 	'structural validator treats detected version drift as warning-only'
+run_test test_structural_validator_warns_for_catalog_changes_in_a_later_patch \
+	'structural validator warns for catalog changes in a later ttfx patch'
 finish_tests

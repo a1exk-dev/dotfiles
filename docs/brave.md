@@ -168,7 +168,7 @@ The apply plan shows:
 
 - Installed products and versions
 - Baseline warnings
-- Any Omarchy major-version mismatch
+- Any Omarchy minor-version mismatch
 - Source and target digests
 - The complete source-to-target change
 - Each foreign policy file and its keys
@@ -373,7 +373,7 @@ The remove plan shows:
 - Extension behavior
 - Delayed browser effects
 - Foreign policy
-- Any Omarchy major-version mismatch
+- Any Omarchy minor-version mismatch
 
 One confirmation covers the full remove plan and any displayed Omarchy mismatch. The wizard backs up a receipt-owned regular target, removes only `dotfiles.json`, and verifies that it is absent. It clears active ownership while the managed directory is still hardened, performs any safe metadata restoration, and inspects the final target and directory state before reporting success.
 

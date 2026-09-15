@@ -127,7 +127,7 @@ while :; do
 				exit 0
 			fi
 			[ -n "$session_name" ] || session_name=Work
-			# Verified with tmux 3.7b: client PWD starts new sessions, while omitting
+			# Verified with tmux 3.7c: client PWD starts new sessions, while omitting
 			# -c prevents new-session -A from changing an existing session path.
 			exec /usr/bin/tmux new-session -A -s "$session_name"
 			;;

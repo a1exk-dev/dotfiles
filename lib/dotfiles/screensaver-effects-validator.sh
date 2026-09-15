@@ -2,9 +2,10 @@
 
 set -u
 
-readonly SUPPORTED_OMARCHY=4
-readonly SUPPORTED_TTFX_PACKAGE=0.3.2-1
-readonly SUPPORTED_TTFX_CLI=0.3.2
+readonly SUPPORTED_OMARCHY=4.0
+readonly SUPPORTED_TTFX=0.3
+# Effect catalog whose mappings were audited; other supported patches only warn about catalog changes.
+readonly AUDITED_TTFX_CLI=0.3.2
 readonly OMARCHY_ROOT=${DOTFILES_SCREENSAVER_TEST_OMARCHY_ROOT:-/usr/share/omarchy}
 
 errors=0
@@ -18,6 +19,12 @@ error() {
 warning() {
 	printf 'Warning: %s\n' "$1"
 	warnings=$((warnings + 1))
+}
+
+# Succeeds when a version such as 0.3.2-1 belongs to a major.minor series such as 0.3.
+version_in_series() {
+	local version=${2%%-*}
+	[[ $version == "$1" || $version == "$1".* ]]
 }
 
 for command in bash cmp find grep jq omarchy pacman realpath sha256sum sort stat tr ttfx; do
@@ -65,13 +72,13 @@ fi
 
 printf 'Supported Omarchy: %s\n' "$SUPPORTED_OMARCHY"
 printf 'Detected Omarchy package/CLI: %s / %s\n' "$detected_omarchy_package" "$detected_omarchy"
-printf 'Supported ttfx package/CLI: %s / %s\n' "$SUPPORTED_TTFX_PACKAGE" "$SUPPORTED_TTFX_CLI"
+printf 'Supported ttfx: %s\n' "$SUPPORTED_TTFX"
 printf 'Detected ttfx package/CLI: %s / %s\n' "$detected_ttfx_package" "$detected_ttfx_cli"
 
-[[ ${detected_omarchy%%.*} == "$SUPPORTED_OMARCHY" && ${detected_omarchy_package%%.*} == "$SUPPORTED_OMARCHY" ]] ||
+version_in_series "$SUPPORTED_OMARCHY" "$detected_omarchy" && version_in_series "$SUPPORTED_OMARCHY" "$detected_omarchy_package" ||
 	warning "supported Omarchy is $SUPPORTED_OMARCHY; detected package/CLI is $detected_omarchy_package / $detected_omarchy"
-[[ $detected_ttfx_package == "$SUPPORTED_TTFX_PACKAGE" && $detected_ttfx_cli == "$SUPPORTED_TTFX_CLI" ]] ||
-	warning "supported ttfx package/CLI is $SUPPORTED_TTFX_PACKAGE / $SUPPORTED_TTFX_CLI; detected $detected_ttfx_package / $detected_ttfx_cli"
+version_in_series "$SUPPORTED_TTFX" "$detected_ttfx_package" && version_in_series "$SUPPORTED_TTFX" "$detected_ttfx_cli" ||
+	warning "supported ttfx is $SUPPORTED_TTFX; detected package/CLI is $detected_ttfx_package / $detected_ttfx_cli"
 
 declare -A expected_type=() expected_mode=() seen=()
 expect_directory() {
@@ -133,10 +140,10 @@ else
 fi
 
 declare -A source_hashes=(
-	[.local/libexec/dotfiles/screensaver-effects-selector]=8efcfd912c48b4202d093cc818d5e45d59743e14de34b0f23cf52dd69bcd2f6a
+	[.local/libexec/dotfiles/screensaver-effects-selector]=068e3ebf158888bffb5af8ea9634ac513040b86919b65a6dd73b615aea3d6094
 	[.local/share/dotfiles/screensaver-effects/plugins/dotfiles.idle/IdleModel.js]=58226a67d5fc2f33b1a23b55cb32764a8b2091cc94c4d02af1b67f369440b9b8
-	[.local/share/dotfiles/screensaver-effects/plugins/dotfiles.idle/Service.qml]=b05bacc8f5500e830c1f9f227399c53c4a5610754a7ad7669ff4bb91cafce2c9
-	[.local/share/dotfiles/screensaver-effects/plugins/dotfiles.idle/bin/ttfx]=823226321fd69cc4e39db88103c08713469c0ab0d3521ad393708df1d78bc61e
+	[.local/share/dotfiles/screensaver-effects/plugins/dotfiles.idle/Service.qml]=61972d6cb384a78d131a49b52af33d8ce9b9e1406058c5b21102d3e47924c6c7
+	[.local/share/dotfiles/screensaver-effects/plugins/dotfiles.idle/bin/ttfx]=6c37e0b661eee7d9b2955fd9e932e1a7a5744cd89e496b8c6b7cc4eb6c882556
 	[.local/share/dotfiles/screensaver-effects/plugins/dotfiles.idle/launch-screensaver]=787332166ac0657f7abea5dc108cad9c200b64469c46a09c78cdd9b12d734651
 	[.local/share/dotfiles/screensaver-effects/plugins/dotfiles.idle/manifest.json]=364274a35801ce043bdd725e5ed8e03f9e8134b05c9515985e9f6cc089980cb0
 	[.local/share/dotfiles/screensaver-effects/plugins/dotfiles.indicators/Indicators.qml]=6943c7a0678858baa0ec4e36049dc6d3646307fee727b3bbe5b158e73ec3b29b
@@ -247,8 +254,8 @@ if command -v ttfx >/dev/null 2>&1; then
 	((${#discovered[@]} > 0)) || error 'ttfx exposed no effects through --help'
 	for effect in "${!discovered[@]}"; do
 		if [[ -z ${expected_mapping[$effect]+set} ]]; then
-			if [[ $detected_ttfx_cli == "$SUPPORTED_TTFX_CLI" ]]; then
-				error "supported ttfx exposed an Unmapped effect: $effect"
+			if [[ $detected_ttfx_cli == "$AUDITED_TTFX_CLI" ]]; then
+				error "audited ttfxexposed an Unmapped effect: $effect"
 			else
 				warning "detected ttfx exposed a new Unmapped effect: $effect"
 			fi
@@ -256,8 +263,8 @@ if command -v ttfx >/dev/null 2>&1; then
 	done
 	for effect in "${!expected_mapping[@]}"; do
 		if [[ -z ${discovered[$effect]+set} ]]; then
-			if [[ $detected_ttfx_cli == "$SUPPORTED_TTFX_CLI" ]]; then
-				error "supported ttfx catalog is missing mapped effect: $effect"
+			if [[ $detected_ttfx_cli == "$AUDITED_TTFX_CLI" ]]; then
+				error "audited ttfxcatalog is missing mapped effect: $effect"
 			else
 				warning "detected ttfx catalog is missing mapped effect: $effect"
 			fi
@@ -295,7 +302,7 @@ if [[ -e $deployed || -L $deployed ]]; then
 fi
 
 host_supported=0
-[[ ${detected_omarchy%%.*} == "$SUPPORTED_OMARCHY" && ${detected_omarchy_package%%.*} == "$SUPPORTED_OMARCHY" ]] && host_supported=1
+version_in_series "$SUPPORTED_OMARCHY" "$detected_omarchy" && version_in_series "$SUPPORTED_OMARCHY" "$detected_omarchy_package" && host_supported=1
 
 clone_surface_difference() {
 	if ((host_supported)); then

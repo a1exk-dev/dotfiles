@@ -6,7 +6,7 @@ configure_telegram_lifecycle_boundaries() {
 	make_fake pacman 'printf "pacman %s\n" "$*" >>"$DOTFILES_TEST_CALL_LOG"
 case "$*" in
   "-Q omarchy") printf "omarchy 4.0.1-1\n" ;;
-  "-Q telegram-desktop") printf "telegram-desktop 7.0.9-4\n" ;;
+  "-Q telegram-desktop") printf "telegram-desktop 7.2.5-1\n" ;;
   *) exit 64 ;;
 esac'
 	make_fake telegram-desktop 'printf "TELEGRAM EXECUTED: %s\n" "$*" >>"$DOTFILES_TEST_CALL_LOG"; exit 99'
@@ -238,7 +238,7 @@ case "$scenario:$*" in
   "unavailable:-Q omarchy") printf "omarchy 4.0.1-1\n" ;;
   "unavailable:-Q telegram-desktop") exit 1 ;;
   "malformed:-Q omarchy") printf "omarchy 4.0.1-1 unexpected\n" ;;
-  "mismatched:-Q telegram-desktop"|"malformed:-Q telegram-desktop") printf "telegram-desktop 7.0.9-4\n" ;;
+  "mismatched:-Q telegram-desktop"|"malformed:-Q telegram-desktop") printf "telegram-desktop 7.2.5-1\n" ;;
   *) exit 64 ;;
 esac'
 	configure_telegram_setup_guard_probes
@@ -252,7 +252,7 @@ esac'
 
 test_setup_rejects_mismatched_package_metadata_before_confirmation_and_refresh() {
 	assert_setup_rejects_package_metadata_before_confirmation_and_refresh \
-		mismatched 'omarchy 5.0.0-1; telegram-desktop 7.0.9-4'
+		mismatched 'omarchy 5.0.0-1; telegram-desktop 7.2.5-1'
 }
 
 test_setup_rejects_unavailable_package_metadata_before_confirmation_and_refresh() {
@@ -262,7 +262,7 @@ test_setup_rejects_unavailable_package_metadata_before_confirmation_and_refresh(
 
 test_setup_rejects_malformed_package_metadata_before_confirmation_and_refresh() {
 	assert_setup_rejects_package_metadata_before_confirmation_and_refresh \
-		malformed 'omarchy unavailable; telegram-desktop 7.0.9-4'
+		malformed 'omarchy unavailable; telegram-desktop 7.2.5-1'
 }
 
 assert_setup_rejects_missing_command_before_confirmation_and_refresh() {

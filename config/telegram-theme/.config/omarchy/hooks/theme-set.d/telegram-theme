@@ -2,8 +2,8 @@
 
 set -uo pipefail
 
-readonly TELEGRAM_THEME_EXPECTED_OMARCHY='4'
-readonly TELEGRAM_THEME_EXPECTED_TELEGRAM='7'
+readonly TELEGRAM_THEME_EXPECTED_OMARCHY='4.0'
+readonly TELEGRAM_THEME_EXPECTED_TELEGRAM='7.2'
 readonly TELEGRAM_THEME_MINIMUM_NODE='22.20.0'
 
 telegram_theme_hook_notify() {
@@ -172,8 +172,8 @@ detected_omarchy=unknown
 detected_telegram=unknown
 omarchy_query=$(LC_ALL=C pacman -Q omarchy 2>/dev/null) && detected_omarchy=${omarchy_query#omarchy } || true
 telegram_query=$(LC_ALL=C pacman -Q telegram-desktop 2>/dev/null) && detected_telegram=${telegram_query#telegram-desktop } || true
-if ! [[ $omarchy_query =~ ^omarchy\ ([0-9]+)\.[^[:space:]]+$ && ${BASH_REMATCH[1]} == "$TELEGRAM_THEME_EXPECTED_OMARCHY" ]] ||
-	! [[ $telegram_query =~ ^telegram-desktop\ ([0-9]+)\.[^[:space:]]+$ && ${BASH_REMATCH[1]} == "$TELEGRAM_THEME_EXPECTED_TELEGRAM" ]]; then
+if ! [[ $omarchy_query =~ ^omarchy\ ([0-9]+\.[0-9]+)([.-][^[:space:]]*)?$ && ${BASH_REMATCH[1]} == "$TELEGRAM_THEME_EXPECTED_OMARCHY" ]] ||
+	! [[ $telegram_query =~ ^telegram-desktop\ ([0-9]+\.[0-9]+)([.-][^[:space:]]*)?$ && ${BASH_REMATCH[1]} == "$TELEGRAM_THEME_EXPECTED_TELEGRAM" ]]; then
 	message="Unsupported package versions. Required: omarchy $TELEGRAM_THEME_EXPECTED_OMARCHY.x and telegram-desktop $TELEGRAM_THEME_EXPECTED_TELEGRAM.x; detected: omarchy $detected_omarchy and telegram-desktop $detected_telegram."
 	telegram_theme_hook_fail "$previous_fingerprint" compatibility "$message" "$detected_omarchy" "$detected_telegram"
 	exit $?

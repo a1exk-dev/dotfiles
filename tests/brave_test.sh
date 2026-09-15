@@ -367,7 +367,7 @@ test_status_is_read_only_for_clean_absence() {
 	assert_eq 0 "$COMMAND_STATUS" 'clean absent status should succeed without a browser' || return 1
 	assert_contains "$COMMAND_OUTPUT" 'Deployment state: cleanly absent.' 'status should classify clean absence' || return 1
 	assert_contains "$COMMAND_OUTPUT" 'Validated evidence baseline: Omarchy 4.0.0-1, Brave 1.93.136, Chromium 151.0.7922.137, package 1:1.93.136-1.' 'status should print the complete validated Omarchy, browser, and package baseline' || return 1
-	assert_contains "$COMMAND_OUTPUT" 'Supported Omarchy major: 4.' 'status should report the supported major separately from evidence versions' || return 1
+	assert_contains "$COMMAND_OUTPUT" 'Supported Omarchy series: 4.0.' 'status should report the supported series separately from evidence versions' || return 1
 	assert_contains "$COMMAND_OUTPUT" 'Available installers: omarchy install browser brave; omarchy install browser brave-origin' 'status should report both supported installers' || return 1
 	assert_eq '' "$(<"$CALL_LOG")" 'status must request no privilege and execute no browser' || return 1
 	assert_path_absent "$FIXTURE_STATE/dotfiles/brave-policy" 'status must not create state merely to lock it'
@@ -700,7 +700,7 @@ exit 64'
 	setup_supported_brave brave-bin
 	DOTFILES_TEST_OMARCHY_VERSION=5.1.0 DOTFILES_TEST_INPUT='y\n' run_brave_operation "$FIXTURE_ROOT" apply_brave_policy
 	assert_eq 0 "$COMMAND_STATUS" 'one complete confirmation should include Omarchy mismatch consent' || return 1
-	assert_contains "$COMMAND_OUTPUT" 'requires consent to continue despite the Omarchy major-version mismatch' 'mismatch should be inside the complete plan' || return 1
+	assert_contains "$COMMAND_OUTPUT" 'requires consent to continue despite the Omarchy version mismatch' 'mismatch should be inside the complete plan' || return 1
 	assert_eq 1 "$(awk '/\[y\/N\]/ { count++ } END { print count + 0 }' <<<"$COMMAND_OUTPUT")" 'mismatched apply should still use one confirmation'
 }
 
