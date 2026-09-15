@@ -44,6 +44,10 @@ The root `skills.json` file containing exact source revisions, each repository's
 
 A dedicated `telegram-theme` Stow package that adapts the active Omarchy semantic colors to Telegram Desktop's native theming. The repository owns the color mapping and integration lifecycle; generated output is integration-owned, regenerable local state; Telegram owns saved theme and account state. The visual promise is Omarchy colors and clear native sections within Telegram's native structure, rather than structural TUI styling.
 
+## Discord system24 integration
+
+A planned repository-owned customization that applies the upstream system24 theme to the stock Discord desktop client through Vencord, with its colors following the active Omarchy theme and its font following the Omarchy font. Unlike Telegram theme integration, its visual promise includes system24's structural TUI styling. Upstream owns system24's structure and delivery; the repository owns the Omarchy color and font adaptation, one generated Vencord theme file, and the Vencord patch lifecycle on Discord's self-updated `app-*` directory. It is a separate Stow package that depends on the `discord` package. Discord and Vencord own their settings, including which themes are enabled. Vencord plugins, Vesktop, and Omarchy's Discord web app remain outside this boundary.
+
 ## Screensaver effect allowlist
 
 The repository-owned nonempty set of verified `ttfx` effects available to the selective Omarchy screensaver integration. One member fixes the effect; several members are sampled independently and uniformly at each effect start. Members may have Full or Partial active-theme mappings, while effects without a verified mapping remain outside the allowlist.

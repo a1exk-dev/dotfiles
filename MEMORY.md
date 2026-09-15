@@ -288,6 +288,14 @@ Guidance: Use Omarchy's user theme template and `theme-set.d` hook. Use Node for
 
 Reason: Telegram's supported watcher applies later theme publishes after one manual activation. Restricting integration to that watcher keeps synchronization stable across updates and leaves Telegram-owned state and process control intact.
 
+## Write alpha colors from Omarchy `_rgb` tokens as `rgba()`
+
+Applies when: Writing an Omarchy `themed/*.tpl` CSS template that needs a translucent theme color.
+
+Guidance: Write `rgba({{ foreground_rgb }}, 0.08)`. Use `{{ mix a b N% }}` for opaque intermediate shades; Omarchy renders it to hex with the same integer sRGB mix as `omarchy-theme-set-templates`.
+
+Reason: `omarchy-theme-set-templates` renders `{{ key_rgb }}` as comma-separated `30,30,46`, so the space-and-slash form `rgb({{ key_rgb }} / a)` produces invalid CSS that browsers silently drop.
+
 ## Review writes through Stow links
 
 Applies when: An application or an Omarchy update, migration, refresh, reinstall, installer, or hook can write to a path owned through a Stow symlink.
@@ -447,3 +455,11 @@ Applies when: Changing keyboard layouts, layout switching, or input-method behav
 Guidance: Configure layouts in the `hyprland` package's `input.lua` with Omarchy's native XKB options and leave stock Fcitx on its `Default` group with only `keyboard-us`. Build any custom switching or indicator behavior on top of the compositor layout rather than driving Fcitx.
 
 Reason: Stock Fcitx follows the compositor's XKB group in its own clients through `hl-virtual-keyboard-fcitx5`, verified in Ghostty and Brave on Omarchy 4.0.3 with Fcitx 5.1.22. The retired exact-stack plugin and Fcitx helper broke on a Hyprland ABI update and still left Fcitx clients typing Latin.
+
+## Apply subagent ticket transitions from the dispatching session
+
+Applies when: Dispatching a subagent, especially a worktree-isolated `/wayfinder` research agent, to resolve a `.scratch/` ticket.
+
+Guidance: Have the subagent write its findings file and return the ticket answer as text; the dispatching session applies the claim, answer, and submit-review transitions to the ticket. Tell the subagent to leave its findings uncommitted until the human gives a `Commit` decision, even where a skill says to capture findings on a research branch.
+
+Reason: `.scratch/` is Git-ignored, so a worktree has no copy of the ticket and its write guard blocks the shared checkout path. The `AGENTS.md` commit gate applies to subagents too, and a dispatch prompt cannot grant it.
