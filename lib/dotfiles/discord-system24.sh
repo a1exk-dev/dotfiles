@@ -39,6 +39,46 @@ discord_system24_status() {
 	fi
 }
 
+# Previews the removal steps and sets DISCORD_SYSTEM24_UNPATCH_DIR to the
+# patched newest app-*, or to empty when there is nothing to unpatch.
+discord_system24_prepare_remove() {
+	local app_dir
+	DISCORD_SYSTEM24_UNPATCH_DIR=''
+	if ! app_dir=$(discord_system24_newest_app_dir); then
+		printf 'Plan: skip the Vencord unpatch; no Discord app-* directory exists\n'
+	elif [[ ! -e $app_dir/resources/_app.asar ]]; then
+		printf 'Plan: skip the Vencord unpatch; %s is not patched\n' "$app_dir"
+	elif ! command -v vencord-installer-cli >/dev/null 2>&1; then
+		printf 'Error: vencord-installer-cli is missing, so %s cannot be unpatched.\n' "$app_dir" >&2
+		return 1
+	else
+		DISCORD_SYSTEM24_UNPATCH_DIR=$app_dir
+		printf 'Plan: unpatch the newest Discord app directory\n'
+		printf '  Discord app: %s (patched)\n' "$app_dir"
+		printf '  Run: vencord-installer-cli --uninstall --location %s\n' "$app_dir"
+		printf '  Verify: %s/resources/_app.asar is gone.\n' "$app_dir"
+	fi
+	printf 'Plan: delete %s\n' "$(discord_system24_theme_path)"
+}
+
+# Unpatches the planned app-*, then deletes the Vencord theme. Fails before
+# the theme when the unpatch cannot be verified.
+discord_system24_remove_client_state() {
+	local app_dir=$DISCORD_SYSTEM24_UNPATCH_DIR
+	if [[ -n $app_dir ]]; then
+		if ! vencord-installer-cli --uninstall --location "$app_dir"; then
+			printf 'Error: vencord-installer-cli could not unpatch %s.\n' "$app_dir" >&2
+			return 1
+		fi
+		if [[ -e $app_dir/resources/_app.asar ]]; then
+			printf 'Error: unpatch verification failed: %s/resources/_app.asar remains.\n' "$app_dir" >&2
+			return 1
+		fi
+		printf 'Discord unpatched and verified: %s\n' "$app_dir"
+	fi
+	rm -f -- "$(discord_system24_theme_path)"
+}
+
 patch_discord_with_vencord() {
 	local app_dir
 	if ! command -v vencord-installer-cli >/dev/null 2>&1; then

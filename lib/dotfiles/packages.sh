@@ -673,6 +673,10 @@ remove_package() {
 		phase_error remove "$package" 'inspect the Stow simulation error, then choose Remove Stow package in the Dotfiles wizard'
 		return 1
 	fi
+	if [[ $package == discord-system24 ]] && ! discord_system24_prepare_remove; then
+		phase_error plan "$package" 'apply discord-system24 to reinstall vencord-installer-cli-bin, then choose Remove Stow package in the Dotfiles wizard'
+		return 1
+	fi
 	printf 'Plan: remove %s links from %s\n' "$package" "$HOME"
 	printf 'Cleanup notes (not deleted):\n'
 	if [[ $(jq '.cleanup | length' <<<"$package_json") -eq 0 ]]; then
@@ -708,6 +712,10 @@ remove_package() {
 			phase_error remove "$package" 'inspect Package status, then retry Remove Stow package after lifecycle recovery'
 			return 1
 		fi
+	fi
+	if [[ $package == discord-system24 ]] && ! discord_system24_remove_client_state; then
+		phase_error remove "$package" 'the links and Vencord theme stay in place; resolve the reported error, then choose Remove Stow package in the Dotfiles wizard'
+		return 1
 	fi
 	if ! stow --no-folding --delete --verbose=2 --dir "$REPOSITORY_ROOT/config" --target "$HOME" "$package"; then
 		if [[ $package == screensaver-effects && $SCREENSAVER_EFFECTS_REMOVAL_DEACTIVATED == true ]]; then

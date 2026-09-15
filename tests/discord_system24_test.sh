@@ -303,13 +303,26 @@ add_discord_app_dirs() {
 	done
 }
 
-# A fake vencord-installer-cli that logs its arguments and, like the real
-# --repair, creates _app.asar in the given location unless told to skip it.
+# A fake vencord-installer-cli that logs its arguments. Like the real CLI,
+# --repair creates _app.asar unless the first argument is false, and
+# --uninstall restores app.asar from _app.asar unless the second argument is
+# fails (exit 1) or keeps (exit 0 with _app.asar left in place).
 make_fake_vencord_cli() {
-	local creates_backup=${1:-true}
+	local creates_backup=${1:-true} uninstall=${2:-restores}
 	make_fake vencord-installer-cli "printf 'vencord-installer-cli %s\n' \"\$*\" >>\"\$DOTFILES_TEST_CALL_LOG\"
-[[ \${1-} == --repair && \${2-} == --location && -d \${3-}/resources ]] || exit 64
-[[ $creates_backup == false ]] || printf 'stock asar\n' >\"\$3/resources/_app.asar\""
+[[ \${2-} == --location && -d \${3-}/resources ]] || exit 64
+case \$1 in
+	--repair) [[ $creates_backup == false ]] || printf 'stock asar\n' >\"\$3/resources/_app.asar\" ;;
+	--uninstall)
+		theme=absent
+		[[ ! -e \$XDG_CONFIG_HOME/Vencord/themes/omarchy-system24.css ]] || theme=present
+		printf 'uninstall theme=%s\n' \"\$theme\" >>\"\$DOTFILES_TEST_CALL_LOG\"
+		[[ $uninstall != fails ]] || exit 1
+		[[ $uninstall != keeps ]] || exit 0
+		mv -- \"\$3/resources/_app.asar\" \"\$3/resources/app.asar\"
+		;;
+	*) exit 64 ;;
+esac"
 }
 
 # Fakes for every way the action could start or stop Discord.
@@ -471,6 +484,103 @@ test_apply_does_not_patch_and_names_the_patch_action() {
 	assert_path_absent "$NEWEST_DISCORD_APP/resources/_app.asar" 'apply must not patch Discord'
 }
 
+# Links the package through apply, adds the Vencord theme, and wraps stow so
+# the real delete logs whether the theme and _app.asar were already gone.
+setup_discord_remove_fixture() {
+	setup_discord_patch_fixture || return 1
+	set_installed_arch_packages discord vencord-installer-cli-bin
+	make_fake stow "if [[ \" \$* \" == *' --delete '* && \" \$* \" != *' --simulate '* ]]; then
+	theme=absent app_asar=absent
+	[[ ! -e \$XDG_CONFIG_HOME/Vencord/themes/omarchy-system24.css ]] || theme=present
+	[[ ! -e $NEWEST_DISCORD_APP/resources/_app.asar ]] || app_asar=present
+	printf 'stow delete theme=%s app_asar=%s\n' \"\$theme\" \"\$app_asar\" >>\"\$DOTFILES_TEST_CALL_LOG\"
+fi
+exec /usr/bin/stow \"\$@\""
+	DOTFILES_TEST_INPUT='y\n' run_operation "$FIXTURE_ROOT" apply_packages discord-system24
+	assert_eq 0 "$COMMAND_STATUS" "apply should link discord-system24: $COMMAND_OUTPUT" || return 1
+	DISCORD_THEME=$FIXTURE_CONFIG/Vencord/themes/omarchy-system24.css
+	DISCORD_HOOK_LINK=$FIXTURE_HOME/.config/omarchy/hooks/theme-set.d/discord-system24
+	mkdir -p "${DISCORD_THEME%/*}" || return 1
+	printf ':root {}\n' >"$DISCORD_THEME"
+}
+
+removal_order_calls() {
+	grep -E '^(uninstall|stow delete) ' "$CALL_LOG" || true
+}
+
+test_remove_unpatches_then_deletes_the_theme_then_unlinks_after_one_confirmation() {
+	setup_discord_remove_fixture || return 1
+	printf 'stock asar\n' >"$NEWEST_DISCORD_APP/resources/_app.asar"
+
+	DOTFILES_TEST_INPUT='y\n' run_operation "$FIXTURE_ROOT" remove_package discord-system24 --interactive
+	assert_eq 0 "$COMMAND_STATUS" "removal should succeed: $COMMAND_OUTPUT" || return 1
+	assert_contains "$COMMAND_OUTPUT" "Discord app: $NEWEST_DISCORD_APP (patched)" 'the plan should show the patched newest app-*' || return 1
+	assert_contains "$COMMAND_OUTPUT" "Run: vencord-installer-cli --uninstall --location $NEWEST_DISCORD_APP" \
+		'the plan should show the unpatch command' || return 1
+	assert_contains "$COMMAND_OUTPUT" "Plan: delete $DISCORD_THEME" 'the plan should show the theme deletion' || return 1
+	assert_eq "vencord-installer-cli --uninstall --location $NEWEST_DISCORD_APP" "$(vencord_cli_calls)" \
+		'removal should unpatch only the newest app-*' || return 1
+	assert_eq $'uninstall theme=present\nstow delete theme=absent app_asar=absent' "$(removal_order_calls)" \
+		'removal should unpatch, then delete the theme, then unlink' || return 1
+	assert_path_absent "$NEWEST_DISCORD_APP/resources/_app.asar" 'the newest app-* should be unpatched' || return 1
+	assert_path_absent "$DISCORD_THEME" 'the Vencord theme should be deleted' || return 1
+	assert_path_absent "$DISCORD_HOOK_LINK" 'the package links should be removed' || return 1
+	assert_contains "$COMMAND_OUTPUT" 'Removed and verified package: discord-system24' 'removal should report verified success' || return 1
+	assert_discord_never_started_or_stopped
+}
+
+# Runs a patched removal and asserts it stopped with the links and theme in place.
+assert_remove_stops_with_client_state_in_place() {
+	local error=$1
+	printf 'stock asar\n' >"$NEWEST_DISCORD_APP/resources/_app.asar"
+
+	run_operation "$FIXTURE_ROOT" remove_package discord-system24 --yes
+	assert_eq 1 "$COMMAND_STATUS" "removal should stop: $COMMAND_OUTPUT" || return 1
+	assert_contains "$COMMAND_OUTPUT" "$error" 'removal should explain why it stopped' || return 1
+	assert_contains "$COMMAND_OUTPUT" 'Recovery: ' 'removal should name the recovery' || return 1
+	[[ -f $DISCORD_THEME && -L $DISCORD_HOOK_LINK ]] || {
+		printf '  the theme file and package links should stay in place\n' >&2
+		return 1
+	}
+	assert_eq '' "$(grep '^stow delete ' "$CALL_LOG" || true)" 'removal must not unlink the package' || return 1
+	assert_discord_never_started_or_stopped
+}
+
+test_remove_stops_when_the_unpatch_fails() {
+	setup_discord_remove_fixture || return 1
+	make_fake_vencord_cli true fails
+	assert_remove_stops_with_client_state_in_place "vencord-installer-cli could not unpatch $NEWEST_DISCORD_APP"
+}
+
+test_remove_stops_when_app_asar_backup_remains_after_the_unpatch() {
+	setup_discord_remove_fixture || return 1
+	make_fake_vencord_cli true keeps
+	assert_remove_stops_with_client_state_in_place "unpatch verification failed: $NEWEST_DISCORD_APP/resources/_app.asar remains"
+}
+
+test_remove_stops_when_the_cli_is_missing() {
+	setup_discord_remove_fixture || return 1
+	rm "$FIXTURE_BIN/vencord-installer-cli"
+	assert_remove_stops_with_client_state_in_place 'vencord-installer-cli is missing' || return 1
+	assert_contains "$COMMAND_OUTPUT" 'reinstall vencord-installer-cli-bin' 'the recovery should name the CLI package'
+}
+
+test_remove_without_a_patched_app_skips_the_unpatch() {
+	setup_discord_remove_fixture || return 1
+
+	run_operation "$FIXTURE_ROOT" remove_package discord-system24 --yes
+	assert_eq 0 "$COMMAND_STATUS" "removal should succeed: $COMMAND_OUTPUT" || return 1
+	assert_contains "$COMMAND_OUTPUT" "Plan: skip the Vencord unpatch; $NEWEST_DISCORD_APP is not patched" \
+		'the plan should say the unpatch is skipped' || return 1
+	assert_eq '' "$(vencord_cli_calls)" 'an unpatched app-* must not run the CLI' || return 1
+	assert_path_absent "$DISCORD_THEME" 'the Vencord theme should be deleted' || return 1
+	assert_path_absent "$DISCORD_HOOK_LINK" 'the package links should be removed' || return 1
+	assert_contains "$COMMAND_OUTPUT" 'vencord-installer-cli-bin and Arch package discord remain installed' \
+		'cleanup notes should list the retained packages' || return 1
+	assert_contains "$COMMAND_OUTPUT" 'including enabledThemes' 'cleanup notes should list the client-owned Vencord state' || return 1
+	assert_contains "$COMMAND_OUTPUT" 'older app-* directories keep any Vencord patch' 'cleanup notes should mention older app-* directories'
+}
+
 run_test test_catalog_entry_is_appended_with_the_approved_fields 'discord-system24 catalog entry is appended with the approved fields'
 run_test test_package_tracks_exactly_the_template_and_both_hooks 'discord-system24 package tracks exactly the template and both hooks'
 run_test test_theme_set_hook_publishes_through_a_same_folder_temp_file 'system24 theme-set hook publishes through a same-folder temp file'
@@ -490,4 +600,9 @@ run_test test_patch_stops_when_no_app_dir_exists 'Discord patch stops when no ap
 run_test test_status_reports_unpatched_app_and_absent_theme_without_changes 'status reports an unpatched app-* and absent theme without changes'
 run_test test_status_reports_patched_app_and_present_theme 'status reports a patched app-* and present theme'
 run_test test_apply_does_not_patch_and_names_the_patch_action 'apply does not patch Discord and names the patch action'
+run_test test_remove_unpatches_then_deletes_the_theme_then_unlinks_after_one_confirmation 'removal unpatches, deletes the theme, then unlinks after one confirmation'
+run_test test_remove_stops_when_the_unpatch_fails 'removal stops with links and theme in place when the unpatch fails'
+run_test test_remove_stops_when_app_asar_backup_remains_after_the_unpatch 'removal stops with links and theme in place when _app.asar remains'
+run_test test_remove_stops_when_the_cli_is_missing 'removal stops with links and theme in place when the CLI is missing'
+run_test test_remove_without_a_patched_app_skips_the_unpatch 'removal without a patched app-* skips the unpatch'
 finish_tests
