@@ -27,3 +27,22 @@
 -- o.bind("SUPER + SHIFT + S", nil, "omarchy-capture-screenshot")
 -- o.bind("SUPER + H", nil, "voxtype record toggle")
 -- o.bind("SUPER + PERIOD", nil, "omarchy-shell shell toggle omarchy.emojis")
+
+-- Discord runs natively on Wayland, where its keybind recorder sees no keys.
+-- In Discord, turn Ctrl+M into its built-in Toggle Mute (Ctrl+Shift+M); every
+-- other window still receives Ctrl+M. Down/up split as in Omarchy's clipboard.lua.
+local function send_shortcut_once(mods, key)
+  hl.dispatch(hl.dsp.send_key_state({ mods = mods, key = key, state = "down" }))
+  hl.timer(function()
+    hl.dispatch(hl.dsp.send_key_state({ mods = mods, key = key, state = "up" }))
+  end, { timeout = 50, type = "oneshot" })
+end
+
+o.bind("CTRL + M", "Discord toggle mute", function()
+  local window = hl.get_active_window()
+  if window and window.class == "discord" then
+    send_shortcut_once("CTRL + SHIFT", "M")
+  else
+    send_shortcut_once("CTRL", "M")
+  end
+end)

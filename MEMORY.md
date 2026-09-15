@@ -168,6 +168,14 @@ Guidance: Never unstow the whole package, even briefly. Delete the tracked sourc
 
 Reason: Hyprland auto-reloads on config changes. A `stow -D`/`stow -S` gap leaves `~/.config/hypr/hyprland.lua` missing at reload time, and the "cannot open hyprland.lua" error stays on screen until the next reload.
 
+## Remap Discord hotkeys through Hyprland
+
+Applies when: Adding or changing a Discord keyboard shortcut.
+
+Guidance: Add a `bindings.lua` binding in the `hyprland` package that checks the active window class `discord` and sends one of Discord's built-in shortcuts with `send_key_state` (down/up split), passing the original chord through to every other window. Leave Discord's Local Storage keybinds untracked.
+
+Reason: Discord runs natively on Wayland here, so its keybind recorder receives no keys, and its custom keybinds live in a LevelDB store that also holds the login token. Built-in shortcuts do receive focused-window key events.
+
 ## Re-pin screensaver plugin sources after any edit
 
 Applies when: Changing any file under the `screensaver-effects` package's `dotfiles.idle` or `dotfiles.indicators` plugin sources, or its selector.

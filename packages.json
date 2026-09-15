@@ -168,5 +168,18 @@
 			"Removal leaves ~/.claude/settings.json absent, so Claude Code uses its default settings until the package is applied again",
 			"Claude Code, its state under ~/.claude, installed plugins, and skill links remain in place"
 		]
+	}, {
+		"name": "discord",
+		"path": "config/discord",
+		"description": "Discord desktop client settings without account data",
+		"dependencies": [],
+		"arch_packages": ["discord"],
+		"prerequisites": [],
+		"validators": ["jq empty \"$HOME/.config/discord/settings.json\""],
+		"documentation": "docs/discord.md",
+		"cleanup": [
+			"Removal leaves ~/.config/discord/settings.json absent, so Discord recreates its default settings on the next start",
+			"Arch package discord and its account data, cache, and logs under ~/.config/discord remain in place"
+		]
 	}]
 }
