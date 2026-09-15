@@ -2,13 +2,23 @@ declare -a ARCH_PACKAGE_ORDER=()
 declare -a MISSING_ARCH_PACKAGES=()
 declare -A ARCH_PACKAGE_OWNERS=()
 declare -A ARCH_PACKAGE_STATUS=()
+declare -a AUR_PACKAGE_ORDER=()
+declare -a MISSING_AUR_PACKAGES=()
+declare -A AUR_PACKAGE_OWNERS=()
+declare -A AUR_PACKAGE_STATUS=()
+# True when an Arch or AUR requirement was installed, so the Stow simulation must repeat.
 ARCH_PACKAGES_INSTALLED=false
 
+# Plans both the official Arch (arch_packages) and AUR (aur_packages) requirements of the owners.
 plan_arch_packages() {
 	ARCH_PACKAGE_ORDER=()
 	MISSING_ARCH_PACKAGES=()
 	ARCH_PACKAGE_OWNERS=()
 	ARCH_PACKAGE_STATUS=()
+	AUR_PACKAGE_ORDER=()
+	MISSING_AUR_PACKAGES=()
+	AUR_PACKAGE_OWNERS=()
+	AUR_PACKAGE_STATUS=()
 
 	local owner arch_package
 	for owner in "$@"; do
@@ -20,6 +30,14 @@ plan_arch_packages() {
 				ARCH_PACKAGE_OWNERS[$arch_package]+=", $owner"
 			fi
 		done < <(jq -r --arg package "$owner" '.packages[] | select(.name == $package) | .arch_packages[]' "$PACKAGE_CATALOG")
+		while IFS= read -r arch_package; do
+			if [[ -z ${AUR_PACKAGE_OWNERS[$arch_package]+present} ]]; then
+				AUR_PACKAGE_ORDER+=("$arch_package")
+				AUR_PACKAGE_OWNERS[$arch_package]=$owner
+			else
+				AUR_PACKAGE_OWNERS[$arch_package]+=", $owner"
+			fi
+		done < <(jq -r --arg package "$owner" '.packages[] | select(.name == $package) | .aur_packages // [] | .[]' "$PACKAGE_CATALOG")
 	done
 
 	for arch_package in "${ARCH_PACKAGE_ORDER[@]}"; do
@@ -30,53 +48,93 @@ plan_arch_packages() {
 			MISSING_ARCH_PACKAGES+=("$arch_package")
 		fi
 	done
+	for arch_package in "${AUR_PACKAGE_ORDER[@]}"; do
+		if omarchy pkg present "$arch_package"; then
+			AUR_PACKAGE_STATUS[$arch_package]=installed
+		else
+			AUR_PACKAGE_STATUS[$arch_package]='will install'
+			MISSING_AUR_PACKAGES+=("$arch_package")
+		fi
+	done
 }
 
 print_arch_package_plan() {
 	printf 'Plan: Arch package requirements:\n'
+	local arch_package
 	if ((${#ARCH_PACKAGE_ORDER[@]} == 0)); then
 		printf '  none\n'
-		return
 	fi
-
-	local arch_package
 	for arch_package in "${ARCH_PACKAGE_ORDER[@]}"; do
 		printf '  %s (required by %s): %s\n' "$arch_package" \
 			"${ARCH_PACKAGE_OWNERS[$arch_package]}" "${ARCH_PACKAGE_STATUS[$arch_package]}"
+	done
+	((${#AUR_PACKAGE_ORDER[@]} > 0)) || return 0
+	printf 'Plan: AUR package requirements (installed with omarchy pkg aur add):\n'
+	for arch_package in "${AUR_PACKAGE_ORDER[@]}"; do
+		printf '  %s (required by %s): %s\n' "$arch_package" \
+			"${AUR_PACKAGE_OWNERS[$arch_package]}" "${AUR_PACKAGE_STATUS[$arch_package]}"
 	done
 }
 
 install_missing_arch_packages() {
 	local recovery_action=$1
 	ARCH_PACKAGES_INSTALLED=false
-	((${#MISSING_ARCH_PACKAGES[@]} > 0)) || return 0
 
-	printf 'Phase: install Arch packages\n'
-	if ! omarchy pkg add "${MISSING_ARCH_PACKAGES[@]}"; then
-		printf 'Error: Arch package installation failed.\n' >&2
-		printf 'Recovery: resolve the Omarchy package error, then choose %s in the Dotfiles wizard.\n' "$recovery_action" >&2
-		return 1
+	if ((${#MISSING_ARCH_PACKAGES[@]} > 0)); then
+		printf 'Phase: install Arch packages\n'
+		if ! omarchy pkg add "${MISSING_ARCH_PACKAGES[@]}"; then
+			printf 'Error: Arch package installation failed.\n' >&2
+			printf 'Recovery: resolve the Omarchy package error, then choose %s in the Dotfiles wizard.\n' "$recovery_action" >&2
+			return 1
+		fi
+		ARCH_PACKAGES_INSTALLED=true
 	fi
-	ARCH_PACKAGES_INSTALLED=true
+
+	local aur_package
+	for aur_package in "${MISSING_AUR_PACKAGES[@]}"; do
+		printf 'Phase: install AUR package (%s)\n' "$aur_package"
+		if ! omarchy pkg aur add "$aur_package"; then
+			printf 'Error: AUR package installation failed: %s\n' "$aur_package" >&2
+			printf 'Recovery: resolve the Omarchy package error, then choose %s in the Dotfiles wizard.\n' "$recovery_action" >&2
+			return 1
+		fi
+		ARCH_PACKAGES_INSTALLED=true
+	done
 }
 
 verify_arch_packages() {
 	local recovery_action=$1
-	((${#ARCH_PACKAGE_ORDER[@]} > 0)) || return 0
+	if ((${#ARCH_PACKAGE_ORDER[@]} > 0)); then
+		printf 'Phase: verify Arch packages\n'
+		local arch_package
+		for arch_package in "${ARCH_PACKAGE_ORDER[@]}"; do
+			if ! omarchy pkg present "$arch_package"; then
+				printf 'Error: Arch package verification failed: %s\n' "$arch_package" >&2
+				printf 'Recovery: repair the package installation, then choose %s in the Dotfiles wizard.\n' "$recovery_action" >&2
+				return 1
+			fi
+		done
+		if ((${#MISSING_ARCH_PACKAGES[@]} > 0)); then
+			printf 'Arch packages installed and verified: %s\n' "${MISSING_ARCH_PACKAGES[*]}"
+		else
+			printf 'Arch packages verified: %s\n' "${ARCH_PACKAGE_ORDER[*]}"
+		fi
+	fi
 
-	printf 'Phase: verify Arch packages\n'
-	local arch_package
-	for arch_package in "${ARCH_PACKAGE_ORDER[@]}"; do
-		if ! omarchy pkg present "$arch_package"; then
-			printf 'Error: Arch package verification failed: %s\n' "$arch_package" >&2
+	((${#AUR_PACKAGE_ORDER[@]} > 0)) || return 0
+	printf 'Phase: verify AUR packages\n'
+	local aur_package
+	for aur_package in "${AUR_PACKAGE_ORDER[@]}"; do
+		if ! omarchy pkg present "$aur_package"; then
+			printf 'Error: AUR package verification failed: %s\n' "$aur_package" >&2
 			printf 'Recovery: repair the package installation, then choose %s in the Dotfiles wizard.\n' "$recovery_action" >&2
 			return 1
 		fi
 	done
-	if [[ $ARCH_PACKAGES_INSTALLED == true ]]; then
-		printf 'Arch packages installed and verified: %s\n' "${MISSING_ARCH_PACKAGES[*]}"
+	if ((${#MISSING_AUR_PACKAGES[@]} > 0)); then
+		printf 'AUR packages installed and verified: %s\n' "${MISSING_AUR_PACKAGES[*]}"
 	else
-		printf 'Arch packages verified: %s\n' "${ARCH_PACKAGE_ORDER[*]}"
+		printf 'AUR packages verified: %s\n' "${AUR_PACKAGE_ORDER[*]}"
 	fi
 }
 
@@ -189,6 +247,10 @@ check() {
 	plan_arch_packages "${DEPENDENCY_ORDER[@]}"
 	for arch_package in "${MISSING_ARCH_PACKAGES[@]}"; do
 		printf 'Missing declared Arch package for %s: %s\n' "${ARCH_PACKAGE_OWNERS[$arch_package]}" "$arch_package" >&2
+		missing=true
+	done
+	for arch_package in "${MISSING_AUR_PACKAGES[@]}"; do
+		printf 'Missing declared AUR package for %s: %s\n' "${AUR_PACKAGE_OWNERS[$arch_package]}" "$arch_package" >&2
 		missing=true
 	done
 	if command -v stow >/dev/null 2>&1; then
@@ -455,7 +517,7 @@ migrate_target() {
 	install_missing_arch_packages 'Migrate existing target' || return 1
 	verify_arch_packages 'Migrate existing target' || return 1
 	if [[ $ARCH_PACKAGES_INSTALLED == true ]]; then
-		printf 'Phase: repeat conflict simulation after Arch package installation\n'
+		printf 'Phase: repeat conflict simulation after package installation\n'
 		for planned_package in "${packages[@]}"; do
 			simulate_apply_package "$planned_package" || return 1
 		done
@@ -908,7 +970,7 @@ apply_packages() {
 	install_missing_arch_packages 'Apply Stow packages' || return 1
 	verify_arch_packages 'Apply Stow packages' || return 1
 	if [[ $ARCH_PACKAGES_INSTALLED == true ]]; then
-		printf 'Phase: repeat conflict simulation after Arch package installation\n'
+		printf 'Phase: repeat conflict simulation after package installation\n'
 		for package in "${packages[@]}"; do simulate_apply_package "$package" || return 1; done
 	fi
 	if [[ $includes_screensaver_effects == true ]]; then

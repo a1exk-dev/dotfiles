@@ -1412,7 +1412,183 @@ test_real_tmux_dependency_and_leaf_only_lifecycle() (
 	fi
 )
 
+set_package_aur_packages() {
+	local package=$1
+	shift
+	local aur_packages
+	aur_packages=$(jq -cn --args '$ARGS.positional' "$@")
+	jq --arg package "$package" --argjson aur_packages "$aur_packages" \
+		'(.packages[] | select(.name == $package).aur_packages) = $aur_packages' \
+		"$FIXTURE_REPO/packages.json" >"$FIXTURE_REPO/packages.updated"
+	mv "$FIXTURE_REPO/packages.updated" "$FIXTURE_REPO/packages.json"
+}
+
+test_catalog_validates_optional_aur_packages() {
+	new_fixture
+	add_package
+	run_operation "$FIXTURE_ROOT" validate_catalog
+	assert_eq 0 "$COMMAND_STATUS" 'a package without aur_packages should validate' || return 1
+	set_package_aur_packages demo demo-aur-bin
+	run_operation "$FIXTURE_ROOT" validate_catalog
+	assert_eq 0 "$COMMAND_STATUS" 'a package with a valid aur_packages array should validate' || return 1
+
+	local jq_filter
+	while IFS= read -r jq_filter; do
+		new_fixture
+		add_package
+		jq "$jq_filter" "$FIXTURE_REPO/packages.json" >"$FIXTURE_REPO/packages.invalid"
+		mv "$FIXTURE_REPO/packages.invalid" "$FIXTURE_REPO/packages.json"
+		run_operation "$FIXTURE_ROOT" validate_catalog
+		if [[ $COMMAND_STATUS -eq 0 || $COMMAND_OUTPUT != *'invalid AUR packages for package demo'* ]]; then
+			printf '  invalid AUR package metadata was accepted: %s\n  output: %s\n' "$jq_filter" "$COMMAND_OUTPUT" >&2
+			return 1
+		fi
+		rm -rf "$FIXTURE_ROOT"
+	done <<'EOF'
+.packages[0].aur_packages = null
+.packages[0].aur_packages = "demo-aur-bin"
+.packages[0].aur_packages = ["Not-Lower"]
+.packages[0].aur_packages = ["bad/name"]
+.packages[0].aur_packages = ["demo-aur-bin", "demo-aur-bin"]
+EOF
+}
+
+test_apply_plans_installs_and_verifies_aur_packages() {
+	new_fixture
+	add_package
+	set_package_aur_packages demo demo-aur-bin
+	set_installed_arch_packages
+	make_applying_stow
+	DOTFILES_TEST_INPUT='y\n' run_operation "$FIXTURE_ROOT" apply_packages demo
+
+	assert_eq 0 "$COMMAND_STATUS" 'apply with a missing AUR requirement should succeed' || return 1
+	assert_contains "$COMMAND_OUTPUT" $'Plan: AUR package requirements (installed with omarchy pkg aur add):\n  demo-aur-bin (required by demo): will install' \
+		'plan should list the missing AUR package with its owner' || return 1
+	assert_eq 1 "$(awk '/Apply this complete Stow plan[?]/ { count++ } END { print count + 0 }' <<<"$COMMAND_OUTPUT")" \
+		'AUR requirements should remain inside the one Stow-plan confirmation' || return 1
+	assert_contains "$COMMAND_OUTPUT" 'AUR packages installed and verified: demo-aur-bin' \
+		'apply should report the installed and verified AUR package' || return 1
+	assert_eq 'demo-aur-bin' "$(<"$ARCH_PACKAGE_STATE")" 'the AUR package should be installed' || return 1
+	if [[ $(<"$CALL_LOG") == *'pkg add '* ]]; then
+		printf '  an AUR requirement must not use the official Arch installer\n' >&2
+		return 1
+	fi
+	local initial_simulate install_call verify_call repeat_simulate apply_call
+	initial_simulate=$(awk '/^stow --no-folding --simulate .* demo$/ { print NR; exit }' "$CALL_LOG")
+	install_call=$(awk '/^pkg aur add demo-aur-bin[|]/ { print NR; exit }' "$CALL_LOG")
+	verify_call=$(awk '/^pkg present demo-aur-bin[|]/ { count++; if (count == 2) { print NR; exit } }' "$CALL_LOG")
+	repeat_simulate=$(awk '/^stow --no-folding --simulate .* demo$/ { count++; if (count == 2) { print NR; exit } }' "$CALL_LOG")
+	apply_call=$(awk '/^stow --no-folding --verbose=2 .* demo$/ { print NR; exit }' "$CALL_LOG")
+	if [[ -z $initial_simulate || -z $install_call || -z $verify_call || -z $repeat_simulate || -z $apply_call || \
+		$initial_simulate -ge $install_call || $install_call -ge $verify_call || \
+		$verify_call -ge $repeat_simulate || $repeat_simulate -ge $apply_call ]]; then
+		printf '  apply should simulate, install with omarchy pkg aur add, verify, re-simulate, then link\n' >&2
+		return 1
+	fi
+}
+
+test_apply_aur_install_failure_stops_before_stow_mutation() {
+	new_fixture
+	add_package
+	set_package_aur_packages demo demo-aur-bin
+	set_installed_arch_packages
+	make_applying_stow
+	DOTFILES_TEST_ARCH_INSTALL_FAILURE=true DOTFILES_TEST_INPUT='y\n' run_operation "$FIXTURE_ROOT" apply_packages demo
+
+	assert_eq 1 "$COMMAND_STATUS" 'AUR package installation failure should fail apply' || return 1
+	assert_contains "$COMMAND_OUTPUT" 'Error: AUR package installation failed: demo-aur-bin' \
+		'installation failure should name the AUR package' || return 1
+	assert_contains "$COMMAND_OUTPUT" 'choose Apply Stow packages in the Dotfiles wizard' \
+		'installation failure should provide apply-specific recovery' || return 1
+	if [[ $(<"$CALL_LOG") == *$'stow --no-folding --verbose=2 '* || -e $FIXTURE_HOME/.config/demo/config ]]; then
+		printf '  AUR package installation failure must stop before Stow mutation\n' >&2
+		return 1
+	fi
+}
+
+test_migrate_plans_and_installs_aur_packages() {
+	new_fixture
+	add_package
+	set_package_aur_packages demo demo-aur-bin
+	set_installed_arch_packages
+	rm -rf "$FIXTURE_REPO/config/demo/.config"
+	mkdir -p "$FIXTURE_HOME/.config/demo"
+	printf 'approved user content\n' >"$FIXTURE_HOME/.config/demo/config"
+	make_fake stow 'printf "stow %s\n" "$*" >>"$DOTFILES_TEST_CALL_LOG"
+package=${!#}
+if [[ " $* " != *" --simulate "* ]]; then
+	mkdir -p "$HOME/.config/$package"
+	ln -s "$DOTFILES_TEST_REPO/config/$package/.config/$package/config" "$HOME/.config/$package/config"
+fi'
+
+	run_operation "$FIXTURE_ROOT" migrate_target demo .config/demo/config --yes --inspection-approved
+
+	assert_eq 0 "$COMMAND_STATUS" 'migration with a missing AUR requirement should succeed' || return 1
+	assert_contains "$COMMAND_OUTPUT" '  demo-aur-bin (required by demo): will install' \
+		'the migration plan should list the missing AUR package' || return 1
+	assert_contains "$COMMAND_OUTPUT" 'AUR packages installed and verified: demo-aur-bin' \
+		'migration should install and verify the AUR package' || return 1
+	assert_contains "$(<"$CALL_LOG")" 'pkg aur add demo-aur-bin|' 'migration should install through omarchy pkg aur add' || return 1
+	assert_contains "$COMMAND_OUTPUT" 'Migrated and verified package: demo' 'migration should complete' || return 1
+}
+
+test_check_reports_missing_declared_aur_package_without_mutation() {
+	new_fixture
+	add_package
+	set_package_aur_packages demo demo-aur-bin
+	set_installed_arch_packages
+	run_operation "$FIXTURE_ROOT" check
+
+	assert_eq 1 "$COMMAND_STATUS" 'check should fail when a declared AUR package is missing' || return 1
+	assert_contains "$COMMAND_OUTPUT" 'Missing declared AUR package for demo: demo-aur-bin' \
+		'check should identify the owner and missing AUR package' || return 1
+	assert_eq '' "$(<"$ARCH_PACKAGE_STATE")" 'check should not install a missing AUR package' || return 1
+	if [[ $(<"$CALL_LOG") == *'pkg aur add'* ]]; then
+		printf '  structural check must not call the AUR package installer\n' >&2
+		return 1
+	fi
+}
+
+test_remove_retains_aur_package_and_reports_cleanup_note() {
+	new_fixture
+	add_package demo
+	set_package_aur_packages demo demo-aur-bin
+	set_installed_arch_packages demo-aur-bin
+	jq '.packages[0].cleanup = ["AUR package demo-aur-bin remains installed"]' \
+		"$FIXTURE_REPO/packages.json" >"$FIXTURE_REPO/packages.updated"
+	mv "$FIXTURE_REPO/packages.updated" "$FIXTURE_REPO/packages.json"
+	mkdir -p "$FIXTURE_HOME/.config"
+	ln -s "$FIXTURE_REPO/config/demo/.config/demo" "$FIXTURE_HOME/.config/demo"
+	make_fake stow 'printf "stow %s\n" "$*" >>"$DOTFILES_TEST_CALL_LOG"
+if [[ " $* " == *" --delete "* && " $* " != *" --simulate "* ]]; then
+	rm "$HOME/.config/${!#}"
+fi'
+	run_operation "$FIXTURE_ROOT" remove_package demo --yes
+
+	assert_eq 0 "$COMMAND_STATUS" 'removal of a package with an AUR requirement should succeed' || return 1
+	assert_contains "$COMMAND_OUTPUT" 'AUR package demo-aur-bin remains installed' \
+		'removal should report the retained AUR package through cleanup notes' || return 1
+	assert_eq 'demo-aur-bin' "$(<"$ARCH_PACKAGE_STATE")" 'removal should leave the AUR package installed' || return 1
+	if [[ $(<"$CALL_LOG") == *'pkg '* ]]; then
+		printf '  Stow package removal must not call an Omarchy package command\n' >&2
+		return 1
+	fi
+}
+
+test_package_engine_never_calls_direct_installers() {
+	local matches
+	matches=$(grep -nEw 'yay|pacman|curl' "$SOURCE_REPO/lib/dotfiles/core.sh" "$SOURCE_REPO/lib/dotfiles/packages.sh" || true)
+	assert_eq '' "$matches" 'the package engine must install requirements only through omarchy pkg commands'
+}
+
 set -e
+run_test test_catalog_validates_optional_aur_packages 'catalog validates optional AUR package metadata'
+run_test test_apply_plans_installs_and_verifies_aur_packages 'apply plans, installs, and verifies AUR packages before linking'
+run_test test_apply_aur_install_failure_stops_before_stow_mutation 'AUR package installation failure stops apply before Stow mutation'
+run_test test_migrate_plans_and_installs_aur_packages 'migration plans and installs AUR packages'
+run_test test_check_reports_missing_declared_aur_package_without_mutation 'check reports a missing declared AUR package without mutation'
+run_test test_remove_retains_aur_package_and_reports_cleanup_note 'removal retains an AUR package and reports its cleanup note'
+run_test test_package_engine_never_calls_direct_installers 'package engine never calls yay, pacman, or curl'
 run_test test_apply_requires_explicit_package_and_approval 'apply requires explicit package and approval'
 run_test test_apply_plans_simulates_links_and_validates_package 'apply plans, simulates, links, and validates a package'
 run_test test_apply_empty_and_requirement_free_selections_skip_arch_package_commands 'empty and requirement-free apply selections skip Arch package commands'

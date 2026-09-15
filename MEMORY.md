@@ -234,19 +234,19 @@ Reason: The repository has no blanket policy that makes sensitive values safe to
 
 ## Document non-Arch prerequisites and installers
 
-Applies when: A Stow package requires software that cannot be declared as an official Arch package.
+Applies when: A Stow package requires software that cannot be declared as an official Arch package or an AUR package.
 
 Guidance: Document the prerequisite and its supported installation command. Add an installation script only after making that choice for the package, and document the script in the relevant topic guide.
 
-Reason: Software outside `arch_packages` needs an explicit setup and ownership decision instead of implicit provisioning.
+Reason: Software outside `arch_packages` and `aur_packages` needs an explicit setup and ownership decision instead of implicit provisioning.
 
-## Install Arch requirements with Stow packages
+## Install Arch and AUR requirements with Stow packages
 
-Applies when: A Stow package requires an official Arch package.
+Applies when: A Stow package requires an official Arch package or an AUR package.
 
-Guidance: Declare the package in `arch_packages`. During apply and migration, include missing packages in the complete plan, confirm once, install them with `omarchy pkg add`, verify package identity, and repeat Stow simulation before mutation. Stow removal retains the Arch packages and reports them in cleanup notes.
+Guidance: Declare official repository packages in `arch_packages` and AUR packages in the optional `aur_packages` field. During apply and migration, include missing packages in the complete plan, confirm once, install official packages with `omarchy pkg add` and each AUR package with `omarchy pkg aur add`, verify each with `omarchy pkg present`, and repeat Stow simulation before mutation. Never call `yay`, `pacman`, or `curl | sh` directly. Stow removal retains both kinds and reports them through the package's catalog cleanup notes, so write a cleanup note for each retained package.
 
-Reason: Arch packages have independent ownership and can be shared. Package-specific planning avoids global installs, while retention avoids removing software without installation provenance.
+Reason: `omarchy pkg add` runs Pacman alone, so AUR packages need the separate Omarchy AUR route. Arch and AUR packages have independent ownership and can be shared. Package-specific planning avoids global installs, while retention avoids removing software without installation provenance.
 
 ## Keep optional application installation separate
 

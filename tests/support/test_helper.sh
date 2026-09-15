@@ -1439,6 +1439,14 @@ if [[ ${1-} == pkg && ${2-} == add ]]; then
 	done
 	exit 0
 fi
+if [[ ${1-} == pkg && ${2-} == aur && ${3-} == add ]]; then
+	touch "$DOTFILES_TEST_ARCH_PACKAGE_ADD_MARKER"
+	[[ $DOTFILES_TEST_ARCH_INSTALL_FAILURE == false ]] || exit 76
+	for package in "${@:4}"; do
+		grep -Fxq -- "$package" "$DOTFILES_TEST_ARCH_PACKAGE_STATE" || printf "%s\n" "$package" >>"$DOTFILES_TEST_ARCH_PACKAGE_STATE"
+	done
+	exit 0
+fi
 exit 64'
 	make_fake omarchy-shell 'exit 64'
 	make_fake xdg-terminal-exec 'exit 64'
