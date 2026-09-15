@@ -1,0 +1,34 @@
+#!/usr/bin/env bash
+
+# Publishes Omarchy's rendered system24 theme, with the current Omarchy font
+# filled in, as the Vencord theme file. The font-set.d hook links here, so a
+# theme change and a font change run the same publication.
+
+set -uo pipefail
+
+readonly EXPECTED_OMARCHY='4.0'
+readonly FONT_PLACEHOLDER='__OMARCHY_FONT__'
+readonly RENDERED="$HOME/.local/state/omarchy/current/theme/discord-system24.css"
+readonly THEMES_DIR="${XDG_CONFIG_HOME:-$HOME/.config}/Vencord/themes"
+readonly OUTPUT="$THEMES_DIR/omarchy-system24.css"
+
+fail() {
+	printf 'Discord system24 hook failed: %s\n' "$1" >&2
+	exit 1
+}
+
+detected_omarchy=$(omarchy version 2>/dev/null | tr -d '\r') || fail 'could not detect the Omarchy version'
+version=${detected_omarchy%%-*}
+[[ $version == "$EXPECTED_OMARCHY" || $version == "$EXPECTED_OMARCHY".* ]] ||
+	fail "unsupported Omarchy version. Required: $EXPECTED_OMARCHY.x; detected: ${detected_omarchy:-unknown}."
+
+[[ -f $RENDERED ]] || fail "rendered theme is missing: $RENDERED"
+font=$(omarchy-font-current) && [[ -n $font ]] || fail 'could not read the Omarchy font'
+theme=$(<"$RENDERED") || fail "could not read the rendered theme: $RENDERED"
+
+mkdir -p -- "$THEMES_DIR" || fail "could not create $THEMES_DIR"
+temporary=$(mktemp "$THEMES_DIR/.omarchy-system24.css.XXXXXX") || fail "could not create a temporary file in $THEMES_DIR"
+trap 'rm -f -- "$temporary"' EXIT
+printf '%s\n' "${theme//"$FONT_PLACEHOLDER"/"$font"}" >"$temporary" || fail "could not write $temporary"
+cmp -s -- "$temporary" "$OUTPUT" && exit 0
+chmod 0644 -- "$temporary" && mv -f -- "$temporary" "$OUTPUT" || fail "could not publish $OUTPUT"

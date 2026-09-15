@@ -181,5 +181,22 @@
 			"Removal leaves ~/.config/discord/settings.json absent, so Discord recreates its default settings on the next start",
 			"Arch package discord and its account data, cache, and logs under ~/.config/discord remain in place"
 		]
+	}, {
+		"name": "discord-system24",
+		"path": "config/discord-system24",
+		"description": "system24 Discord theme through Vencord with Omarchy colors and font",
+		"dependencies": ["discord"],
+		"arch_packages": [],
+		"aur_packages": ["vencord-installer-cli-bin"],
+		"prerequisites": [],
+		"validators": [
+			"bash -n \"$HOME/.config/omarchy/hooks/theme-set.d/discord-system24\"",
+			"bash -n \"$HOME/.config/omarchy/hooks/font-set.d/discord-system24\""
+		],
+		"cleanup": [
+			"AUR package vencord-installer-cli-bin and Arch package discord remain installed",
+			"Vencord settings, including enabledThemes, ~/.config/Vencord/settings/quickCss.css, and ~/.config/Vencord/dist remain client-owned and in place",
+			"Only the newest ~/.config/discord/app-* directory is unpatched; older app-* directories keep any Vencord patch"
+		]
 	}]
 }
