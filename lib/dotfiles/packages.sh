@@ -184,6 +184,8 @@ status() {
 		[[ -z $documentation ]] || printf '    Documentation: %s\n' "$documentation"
 		if [[ $package == screensaver-effects ]]; then
 			screensaver_effects_status
+		elif [[ $package == discord-system24 ]]; then
+			discord_system24_status
 		fi
 	done < <(jq -r '.packages[].name' "$PACKAGE_CATALOG")
 }
@@ -992,5 +994,9 @@ apply_packages() {
 			printf 'Recovery: rerun the Dotfiles wizard and choose Apply Stow packages.\n' >&2
 			return 1
 		fi
+	done
+	for package in "${packages[@]}"; do
+		[[ $package != discord-system24 ]] ||
+			printf 'Next step: choose Patch Discord with Vencord in the Dotfiles wizard; apply does not patch Discord.\n'
 	done
 }

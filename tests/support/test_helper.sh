@@ -2052,6 +2052,9 @@ run_operation() {
 			if [[ -f $repository/lib/dotfiles/wallpapers.sh ]]; then
 				source "$repository/lib/dotfiles/wallpapers.sh"
 			fi
+			if [[ -f $repository/lib/dotfiles/discord-system24.sh ]]; then
+				source "$repository/lib/dotfiles/discord-system24.sh"
+			fi
 			source "$repository/lib/dotfiles/wizard.sh"
 			"$operation" "$@"
 		' bash "$FIXTURE_REPO" "$operation" "$@"

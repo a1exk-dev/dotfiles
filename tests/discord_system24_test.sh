@@ -294,6 +294,183 @@ test_hooks_fail_closed_and_keep_the_last_good_theme() {
 	done
 }
 
+# Creates Discord app-* directories with an unpatched resources folder.
+add_discord_app_dirs() {
+	local version
+	for version in "$@"; do
+		mkdir -p "$FIXTURE_CONFIG/discord/app-$version/resources" || return 1
+		printf 'stock asar\n' >"$FIXTURE_CONFIG/discord/app-$version/resources/app.asar"
+	done
+}
+
+# A fake vencord-installer-cli that logs its arguments and, like the real
+# --repair, creates _app.asar in the given location unless told to skip it.
+make_fake_vencord_cli() {
+	local creates_backup=${1:-true}
+	make_fake vencord-installer-cli "printf 'vencord-installer-cli %s\n' \"\$*\" >>\"\$DOTFILES_TEST_CALL_LOG\"
+[[ \${1-} == --repair && \${2-} == --location && -d \${3-}/resources ]] || exit 64
+[[ $creates_backup == false ]] || printf 'stock asar\n' >\"\$3/resources/_app.asar\""
+}
+
+# Fakes for every way the action could start or stop Discord.
+make_discord_process_fakes() {
+	local name
+	for name in discord Discord pkill killall systemctl uwsm-app; do
+		make_fake "$name" "printf '$name %s\n' \"\$*\" >>\"\$DOTFILES_TEST_CALL_LOG\""
+	done
+}
+
+assert_discord_never_started_or_stopped() {
+	if grep -E '^(discord|Discord|pkill|killall|systemctl|uwsm-app) ' "$CALL_LOG" >&2; then
+		printf '  the action must never start or stop Discord\n' >&2
+		return 1
+	fi
+}
+
+setup_discord_patch_fixture() {
+	new_fixture || return 1
+	add_discord_app_dirs 1.0.9 1.0.157 || return 1
+	NEWEST_DISCORD_APP=$FIXTURE_CONFIG/discord/app-1.0.157
+	make_fake_vencord_cli
+	make_discord_process_fakes
+}
+
+vencord_cli_calls() {
+	grep '^vencord-installer-cli ' "$CALL_LOG" || true
+}
+
+test_patch_previews_then_repairs_the_newest_app_after_confirmation() {
+	setup_discord_patch_fixture || return 1
+
+	DOTFILES_TEST_INPUT='y\n' run_dotfiles "$FIXTURE_ROOT" --action discord-patch
+	assert_eq 0 "$COMMAND_STATUS" "the patch action should succeed: $COMMAND_OUTPUT" || return 1
+	assert_contains "$COMMAND_OUTPUT" "Discord app: $NEWEST_DISCORD_APP" 'the preview should name the newest app-*' || return 1
+	assert_contains "$COMMAND_OUTPUT" "Run: vencord-installer-cli --repair --location $NEWEST_DISCORD_APP" \
+		'the preview should show the command' || return 1
+	assert_contains "$COMMAND_OUTPUT" 'Detected Omarchy: 4.0.0-1' 'the preview should show the detected Omarchy version' || return 1
+	assert_eq "vencord-installer-cli --repair --location $NEWEST_DISCORD_APP" "$(vencord_cli_calls)" \
+		'the action should repair only the newest app-*' || return 1
+	[[ -f $NEWEST_DISCORD_APP/resources/_app.asar ]] || {
+		printf '  the newest app-* should be patched\n' >&2
+		return 1
+	}
+	assert_path_absent "$FIXTURE_CONFIG/discord/app-1.0.9/resources/_app.asar" 'older app-* directories stay untouched' || return 1
+	assert_contains "$COMMAND_OUTPUT" 'Discord patched and verified' 'the action should report verified success' || return 1
+	assert_contains "$COMMAND_OUTPUT" 'Restart Discord' 'the action should tell the human to restart Discord' || return 1
+	assert_discord_never_started_or_stopped
+}
+
+test_patch_declined_runs_nothing() {
+	setup_discord_patch_fixture || return 1
+
+	DOTFILES_TEST_INPUT='n\n' run_dotfiles "$FIXTURE_ROOT" --action discord-patch
+	assert_eq 0 "$COMMAND_STATUS" 'a declined patch should be a successful no-op' || return 1
+	assert_contains "$COMMAND_OUTPUT" 'No changes made.' 'a declined patch should say nothing changed' || return 1
+	assert_eq '' "$(vencord_cli_calls)" 'a declined patch must not run the CLI' || return 1
+	assert_path_absent "$NEWEST_DISCORD_APP/resources/_app.asar" 'a declined patch must not patch Discord'
+}
+
+test_patch_fails_when_app_asar_backup_is_missing_after_the_cli() {
+	setup_discord_patch_fixture || return 1
+	make_fake_vencord_cli false
+
+	DOTFILES_TEST_INPUT='y\n' run_dotfiles "$FIXTURE_ROOT" --action discord-patch
+	assert_eq 1 "$COMMAND_STATUS" 'the action should fail when _app.asar is missing after the CLI' || return 1
+	assert_contains "$COMMAND_OUTPUT" 'patch verification failed' 'the action should report the failed verification' || return 1
+	if [[ $COMMAND_OUTPUT == *'Discord patched and verified'* ]]; then
+		printf '  the action must not report success without _app.asar\n' >&2
+		return 1
+	fi
+}
+
+test_patch_asks_for_consent_on_an_omarchy_mismatch() {
+	setup_discord_patch_fixture || return 1
+
+	DOTFILES_TEST_OMARCHY_VERSION=4.1.0-1 DOTFILES_TEST_INPUT='y\nn\n' run_dotfiles "$FIXTURE_ROOT" --action discord-patch
+	assert_eq 1 "$COMMAND_STATUS" 'refused mismatch consent should stop the action' || return 1
+	assert_contains "$COMMAND_OUTPUT" $'Supported Omarchy: 4.0\nDetected Omarchy: 4.1.0-1' \
+		'a mismatch should show the target and detected versions' || return 1
+	assert_contains "$COMMAND_OUTPUT" 'Continue despite the Omarchy version mismatch?' 'a mismatch should ask for consent' || return 1
+	assert_eq '' "$(vencord_cli_calls)" 'refused consent must not run the CLI' || return 1
+
+	DOTFILES_TEST_OMARCHY_VERSION=4.1.0-1 DOTFILES_TEST_INPUT='y\ny\n' run_dotfiles "$FIXTURE_ROOT" --action discord-patch
+	assert_eq 0 "$COMMAND_STATUS" "granted consent should continue: $COMMAND_OUTPUT" || return 1
+	assert_eq "vencord-installer-cli --repair --location $NEWEST_DISCORD_APP" "$(vencord_cli_calls)" \
+		'granted consent should run the CLI once'
+}
+
+test_patch_stops_when_the_cli_is_missing() {
+	setup_discord_patch_fixture || return 1
+	rm "$FIXTURE_BIN/vencord-installer-cli"
+
+	DOTFILES_TEST_INPUT='y\n' run_dotfiles "$FIXTURE_ROOT" --action discord-patch
+	assert_eq 1 "$COMMAND_STATUS" 'a missing CLI should stop the action' || return 1
+	assert_contains "$COMMAND_OUTPUT" 'vencord-installer-cli is missing' 'the action should name the missing CLI' || return 1
+	if [[ $COMMAND_OUTPUT == *'Patch Discord with Vencord?'* ]]; then
+		printf '  a missing CLI should stop before the confirmation\n' >&2
+		return 1
+	fi
+	assert_discord_never_started_or_stopped
+}
+
+test_patch_stops_when_no_app_dir_exists() {
+	setup_discord_patch_fixture || return 1
+	rm -rf "$FIXTURE_CONFIG/discord"
+
+	DOTFILES_TEST_INPUT='y\n' run_dotfiles "$FIXTURE_ROOT" --action discord-patch
+	assert_eq 1 "$COMMAND_STATUS" 'a missing app-* should stop the action' || return 1
+	assert_contains "$COMMAND_OUTPUT" 'no Discord app-* directory exists' 'the action should explain the missing app-*' || return 1
+	assert_eq '' "$(vencord_cli_calls)" 'a missing app-* must not run the CLI' || return 1
+	assert_discord_never_started_or_stopped
+}
+
+discord_system24_status_lines() {
+	grep -A2 '^  discord-system24: ' <<<"$COMMAND_OUTPUT" | tail -n +2
+}
+
+discord_system24_tree_state() {
+	(cd -- "$FIXTURE_CONFIG" && find discord Vencord -printf '%p %s %T@\n' 2>/dev/null | sort)
+}
+
+test_status_reports_unpatched_app_and_absent_theme_without_changes() {
+	setup_discord_patch_fixture || return 1
+	local before=$(discord_system24_tree_state)
+
+	run_operation "$FIXTURE_ROOT" status
+	assert_eq 0 "$COMMAND_STATUS" "status should pass: $COMMAND_OUTPUT" || return 1
+	assert_eq "    Discord app: $NEWEST_DISCORD_APP (unpatched)"$'\n'"    Vencord theme: $FIXTURE_CONFIG/Vencord/themes/omarchy-system24.css (absent)" \
+		"$(discord_system24_status_lines)" 'status should report the unpatched newest app-* and the absent theme below discord-system24' || return 1
+	assert_eq "$before" "$(discord_system24_tree_state)" 'status must change nothing' || return 1
+	assert_eq '' "$(vencord_cli_calls)" 'status must not run the CLI'
+}
+
+test_status_reports_patched_app_and_present_theme() {
+	setup_discord_patch_fixture || return 1
+	printf 'stock asar\n' >"$NEWEST_DISCORD_APP/resources/_app.asar"
+	mkdir -p "$FIXTURE_CONFIG/Vencord/themes"
+	printf ':root {}\n' >"$FIXTURE_CONFIG/Vencord/themes/omarchy-system24.css"
+	local before=$(discord_system24_tree_state)
+
+	run_operation "$FIXTURE_ROOT" status
+	assert_eq 0 "$COMMAND_STATUS" "status should pass: $COMMAND_OUTPUT" || return 1
+	assert_eq "    Discord app: $NEWEST_DISCORD_APP (patched)"$'\n'"    Vencord theme: $FIXTURE_CONFIG/Vencord/themes/omarchy-system24.css (present)" \
+		"$(discord_system24_status_lines)" 'status should report the patched newest app-* and the present theme' || return 1
+	assert_eq "$before" "$(discord_system24_tree_state)" 'status must change nothing'
+}
+
+test_apply_does_not_patch_and_names_the_patch_action() {
+	setup_discord_patch_fixture || return 1
+	ln -sf /usr/bin/stow "$FIXTURE_BIN/stow"
+	set_installed_arch_packages discord vencord-installer-cli-bin
+
+	DOTFILES_TEST_INPUT='y\n' run_operation "$FIXTURE_ROOT" apply_packages discord-system24
+	assert_eq 0 "$COMMAND_STATUS" "apply should pass: $COMMAND_OUTPUT" || return 1
+	assert_contains "$COMMAND_OUTPUT" 'Package state: discord-system24: succeeded' 'apply should link discord-system24' || return 1
+	assert_contains "$COMMAND_OUTPUT" 'Next step: choose Patch Discord with Vencord' 'apply should name the patch action as the next step' || return 1
+	assert_eq '' "$(vencord_cli_calls)" 'apply must not run the CLI' || return 1
+	assert_path_absent "$NEWEST_DISCORD_APP/resources/_app.asar" 'apply must not patch Discord'
+}
+
 run_test test_catalog_entry_is_appended_with_the_approved_fields 'discord-system24 catalog entry is appended with the approved fields'
 run_test test_package_tracks_exactly_the_template_and_both_hooks 'discord-system24 package tracks exactly the template and both hooks'
 run_test test_theme_set_hook_publishes_through_a_same_folder_temp_file 'system24 theme-set hook publishes through a same-folder temp file'
@@ -304,4 +481,13 @@ run_test test_template_renders_against_a_stock_dark_theme 'system24 template ren
 run_test test_template_renders_against_a_stock_light_theme 'system24 template renders against a stock light theme'
 run_test test_template_body_sets_only_pfp_decor_and_the_font_placeholder 'system24 template body sets only pfp decorations and the font placeholder'
 run_test test_template_overrides_only_variables_after_the_import 'system24 template overrides only variables after the import'
+run_test test_patch_previews_then_repairs_the_newest_app_after_confirmation 'Discord patch previews, then repairs the newest app-* after confirmation'
+run_test test_patch_declined_runs_nothing 'Discord patch declined runs nothing'
+run_test test_patch_fails_when_app_asar_backup_is_missing_after_the_cli 'Discord patch fails when _app.asar is missing after the CLI'
+run_test test_patch_asks_for_consent_on_an_omarchy_mismatch 'Discord patch asks for consent on an Omarchy mismatch'
+run_test test_patch_stops_when_the_cli_is_missing 'Discord patch stops when the CLI is missing'
+run_test test_patch_stops_when_no_app_dir_exists 'Discord patch stops when no app-* exists'
+run_test test_status_reports_unpatched_app_and_absent_theme_without_changes 'status reports an unpatched app-* and absent theme without changes'
+run_test test_status_reports_patched_app_and_present_theme 'status reports a patched app-* and present theme'
+run_test test_apply_does_not_patch_and_names_the_patch_action 'apply does not patch Discord and names the patch action'
 finish_tests

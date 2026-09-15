@@ -145,6 +145,7 @@ wizard_run_action() {
 		shell-layout) apply_shell_layout ;;
 		screensaver-effects) manage_screensaver_effects ;;
 		screensaver-effects-migrate) migrate_screensaver_effects --interactive ;;
+		discord-patch) patch_discord_with_vencord ;;
 		exit) printf 'No action selected.\n' ;;
 		*) printf 'Error: unknown wizard action: %s\n' "$action" >&2; return 2 ;;
 	esac
@@ -282,8 +283,8 @@ wizard() {
 		labels+=('Migrate competing screensaver clones')
 		actions+=(screensaver-effects-migrate)
 	fi
-	labels+=('Manage screensaver effects' 'Manage laptop power policy' 'Exit')
-	actions+=(screensaver-effects power-policy exit)
+	labels+=('Manage screensaver effects' 'Manage laptop power policy' 'Patch Discord with Vencord' 'Exit')
+	actions+=(screensaver-effects power-policy discord-patch exit)
 	if ! choice=$(wizard_choose 'Choose an action (none selected by default)' "${labels[@]}"); then
 		printf 'No action selected.\n'
 		return 0
