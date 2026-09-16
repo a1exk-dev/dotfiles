@@ -2,7 +2,7 @@
 
 - **Tickets:** Before creating, locating, changing, reviewing, blocking, or completing local specs, maps, and tickets, read `docs/agents/issue-tracker.md`.
 - **Triage:** When a skill names a canonical triage role, translate it through `docs/agents/triage-labels.md`.
-- **Grilling:** Ask one question at a time, provide concrete answer options with a recommended option first, and wait for the human's answer before asking the next question.
+- **Grilling:** Ask one question at a time, provide concrete answer options with a recommended option first, and wait for the human's answer before asking the next question. This rule replaces any skill's batched-round format; ask each question through the question tool.
 - **Tests:** Run focused affected tests for changed scopes. When the complete repository suite is required, give test commands no wall-clock limit, use the execution tool's longest supported timeout, never wrap a test command with `timeout`, rerun only failed or incomplete portions, and collect one final result.
 - **Commits:** Present verified changes for human review and wait for an explicit `Commit` decision before committing. When no decision is already present, ask one question with `Commit`, `Request changes`, and `Reject` options; apply requested changes or leave rejected work uncommitted. Before proposing or using a commit message, use `wait-what` and then `humanizer` to review and rewrite it.
 - **Omarchy:** Before changing Omarchy-managed or user configuration, use the `omarchy` skill. Route system updates through `omarchy update`; never invoke Pacman directly for repository synchronization or package upgrades. Keep packaged files under `/usr/share/omarchy/` read-only and place customizations in user configuration.
