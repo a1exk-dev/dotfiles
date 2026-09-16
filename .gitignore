@@ -1,6 +1,9 @@
 # Local plans, specs, tickets, and maps
 /.scratch/
 
+# Agent worktrees (the rest of .claude/ stays tracked)
+/.claude/worktrees/
+
 # Maintainer-supplied images awaiting curation
 /wallpapers/inbox/*
 !/wallpapers/inbox/.gitkeep
