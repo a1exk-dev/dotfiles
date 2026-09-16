@@ -101,7 +101,7 @@ Choose `Run structural checks` to validate:
 - Package documentation links
 - Package dependencies
 - Package prerequisites and validator executables
-- Package-specific Arch requirements
+- Package-specific Arch and AUR requirements
 - The application cleanup profile
 - The optional application catalog
 - The skill manifest and required global skill commands
@@ -123,17 +123,17 @@ For a nonempty selection, the wizard:
 2. Reports the supported and detected Omarchy versions.
 3. Checks GNU Stow.
 4. Resolves package dependencies.
-5. Checks package prerequisites, validator executables, and Arch package requirements.
+5. Checks package prerequisites, validator executables, and Arch and AUR package requirements.
 6. Simulates all Stow operations.
-7. Shows the complete plan in dependency order, including missing Arch packages.
+7. Shows the complete plan in dependency order, including missing Arch and AUR packages.
 8. Asks for confirmation.
-9. Installs and verifies missing Arch packages.
-10. If it installed an Arch package, repeats all Stow simulations.
+9. Installs and verifies missing Arch and AUR packages.
+10. If it installed a package, repeats all Stow simulations.
 11. Applies and verifies each package in dependency order.
 
 The plan identifies selected packages and required dependencies. Existing normal files cause a conflict. The wizard does not replace them and does not use `stow --adopt`.
 
-Package-specific Arch requirements are part of the Stow plan and use the same confirmation. The wizard installs missing packages with `omarchy pkg add`, verifies them, and repeats the Stow simulation before it changes links.
+Package-specific Arch and AUR requirements are part of the Stow plan and use the same confirmation. The wizard installs missing official packages with `omarchy pkg add` and each missing AUR package with `omarchy pkg aur add`. It verifies every one of them with `omarchy pkg present`, and it repeats the Stow simulation before it changes links.
 
 After Stow links and validators pass for `screensaver-effects`, the package lifecycle publishes both complete live plugin links. It performs one plugin rescan when needed, preserves the existing Indicators position and options, enables the idle clone, and adds the managed System-menu action. An exact repeated Apply is a no-op. Another idle or Indicators clone blocks normal Apply and directs recovery to `Migrate competing screensaver clones`.
 
@@ -277,12 +277,12 @@ The wizard:
 
 1. Confirms that the target resolves inside the user's home directory.
 2. Confirms that the package destination resolves inside the selected package.
-3. Resolves dependencies and checks prerequisites, validators, Arch package requirements, and GNU Stow.
+3. Resolves dependencies and checks prerequisites, validators, Arch and AUR package requirements, and GNU Stow.
 4. Simulates the selected package and all required dependencies.
-5. Shows the complete migration plan, including missing Arch packages, and asks for approval.
+5. Shows the complete migration plan, including missing Arch and AUR packages, and asks for approval.
 6. Asks if the file was inspected for sensitive and machine-specific content.
-7. Installs and verifies missing Arch packages.
-8. If it installed an Arch package, repeats the Stow simulation for the selected package and all required dependencies.
+7. Installs and verifies missing Arch and AUR packages.
+8. If it installed a package, repeats the Stow simulation for the selected package and all required dependencies.
 9. Applies required dependency packages before it changes the selected target.
 10. Checks the selected target, package destination, and path containment again.
 11. Creates a timestamped backup below `${XDG_STATE_HOME:-$HOME/.local/state}/dotfiles/backups/<package>/`.
@@ -290,7 +290,7 @@ The wizard:
 13. Simulates the selected package again.
 14. Applies the selected package and verifies its links and validators.
 
-Migration installs and verifies missing Arch packages before it applies dependency links, creates a backup, or moves the selected target. If installation fails, the selected target stays unchanged.
+Migration installs and verifies missing Arch and AUR packages before it applies dependency links, creates a backup, or moves the selected target. If installation fails, the selected target stays unchanged.
 
 Migration does not use `stow --adopt`. If a failure occurs after the backup or move, the wizard prints the backup path and recovery commands. A dependency failure can leave an earlier dependency linked, but it leaves the selected migration target unchanged and does not create its backup.
 
@@ -308,7 +308,7 @@ For an allowed removal, the wizard:
 4. Unlinks the package.
 5. Verifies that all managed targets are gone.
 
-Removing a Stow package leaves its Arch packages installed. The cleanup notes list the retained packages.
+Removing a Stow package leaves its Arch and AUR packages installed. The cleanup notes list the retained packages.
 
 Removing `screensaver-effects` deactivates its lifecycle before Stow unlinks the package. It restores the prior idle and Indicators state, removes only an unchanged receipt-owned System-menu entry, and removes both live plugin links. Receipts, migration backups, diagnostics, successfully migrated old clones, and the `ttfx`, `jq`, and `socat` packages remain.
 
@@ -322,6 +322,7 @@ The root `packages.json` file stores each package's:
 - Path below `config/`
 - Prerequisites
 - Arch packages installed through Omarchy
+- AUR packages installed through Omarchy
 - Dependencies
 - Validation commands
 - Optional documentation link
@@ -333,7 +334,7 @@ The wizard applies dependencies before dependent packages. A linked dependent bl
 
 An Omarchy version mismatch requires separate confirmation before most mutations. The `screensaver-effects` lifecycle is the exception. It reports supported and detected Omarchy and `ttfx` versions, warns on a mismatch, and continues when source, command, ownership, mapping, and lifecycle validation pass.
 
-Successful application or migration means that each expected target points to its tracked source, each validator passes, and each declared Arch package is installed. Successful removal means that all managed targets are unlinked.
+Successful application or migration means that each expected target points to its tracked source, each validator passes, and each declared Arch and AUR package is installed. Successful removal means that all managed targets are unlinked.
 
 A package batch stops on the first failed package. Packages that passed verification earlier in the batch stay applied. Follow the printed recovery instructions. Then run `make` and choose the named standalone action.
 

@@ -128,8 +128,8 @@ test_catalog_entry_is_appended_with_the_approved_fields() {
 
 	assert_eq '["hyprland","claude","discord","discord-system24"]' "$(jq -c '[.packages[-4:][].name]' "$catalog")" \
 		'discord-system24 should follow every earlier entry so their wizard numbers stay stable' || return 1
-	assert_eq '{"path":"config/discord-system24","dependencies":["discord"],"arch_packages":[],"aur_packages":["vencord-installer-cli-bin"]}' \
-		"$(jq -c '.packages[-1] | {path, dependencies, arch_packages, aur_packages}' "$catalog")" \
+	assert_eq '{"path":"config/discord-system24","dependencies":["discord"],"arch_packages":[],"aur_packages":["vencord-installer-cli-bin"],"documentation":"docs/discord-system24.md"}' \
+		"$(jq -c '.packages[-1] | {path, dependencies, arch_packages, aur_packages, documentation}' "$catalog")" \
 		'the discord-system24 entry should declare the approved fields' || return 1
 	assert_eq "bash -n \"$hooks/theme-set.d/discord-system24\""$'\n'"bash -n \"$hooks/font-set.d/discord-system24\"" \
 		"$(jq -r '.packages[-1].validators[]' "$catalog")" 'the validators should run bash -n on both hooks' || return 1
@@ -450,7 +450,7 @@ test_patch_stops_when_no_app_dir_exists() {
 }
 
 discord_system24_status_lines() {
-	grep -A2 '^  discord-system24: ' <<<"$COMMAND_OUTPUT" | tail -n +2
+	grep -A3 '^  discord-system24: ' <<<"$COMMAND_OUTPUT" | tail -n +2
 }
 
 discord_system24_tree_state() {
@@ -463,7 +463,7 @@ test_status_reports_unpatched_app_and_absent_theme_without_changes() {
 
 	run_operation "$FIXTURE_ROOT" status
 	assert_eq 0 "$COMMAND_STATUS" "status should pass: $COMMAND_OUTPUT" || return 1
-	assert_eq "    Discord app: $NEWEST_DISCORD_APP (unpatched)"$'\n'"    Vencord theme: $FIXTURE_CONFIG/Vencord/themes/omarchy-system24.css (absent)" \
+	assert_eq '    Documentation: docs/discord-system24.md'$'\n'"    Discord app: $NEWEST_DISCORD_APP (unpatched)"$'\n'"    Vencord theme: $FIXTURE_CONFIG/Vencord/themes/omarchy-system24.css (absent)" \
 		"$(discord_system24_status_lines)" 'status should report the unpatched newest app-* and the absent theme below discord-system24' || return 1
 	assert_eq "$before" "$(discord_system24_tree_state)" 'status must change nothing' || return 1
 	assert_eq '' "$(vencord_cli_calls)" 'status must not run the CLI'
@@ -478,7 +478,7 @@ test_status_reports_patched_app_and_present_theme() {
 
 	run_operation "$FIXTURE_ROOT" status
 	assert_eq 0 "$COMMAND_STATUS" "status should pass: $COMMAND_OUTPUT" || return 1
-	assert_eq "    Discord app: $NEWEST_DISCORD_APP (patched)"$'\n'"    Vencord theme: $FIXTURE_CONFIG/Vencord/themes/omarchy-system24.css (present)" \
+	assert_eq '    Documentation: docs/discord-system24.md'$'\n'"    Discord app: $NEWEST_DISCORD_APP (patched)"$'\n'"    Vencord theme: $FIXTURE_CONFIG/Vencord/themes/omarchy-system24.css (present)" \
 		"$(discord_system24_status_lines)" 'status should report the patched newest app-* and the present theme' || return 1
 	assert_eq "$before" "$(discord_system24_tree_state)" 'status must change nothing'
 }

@@ -193,6 +193,7 @@
 			"bash -n \"$HOME/.config/omarchy/hooks/theme-set.d/discord-system24\"",
 			"bash -n \"$HOME/.config/omarchy/hooks/font-set.d/discord-system24\""
 		],
+		"documentation": "docs/discord-system24.md",
 		"cleanup": [
 			"AUR package vencord-installer-cli-bin and Arch package discord remain installed",
 			"Vencord settings, including enabledThemes, ~/.config/Vencord/settings/quickCss.css, and ~/.config/Vencord/dist remain client-owned and in place",

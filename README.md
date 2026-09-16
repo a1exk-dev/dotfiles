@@ -1,6 +1,6 @@
 # Dotfiles
 
-Portable dotfiles for Omarchy version 4. GNU Stow links tracked configuration into the user's home directory. The Dotfiles wizard manages prerequisites, pinned global agent skills, application cleanup, optional application installation, Stow packages, repository wallpapers, the Shell layout, the optional shared Brave configuration, optional laptop power policy, Telegram Desktop's optional Omarchy theme integration, and selective active-theme Omarchy screensaver effects.
+Portable dotfiles for Omarchy version 4. GNU Stow links tracked configuration into the user's home directory. The Dotfiles wizard manages prerequisites, pinned global agent skills, application cleanup, optional application installation, Stow packages, repository wallpapers, the Shell layout, the optional shared Brave configuration, optional laptop power policy, Telegram Desktop's optional Omarchy theme integration, Discord's optional system24 theme integration, and selective active-theme Omarchy screensaver effects.
 
 ## Requirements
 
@@ -27,6 +27,8 @@ The `opencode` Stow package owns complete global OpenCode runtime and TUI settin
 The `claude` Stow package owns Claude Code user settings, including the claude-hud plugin and status line. It requires Claude Code 2.1.270 or later in the 2.1 series from Mise, and Node.js 18 or later on `PATH`. It does not install or update Claude Code.
 
 The `discord` Stow package owns the Discord desktop client's local settings and no account data. Its package plan installs `discord` through Omarchy after confirmation.
+
+The `discord-system24` Stow package applies the system24 theme to Discord through Vencord and supports Omarchy 4.0. It was tested with Omarchy `4.0.3-1`, `discord` `1:1.0.156-1`, and `vencord-installer-cli-bin` `1.4.0-3`. It depends on the `discord` package. Its package plan installs the AUR package `vencord-installer-cli-bin` through Omarchy after confirmation. That package supplies the `vencordinstallercli` command, which the patch action and the removal both require. Discord requires network access to load the theme, because the theme imports system24 from `refact0r.github.io`.
 
 The `telegram-theme` Stow package supports Omarchy 4.0 and Telegram Desktop 7.2. It was tested with Omarchy `4.0.3-1` and Telegram Desktop `7.2.5-1`. It requires Node.js 22.20.0 or newer, `zip`, `flock`, and writable absolute XDG state and runtime directories. The package plan installs `telegram-desktop` and `zip` through Omarchy after confirmation.
 
@@ -81,6 +83,8 @@ Choose `Manage laptop power policy` for `Status`, `Apply`, `Remove`, and recover
 
 Choose `Apply Shell layout` to move Omarchy's keyboard layout indicator to the start of the bar's right side, just before the system tray. Omarchy owns `~/.config/omarchy/shell.json` and rewrites it itself, so the action goes through `omarchy bar move` instead of linking the file. You can also run `bin/dotfiles --action shell-layout`.
 
+Choose `Patch Discord with Vencord` to patch the newest `~/.config/discord/app-*` directory after you confirm the command. Applying the `discord-system24` package does not patch Discord, and each Discord self-update requires the action again.
+
 Choose `Apply Stow packages` and select `screensaver-effects` to link and activate the selective screensaver integration. After activation, run `make screensaver-effects` to change the tracked allowlist or preview an installed mapped effect. The manager requires terminal input and output.
 
 Place candidate images in `wallpapers/inbox/`, then choose `Manage wallpapers` or run `make wallpapers`. The manager validates each Intake image, adds its Theme assignments under `wallpapers/library/`, and creates one Git commit for new assignment paths. The commit subject is `Add managed wallpaper <digest-prefix>`. If every assignment is already in Git, Add removes the duplicate Intake image without creating an empty commit. Choose `Apply wallpapers` to deploy the library as regular Omarchy background files. Choose `Remove deployed wallpapers` to remove unchanged receipt-owned copies.
@@ -95,6 +99,7 @@ Place candidate images in `wallpapers/inbox/`, then choose `Manage wallpapers` o
 - `config/opencode/`: complete global OpenCode runtime and TUI settings
 - `config/telegram-theme/`: Telegram Desktop theme generator and Omarchy integration assets
 - `config/screensaver-effects/`: tracked allowlist, Omarchy plugin clones, launcher, runtime shim, and selector
+- `config/discord-system24/`: Omarchy system24 theme template and the Vencord publication hooks
 - `config/hyprland/`: complete Hyprland user configuration, including US and Russian keyboard layouts
 - `wallpapers/inbox/`: ignored Intake images awaiting review
 - `wallpapers/library/`: tracked Managed wallpapers grouped by Theme assignment
@@ -129,6 +134,7 @@ bash tests/opencode_test.sh
 - [Voxtype GPU acceleration](docs/voxtype.md)
 - [OpenCode](docs/opencode.md)
 - [Telegram Desktop theme integration](docs/telegram-theme.md)
+- [Discord system24 theme integration](docs/discord-system24.md)
 - [Selective screensaver effects](docs/screensaver-effects.md)
 - [ZTE USB modem recovery](docs/usb-modem.md)
 - [Application cleanup](docs/cleanup.md)

@@ -20,6 +20,8 @@ The package plan installs the `discord` Arch package through Omarchy after you c
 
 Everything else under `~/.config/discord/` stays local: cookies, local storage, caches, logs, `Preferences` (it has a device salt), self-updated `app-*` directories, and installer state.
 
+For the optional system24 theme, see [Discord system24 theme integration](discord-system24.md).
+
 ## Changes through the link
 
 Discord writes the file in place, so changes show up as a Git diff. Review it, then commit it or run `git restore`.
