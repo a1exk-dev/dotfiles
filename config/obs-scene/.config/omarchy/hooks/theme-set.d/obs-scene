@@ -1,0 +1,42 @@
+#!/usr/bin/env bash
+
+# Renders the Omarchy OBS scene assets into ~/.config/obs-studio/omarchy-scene/
+# at this machine's canvas. Install OBS set writes the geometry file there; until
+# it exists there is nothing to render. The font-set.d hook links here, so a
+# theme change and a font change run the same render.
+
+set -uo pipefail
+
+readonly EXPECTED_OMARCHY='4.0'
+readonly EXPECTED_OBS='32.2'
+readonly CONFIG_HOME="${XDG_CONFIG_HOME:-$HOME/.config}"
+readonly SCENE_DIR="$CONFIG_HOME/obs-studio/omarchy-scene"
+readonly GEOMETRY="$SCENE_DIR/geometry.json"
+readonly COLORS="$HOME/.local/state/omarchy/current/theme/colors.toml"
+readonly AVATAR="$CONFIG_HOME/dotfiles/obs-avatar.jpg"
+readonly PACKAGE_ROOT="$(readlink -f -- "$(dirname -- "$(readlink -f -- "${BASH_SOURCE[0]}")")/../../../..")"
+readonly GENERATOR="$PACKAGE_ROOT/.local/libexec/dotfiles/obs-scene/generate.ts"
+
+fail() {
+	printf 'OBS scene hook failed: %s\n' "$1" >&2
+	exit 1
+}
+
+[[ -f $GEOMETRY ]] || exit 0
+
+detected_omarchy=$(omarchy version 2>/dev/null | tr -d '\r') || fail 'could not detect the Omarchy version'
+version=${detected_omarchy%%-*}
+[[ $version == "$EXPECTED_OMARCHY" || $version == "$EXPECTED_OMARCHY".* ]] ||
+	fail "unsupported Omarchy version. Required: $EXPECTED_OMARCHY.x; detected: ${detected_omarchy:-unknown}."
+
+detected_obs=$(obs --version 2>/dev/null) && detected_obs=${detected_obs##* } || detected_obs=''
+if [[ -z $detected_obs ]]; then
+	printf 'Warning: could not detect the OBS version; rendering the scene anyway.\n' >&2
+elif [[ ${detected_obs%%-*} != "$EXPECTED_OBS" && ${detected_obs%%-*} != "$EXPECTED_OBS".* ]]; then
+	printf 'Warning: OBS %s is outside the tested %s series; rendering the scene anyway.\n' "$detected_obs" "$EXPECTED_OBS" >&2
+fi
+
+[[ -f $COLORS ]] || fail "Omarchy theme colours are missing: $COLORS"
+font=$(omarchy-font-current) && [[ -n $font ]] || fail 'could not read the Omarchy font'
+bun "$GENERATOR" render --geometry "$GEOMETRY" --colors "$COLORS" --font "$font" --avatar "$AVATAR" --output "$SCENE_DIR" ||
+	fail 'the scene generator stopped; the previous output is unchanged'

@@ -677,6 +677,14 @@ remove_package() {
 		phase_error plan "$package" 'apply discord-system24 to reinstall vencord-installer-cli-bin, then choose Remove Stow package in the Dotfiles wizard'
 		return 1
 	fi
+	if [[ $package == obs-scene ]] && ! obs_scene_prepare_remove; then
+		phase_error plan "$package" 'close OBS, then choose Remove Stow package in the Dotfiles wizard'
+		return 1
+	fi
+	if [[ $package == obs-theme ]] && ! obs_theme_prepare_remove; then
+		phase_error plan "$package" 'close OBS, then choose Remove Stow package in the Dotfiles wizard'
+		return 1
+	fi
 	printf 'Plan: remove %s links from %s\n' "$package" "$HOME"
 	printf 'Cleanup notes (not deleted):\n'
 	if [[ $(jq '.cleanup | length' <<<"$package_json") -eq 0 ]]; then
@@ -699,6 +707,10 @@ remove_package() {
 		phase_error confirm "$package" 'review compatibility, then choose Remove Stow package in the Dotfiles wizard'
 		return 1
 	fi
+	if [[ $package == obs-theme ]] && ! obs_confirm_version; then
+		phase_error confirm "$package" 'review OBS compatibility, then choose Remove Stow package in the Dotfiles wizard'
+		return 1
+	fi
 	if [[ $interactive == true ]]; then
 		printf 'Approval: accepted interactively\n'
 	else
@@ -715,6 +727,14 @@ remove_package() {
 	fi
 	if [[ $package == discord-system24 ]] && ! discord_system24_remove_client_state; then
 		phase_error remove "$package" 'the links and Vencord theme stay in place; resolve the reported error, then choose Remove Stow package in the Dotfiles wizard'
+		return 1
+	fi
+	if [[ $package == obs-scene ]] && ! obs_scene_remove_state; then
+		phase_error remove "$package" 'the links stay in place; resolve the reported error, then choose Remove Stow package in the Dotfiles wizard'
+		return 1
+	fi
+	if [[ $package == obs-theme ]] && ! obs_theme_remove_state; then
+		phase_error remove "$package" 'the links stay in place; resolve the reported error, then choose Remove Stow package in the Dotfiles wizard'
 		return 1
 	fi
 	if ! stow --no-folding --delete --verbose=2 --dir "$REPOSITORY_ROOT/config" --target "$HOME" "$package"; then
@@ -993,6 +1013,11 @@ apply_packages() {
 		if apply_one_package "$package"; then
 			if [[ $package == screensaver-effects ]] && ! screensaver_effects_activate; then
 				printf 'Package state: %s: Stow linked, lifecycle inactive\n' "$package" >&2
+				printf 'Recovery: rerun the Dotfiles wizard and choose Apply Stow packages.\n' >&2
+				return 1
+			fi
+			if [[ $package == obs-theme ]] && ! obs_theme_select; then
+				printf 'Package state: %s: Stow linked, theme selection failed\n' "$package" >&2
 				printf 'Recovery: rerun the Dotfiles wizard and choose Apply Stow packages.\n' >&2
 				return 1
 			fi

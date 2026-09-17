@@ -1,0 +1,56 @@
+#!/usr/bin/env bash
+
+# Publishes Omarchy's rendered OBS theme as ~/.config/obs-studio/themes/Omarchy.ovt,
+# with the dark flag, the current Omarchy font and, on light themes, the light
+# icon set filled in. The font-set.d hook links here, so a theme change and a
+# font change run the same publication.
+
+set -uo pipefail
+
+readonly EXPECTED_OMARCHY='4.0'
+readonly EXPECTED_OBS='32.2'
+readonly RENDERED="$HOME/.local/state/omarchy/current/theme/obs-omarchy.ovt"
+readonly LIGHT_ICONS="$(dirname -- "$(readlink -f -- "${BASH_SOURCE[0]}")")/obs-theme.d/light-icons.ovt"
+readonly THEMES_DIR="${XDG_CONFIG_HOME:-$HOME/.config}/obs-studio/themes"
+readonly OUTPUT="$THEMES_DIR/Omarchy.ovt"
+
+fail() {
+	printf 'OBS theme hook failed: %s\n' "$1" >&2
+	exit 1
+}
+
+detected_omarchy=$(omarchy version 2>/dev/null | tr -d '\r') || fail 'could not detect the Omarchy version'
+version=${detected_omarchy%%-*}
+[[ $version == "$EXPECTED_OMARCHY" || $version == "$EXPECTED_OMARCHY".* ]] ||
+	fail "unsupported Omarchy version. Required: $EXPECTED_OMARCHY.x; detected: ${detected_omarchy:-unknown}."
+
+# OBS falls back to its default theme when it cannot read a theme, so an
+# untested OBS only warns.
+detected_obs=$(obs --version 2>/dev/null) && detected_obs=${detected_obs##* } || detected_obs=''
+if [[ -z $detected_obs ]]; then
+	printf 'Warning: could not detect the OBS version; publishing the theme anyway.\n' >&2
+elif [[ ${detected_obs%%-*} != "$EXPECTED_OBS" && ${detected_obs%%-*} != "$EXPECTED_OBS".* ]]; then
+	printf 'Warning: OBS %s is outside the tested %s series; publishing the theme anyway.\n' "$detected_obs" "$EXPECTED_OBS" >&2
+fi
+
+[[ -f $RENDERED ]] || fail "rendered theme is missing: $RENDERED"
+theme=$(<"$RENDERED") || fail "could not read the rendered theme: $RENDERED"
+[[ $theme =~ /\*\ Omarchy\ mode:\ (dark|light)\ \*/ ]] || fail "rendered theme has no Omarchy mode: $RENDERED"
+mode=${BASH_REMATCH[1]}
+font=$(omarchy-font-current) && [[ -n $font ]] || fail 'could not read the Omarchy font'
+
+dark=true
+[[ $mode == dark ]] || dark=false
+theme=${theme//__OMARCHY_DARK__/$dark}
+theme+=$'\n\n* {\n    font-family: "'"$font"$'";\n}\n'
+if [[ $mode == light ]]; then
+	light_icons=$(<"$LIGHT_ICONS") || fail "could not read the light icon set: $LIGHT_ICONS"
+	theme+=$'\n'"$light_icons"$'\n'
+fi
+
+mkdir -p -- "$THEMES_DIR" || fail "could not create $THEMES_DIR"
+temporary=$(mktemp "$THEMES_DIR/.Omarchy.ovt.XXXXXX") || fail "could not create a temporary file in $THEMES_DIR"
+trap 'rm -f -- "$temporary"' EXIT
+printf '%s' "$theme" >"$temporary" || fail "could not write $temporary"
+cmp -s -- "$temporary" "$OUTPUT" && exit 0
+chmod 0644 -- "$temporary" && mv -f -- "$temporary" "$OUTPUT" || fail "could not publish $OUTPUT"

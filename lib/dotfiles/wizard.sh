@@ -146,6 +146,8 @@ wizard_run_action() {
 		screensaver-effects) manage_screensaver_effects ;;
 		screensaver-effects-migrate) migrate_screensaver_effects --interactive ;;
 		discord-patch) patch_discord_with_vencord ;;
+		obs-set) install_obs_set "${@:2}" ;;
+		obs-diagnose) obs_diagnose_machine ;;
 		exit) printf 'No action selected.\n' ;;
 		*) printf 'Error: unknown wizard action: %s\n' "$action" >&2; return 2 ;;
 	esac
@@ -250,6 +252,21 @@ guided_setup() {
 			return "$power_policy_outcome"
 			;;
 	esac
+	printf 'Guided phase 9: optional OBS machine set\n'
+	if wizard_confirm 'Install an OBS machine set?'; then
+		local obs_set_outcome=0
+		install_obs_set --guided || obs_set_outcome=$?
+		case $obs_set_outcome in
+			0) ;;
+			"$OBS_SET_SKIPPED") printf 'Guided phase 9 skipped: no OBS set was installed.\n' ;;
+			*)
+				printf 'Recovery: choose Install OBS set in the Dotfiles wizard.\n' >&2
+				return "$obs_set_outcome"
+				;;
+		esac
+	else
+		printf 'Guided phase 9 skipped: OBS machine set declined.\n'
+	fi
 	printf 'Guided setup complete.\n'
 }
 
@@ -283,8 +300,8 @@ wizard() {
 		labels+=('Migrate competing screensaver clones')
 		actions+=(screensaver-effects-migrate)
 	fi
-	labels+=('Manage screensaver effects' 'Manage laptop power policy' 'Patch Discord with Vencord' 'Exit')
-	actions+=(screensaver-effects power-policy discord-patch exit)
+	labels+=('Manage screensaver effects' 'Manage laptop power policy' 'Patch Discord with Vencord' 'Install OBS set' 'Diagnose OBS machine (temporary)' 'Exit')
+	actions+=(screensaver-effects power-policy discord-patch obs-set obs-diagnose exit)
 	if ! choice=$(wizard_choose 'Choose an action (none selected by default)' "${labels[@]}"); then
 		printf 'No action selected.\n'
 		return 0

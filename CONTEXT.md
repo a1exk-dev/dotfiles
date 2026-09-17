@@ -10,7 +10,7 @@ A lowercase-named deployment unit under `config/<name>/` for one application or 
 
 ## Dotfiles wizard
 
-The intended human interface for repository setup and operations. Guided setup runs eight phases in order: prerequisite preparation; pinned global agent-skill installation; application cleanup; optional application installation; Stow package application; Wallpaper library deployment; optional Shared Brave configuration application as phase seven; and optional Laptop power policy application as phase eight. Standalone actions provide each operation separately, including `Manage laptop power policy`. Public routes provide the same operations to Make targets, agents, scripts, and tests.
+The intended human interface for repository setup and operations. Guided setup runs nine phases in order: prerequisite preparation; pinned global agent-skill installation; application cleanup; optional application installation; Stow package application; Wallpaper library deployment; optional Shared Brave configuration application as phase seven; optional Laptop power policy application as phase eight; and an optional OBS machine set installation through `Install OBS set` as phase nine. Standalone actions provide each operation separately, including `Manage laptop power policy`. Public routes provide the same operations to Make targets, agents, scripts, and tests.
 
 ## Keyboard layouts
 
@@ -47,6 +47,18 @@ A dedicated `telegram-theme` Stow package that adapts the active Omarchy semanti
 ## Discord system24 integration
 
 A repository-owned customization that applies the upstream system24 theme to the stock Discord desktop client through Vencord, with its colors following the active Omarchy theme and its font following the Omarchy font. Unlike Telegram theme integration, its visual promise includes system24's structural TUI styling. Upstream owns system24's structure and delivery; the repository owns the Omarchy color and font adaptation, one generated Vencord theme file, and the Vencord patch lifecycle on Discord's self-updated `app-*` directory. It is a separate Stow package that depends on the `discord` package. Discord and Vencord own their settings, including which themes are enabled. Vencord plugins, Vesktop, and Omarchy's Discord web app remain outside this boundary.
+
+## OBS theme integration
+
+The `obs-theme` Stow package that makes OBS Studio's interface follow the active Omarchy theme and font through one hook-published user theme, `Omarchy.ovt`, extending OBS's stock Yami theme. The repository owns the colour mapping, the light-icon fragment, the published theme file, and the two `user.ini` keys that select it (`[Appearance] Theme` and `AutoReload`), written only while OBS is closed. OBS owns every other part of `user.ini`.
+
+## OBS scene integration
+
+The `obs-scene` Stow package, which depends on OBS theme integration, that renders the Omarchy-styled scene assets (SVG chrome, `theme.txt`, `chat.css`, the camera-off avatar layers and `title.txt`) into `~/.config/obs-studio/omarchy-scene/` at one OBS machine set's canvas, plus the Lua script that carries theme changes into a running OBS. The repository owns the generator, the script and that asset folder. The copied scene collection belongs to OBS, and the avatar source image belongs to the human and is never tracked.
+
+## OBS machine set
+
+A repository-tracked bundle under `obs/sets/<set>/` of one machine's OBS profiles and its generated `Omarchy Scene` collection with the `geometry.json` that drives the scene render. `Install OBS set` copies a set into OBS instead of linking it, because OBS rewrites those files; once copied, the profiles and collection belong to OBS, with no receipt and no Remove. Sets are chosen by the human and never coupled to the hostname.
 
 ## Screensaver effect allowlist
 

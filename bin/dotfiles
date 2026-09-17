@@ -30,6 +30,10 @@ source "$DOTFILES_ENTRY_ROOT/lib/dotfiles/wallpapers.sh"
 source "$DOTFILES_ENTRY_ROOT/lib/dotfiles/shell-layout.sh"
 # shellcheck source=../lib/dotfiles/discord-system24.sh
 source "$DOTFILES_ENTRY_ROOT/lib/dotfiles/discord-system24.sh"
+# shellcheck source=../lib/dotfiles/obs.sh
+source "$DOTFILES_ENTRY_ROOT/lib/dotfiles/obs.sh"
+# shellcheck source=../lib/dotfiles/obs-set.sh
+source "$DOTFILES_ENTRY_ROOT/lib/dotfiles/obs-set.sh"
 # shellcheck source=../lib/dotfiles/wizard.sh
 source "$DOTFILES_ENTRY_ROOT/lib/dotfiles/wizard.sh"
 
@@ -37,15 +41,19 @@ if (($# == 0)); then
 	wizard
 elif (($# == 2)) && [[ $1 == --action ]]; then
 	wizard_run_action "$2"
+elif (($# == 3 || $# == 4)) && [[ $1 == --action && $2 == obs-set && ${4---force} == --force ]]; then
+	wizard_run_action obs-set "${@:3}"
 else
 	printf '%s\n' \
-		'Usage: bin/dotfiles [--action <guided|status|check|apply|migrate|remove|prerequisites|cleanup|applications|skills|skills-update|modem|brave|telegram-theme|wallpapers|wallpapers-apply|wallpapers-remove|shell-layout|screensaver-effects|screensaver-effects-migrate|power-policy|discord-patch>]' \
+		'Usage: bin/dotfiles [--action <guided|status|check|apply|migrate|remove|prerequisites|cleanup|applications|skills|skills-update|modem|brave|telegram-theme|wallpapers|wallpapers-apply|wallpapers-remove|shell-layout|screensaver-effects|screensaver-effects-migrate|power-policy|discord-patch|obs-set|obs-diagnose>]' \
 		'  wallpapers: curate the repository Wallpaper library' \
 		'  wallpapers-apply: deploy the Wallpaper library' \
 		'  wallpapers-remove: remove receipt-owned deployed wallpapers' \
 		'  shell-layout: place the language indicator before the tray through Omarchy' \
 		'  screensaver-effects: manage and preview the deployed effect allowlist' \
 		'  screensaver-effects-migrate: migrate competing Omarchy idle or Indicators clones' \
-		'  discord-patch: patch the newest Discord app directory with Vencord' >&2
+		'  discord-patch: patch the newest Discord app directory with Vencord' \
+		'  obs-set [set [--force]]: copy an OBS machine set from obs/sets/ into OBS; --force replaces existing items after a backup' \
+		'  obs-diagnose: temporary; report the display and encoder facts an OBS machine set needs' >&2
 	exit 2
 fi

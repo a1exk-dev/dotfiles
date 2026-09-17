@@ -13,6 +13,9 @@ readonly SUITES=(
 	claude_test.sh
 	discord_test.sh
 	discord_system24_test.sh
+	obs_theme_test.sh
+	obs_scene_test.sh
+	obs_sets_test.sh
 	tmux_test.sh
 	packages_test.sh
 	skills_test.sh

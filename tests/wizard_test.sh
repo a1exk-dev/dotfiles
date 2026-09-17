@@ -87,7 +87,7 @@ test_top_level_menu_starts_with_guided_setup() {
 	run_dotfiles "$FIXTURE_ROOT"
 
 	assert_eq 0 "$COMMAND_STATUS" 'an empty menu choice should safely exit' || return 1
-	assert_contains "$COMMAND_OUTPUT" $'  1. Guided setup\n  2. Package status\n  3. Run structural checks\n  4. Apply Stow packages\n  5. Migrate existing target\n  6. Remove Stow package\n  7. Prepare prerequisites\n  8. Clean up Omarchy applications\n  9. Install optional applications\n  10. Install pinned global skills\n  11. Update pinned global skills\n  12. Recover ZTE USB modem\n  13. Manage Brave policy\n  14. Manage Telegram theme\n  15. Manage wallpapers\n  16. Apply wallpapers\n  17. Remove deployed wallpapers\n  18. Apply Shell layout\n  19. Manage screensaver effects\n  20. Manage laptop power policy\n  21. Patch Discord with Vencord\n  22. Exit' \
+	assert_contains "$COMMAND_OUTPUT" $'  1. Guided setup\n  2. Package status\n  3. Run structural checks\n  4. Apply Stow packages\n  5. Migrate existing target\n  6. Remove Stow package\n  7. Prepare prerequisites\n  8. Clean up Omarchy applications\n  9. Install optional applications\n  10. Install pinned global skills\n  11. Update pinned global skills\n  12. Recover ZTE USB modem\n  13. Manage Brave policy\n  14. Manage Telegram theme\n  15. Manage wallpapers\n  16. Apply wallpapers\n  17. Remove deployed wallpapers\n  18. Apply Shell layout\n  19. Manage screensaver effects\n  20. Manage laptop power policy\n  21. Patch Discord with Vencord\n  22. Install OBS set\n  23. Diagnose OBS machine (temporary)\n  24. Exit' \
 		'optional applications should follow cleanup and later actions should remain available' || return 1
 	assert_contains "$COMMAND_OUTPUT" 'No action selected.' 'no action should be selected by default'
 }
@@ -155,7 +155,7 @@ test_legacy_and_invalid_entry_forms_are_rejected() {
 	run_dotfiles "$FIXTURE_ROOT" status
 	assert_eq 2 "$COMMAND_STATUS" 'a removed public route should be rejected' || return 1
 	assert_contains "$COMMAND_OUTPUT" 'Usage: bin/dotfiles [--action' 'invalid entry use should explain the supported interface' || return 1
-	assert_contains "$COMMAND_OUTPUT" 'applications|skills|skills-update|modem|brave|telegram-theme|wallpapers|wallpapers-apply|wallpapers-remove|shell-layout|screensaver-effects|screensaver-effects-migrate|power-policy|discord-patch>]' \
+	assert_contains "$COMMAND_OUTPUT" 'applications|skills|skills-update|modem|brave|telegram-theme|wallpapers|wallpapers-apply|wallpapers-remove|shell-layout|screensaver-effects|screensaver-effects-migrate|power-policy|discord-patch|obs-set|obs-diagnose>]' \
 		'usage should advertise every existing action' || return 1
 	assert_contains "$COMMAND_OUTPUT" 'wallpapers-apply: deploy the Wallpaper library' \
 		'usage should distinguish deployment Apply from curation' || return 1
@@ -700,6 +700,41 @@ recovery-declined|10|recovery-declined|1|Recovery: choose Manage laptop power po
 EOF
 }
 
+test_guided_obs_set_phase_outcomes() {
+	local label input outcome expected_status expected_text phase8 phase9
+	while IFS='|' read -r label input outcome expected_status expected_text; do
+		new_fixture
+		configure_cleanup_fakes
+		configure_skill_fakes
+		seed_current_global_skills
+		stub_guided_brave_apply 0
+		printf '\ninstall_obs_set() { printf "Stub OBS set %%s\\n" "$*"; return %s; }\n' "$outcome" >>"$FIXTURE_REPO/lib/dotfiles/wizard.sh"
+		DOTFILES_TEST_INPUT=$input run_operation "$FIXTURE_ROOT" guided_setup
+		assert_eq "$expected_status" "$COMMAND_STATUS" "$label should have its documented phase-nine outcome: $COMMAND_OUTPUT" || return 1
+		assert_contains "$COMMAND_OUTPUT" $'Guided phase 9: optional OBS machine set\nInstall an OBS machine set?' "$label should ask in phase nine" || return 1
+		assert_contains "$COMMAND_OUTPUT" "$expected_text" "$label should explain its phase-nine outcome" || return 1
+		if [[ $label == declined ]]; then
+			if [[ $COMMAND_OUTPUT == *'Stub OBS set'* ]]; then
+				printf '  a declined phase must not run the action\n' >&2
+				return 1
+			fi
+		else
+			assert_contains "$COMMAND_OUTPUT" 'Stub OBS set --guided' "$label should run the action in guided mode" || return 1
+		fi
+		phase8=$(awk '/Guided phase 8:/ { print NR; exit }' <<<"$COMMAND_OUTPUT")
+		phase9=$(awk '/Guided phase 9:/ { print NR; exit }' <<<"$COMMAND_OUTPUT")
+		((phase8 < phase9)) || {
+			printf '  phase nine should follow the laptop power policy\n' >&2
+			return 1
+		}
+	done <<'EOF'
+declined|0\n\n\nn\n|0|0|Guided phase 9 skipped: OBS machine set declined.
+success|0\n\n\ny\n|0|0|Guided setup complete.
+skipped|0\n\n\ny\n|3|0|Guided phase 9 skipped: no OBS set was installed.
+failure|0\n\n\ny\n|1|1|Recovery: choose Install OBS set in the Dotfiles wizard.
+EOF
+}
+
 test_guided_setup_phase_five_uses_arch_aware_apply_flow() {
 	new_fixture
 	add_package
@@ -931,6 +966,7 @@ run_test test_guided_brave_phase_stops_after_completed_recovery 'guided Brave ph
 run_test test_guided_brave_phase_stops_when_recovery_is_declined 'guided Brave phase stops when recovery is declined'
 run_test test_guided_brave_phase_stops_on_operational_failure 'guided Brave phase stops on operational failure with recovery'
 run_test test_guided_power_policy_phase_outcomes 'guided laptop power-policy phase standard outcomes'
+run_test test_guided_obs_set_phase_outcomes 'guided OBS set phase standard outcomes'
 run_test test_guided_setup_phase_five_uses_arch_aware_apply_flow 'guided setup phase 5 uses the Arch-aware apply flow'
 run_test test_guided_wallpaper_failure_stops_before_brave_with_recovery 'guided wallpaper failure stops before Brave with recovery'
 run_test test_guided_setup_installs_missing_imagemagick_through_omarchy 'guided setup installs missing ImageMagick through Omarchy'

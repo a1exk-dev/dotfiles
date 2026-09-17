@@ -1395,6 +1395,9 @@ if [[ \$identify == true ]]; then printf '%s|4|3\n' "\$format"; fi
 		if [[ -d $SOURCE_REPO/power-policy ]]; then
 			cp -a "$SOURCE_REPO/power-policy" "$FIXTURE_REPO/power-policy"
 		fi
+		if [[ -d $SOURCE_REPO/obs ]]; then
+			cp -a "$SOURCE_REPO/obs" "$FIXTURE_REPO/obs"
+		fi
 		if [[ -d $SOURCE_REPO/config ]]; then
 			cp -a "$SOURCE_REPO/config" "$FIXTURE_REPO/config"
 		fi
@@ -2054,6 +2057,12 @@ run_operation() {
 			fi
 			if [[ -f $repository/lib/dotfiles/discord-system24.sh ]]; then
 				source "$repository/lib/dotfiles/discord-system24.sh"
+			fi
+			if [[ -f $repository/lib/dotfiles/obs.sh ]]; then
+				source "$repository/lib/dotfiles/obs.sh"
+			fi
+			if [[ -f $repository/lib/dotfiles/obs-set.sh ]]; then
+				source "$repository/lib/dotfiles/obs-set.sh"
 			fi
 			source "$repository/lib/dotfiles/wizard.sh"
 			"$operation" "$@"

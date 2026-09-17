@@ -1,0 +1,3900 @@
+{
+ "name": "Omarchy Scene",
+ "DesktopAudioDevice1": {
+  "prev_ver": 537001986,
+  "name": "Desktop Audio",
+  "uuid": "68d28a1a-6f9e-5a6e-8b50-f88bea390713",
+  "id": "pulse_output_capture",
+  "versioned_id": "pulse_output_capture",
+  "settings": {
+   "device_id": "default"
+  },
+  "mixers": 255,
+  "sync": 0,
+  "flags": 0,
+  "volume": 1,
+  "balance": 0.5,
+  "enabled": true,
+  "muted": false,
+  "hotkeys": {
+   "libobs.mute": [],
+   "libobs.unmute": [],
+   "libobs.push-to-mute": [],
+   "libobs.push-to-talk": []
+  },
+  "private_settings": {}
+ },
+ "AuxAudioDevice1": {
+  "prev_ver": 537001986,
+  "name": "Mic/Aux",
+  "uuid": "25bff01e-f241-5023-b5dc-4c852099bb0c",
+  "id": "pulse_input_capture",
+  "versioned_id": "pulse_input_capture",
+  "settings": {
+   "device_id": "default"
+  },
+  "mixers": 255,
+  "sync": 0,
+  "flags": 0,
+  "volume": 1,
+  "balance": 0.5,
+  "enabled": true,
+  "muted": false,
+  "hotkeys": {
+   "libobs.mute": [],
+   "libobs.unmute": [],
+   "libobs.push-to-mute": [],
+   "libobs.push-to-talk": []
+  },
+  "private_settings": {}
+ },
+ "current_scene": "Stream",
+ "current_program_scene": "Stream",
+ "scene_order": [
+  {
+   "name": "Stream"
+  },
+  {
+   "name": "Full"
+  },
+  {
+   "name": "Full cam"
+  },
+  {
+   "name": "Starting"
+  },
+  {
+   "name": "Intro"
+  },
+  {
+   "name": "BRB"
+  },
+  {
+   "name": "Ending"
+  },
+  {
+   "name": "Privacy"
+  }
+ ],
+ "sources": [
+  {
+   "prev_ver": 537001986,
+   "name": "Screen",
+   "uuid": "9e33682c-88d4-5fed-87ce-40300f6988a2",
+   "id": "pipewire-screen-capture-source",
+   "versioned_id": "pipewire-screen-capture-source",
+   "settings": {},
+   "mixers": 0,
+   "sync": 0,
+   "flags": 0,
+   "volume": 1,
+   "balance": 0.5,
+   "enabled": true,
+   "muted": false,
+   "hotkeys": {},
+   "private_settings": {}
+  },
+  {
+   "prev_ver": 537001986,
+   "name": "Camera",
+   "uuid": "b4bf88c8-1003-50f5-9932-8e80914a0eb4",
+   "id": "v4l2_input",
+   "versioned_id": "v4l2_input",
+   "settings": {},
+   "mixers": 0,
+   "sync": 0,
+   "flags": 0,
+   "volume": 1,
+   "balance": 0.5,
+   "enabled": true,
+   "muted": false,
+   "hotkeys": {},
+   "private_settings": {},
+   "filters": [
+    {
+     "prev_ver": 537001986,
+     "name": "background blur",
+     "uuid": "ef97d594-d56f-5341-a6e3-d1c537de3aa4",
+     "id": "background_removal",
+     "versioned_id": "background_removal",
+     "settings": {
+      "blur_background": 4,
+      "enable_threshold": true,
+      "threshold": 0.5,
+      "useGPU": "cpu",
+      "model_select": "models/mediapipe.with_runtime_opt.ort",
+      "numThreads": 2
+     },
+     "mixers": 0,
+     "sync": 0,
+     "flags": 0,
+     "volume": 1,
+     "balance": 0.5,
+     "enabled": true,
+     "muted": false,
+     "hotkeys": {},
+     "private_settings": {}
+    }
+   ]
+  },
+  {
+   "prev_ver": 537001986,
+   "name": "Chat",
+   "uuid": "000c8d31-53c4-5a78-9d07-90c6647c5fbe",
+   "id": "browser_source",
+   "versioned_id": "browser_source",
+   "settings": {
+    "url": "about:blank",
+    "width": 534,
+    "height": 870,
+    "css": "",
+    "reroute_audio": false,
+    "shutdown": false,
+    "restart_when_active": false
+   },
+   "mixers": 0,
+   "sync": 0,
+   "flags": 0,
+   "volume": 1,
+   "balance": 0.5,
+   "enabled": true,
+   "muted": false,
+   "hotkeys": {},
+   "private_settings": {}
+  },
+  {
+   "prev_ver": 537001986,
+   "name": "Clock",
+   "uuid": "56470517-5670-5a61-a634-e74e1c7cb4d9",
+   "id": "text_ft2_source",
+   "versioned_id": "text_ft2_source_v2",
+   "settings": {
+    "font": {
+     "face": "Monospace",
+     "style": "Regular",
+     "size": 27,
+     "flags": 0
+    },
+    "color1": 4294967295,
+    "color2": 4294967295,
+    "text": "--:--:--"
+   },
+   "mixers": 0,
+   "sync": 0,
+   "flags": 0,
+   "volume": 1,
+   "balance": 0.5,
+   "enabled": true,
+   "muted": false,
+   "hotkeys": {},
+   "private_settings": {}
+  },
+  {
+   "prev_ver": 537001986,
+   "name": "Date",
+   "uuid": "c979dece-eff2-5725-a906-525740e6f873",
+   "id": "text_ft2_source",
+   "versioned_id": "text_ft2_source_v2",
+   "settings": {
+    "font": {
+     "face": "Monospace",
+     "style": "Regular",
+     "size": 27,
+     "flags": 0
+    },
+    "color1": 4294967295,
+    "color2": 4294967295,
+    "text": "----------"
+   },
+   "mixers": 0,
+   "sync": 0,
+   "flags": 0,
+   "volume": 1,
+   "balance": 0.5,
+   "enabled": true,
+   "muted": false,
+   "hotkeys": {},
+   "private_settings": {}
+  },
+  {
+   "prev_ver": 537001986,
+   "name": "Countdown",
+   "uuid": "df55d1da-1f1e-5866-a181-8103d2f2d0b6",
+   "id": "text_ft2_source",
+   "versioned_id": "text_ft2_source_v2",
+   "settings": {
+    "font": {
+     "face": "Monospace",
+     "style": "Regular",
+     "size": 64,
+     "flags": 0
+    },
+    "color1": 4294967295,
+    "color2": 4294967295,
+    "text": "05:00"
+   },
+   "mixers": 0,
+   "sync": 0,
+   "flags": 0,
+   "volume": 1,
+   "balance": 0.5,
+   "enabled": true,
+   "muted": false,
+   "hotkeys": {},
+   "private_settings": {}
+  },
+  {
+   "prev_ver": 537001986,
+   "name": "Title",
+   "uuid": "273c453c-9fc8-5483-b0c2-d7719ea6e043",
+   "id": "text_ft2_source",
+   "versioned_id": "text_ft2_source_v2",
+   "settings": {
+    "font": {
+     "face": "Monospace",
+     "style": "Regular",
+     "size": 85,
+     "flags": 0
+    },
+    "color1": 4294967295,
+    "color2": 4294967295,
+    "from_file": true,
+    "text_file": "$HOME/.config/obs-studio/omarchy-scene/title.txt"
+   },
+   "mixers": 0,
+   "sync": 0,
+   "flags": 0,
+   "volume": 1,
+   "balance": 0.5,
+   "enabled": true,
+   "muted": false,
+   "hotkeys": {},
+   "private_settings": {}
+  },
+  {
+   "prev_ver": 537001986,
+   "name": "Stream overlay",
+   "uuid": "e5daaa8e-0977-5be9-bdbb-23caf7493e1e",
+   "id": "image_source",
+   "versioned_id": "image_source",
+   "settings": {
+    "file": "$HOME/.config/obs-studio/omarchy-scene/stream-overlay.svg"
+   },
+   "mixers": 0,
+   "sync": 0,
+   "flags": 0,
+   "volume": 1,
+   "balance": 0.5,
+   "enabled": true,
+   "muted": false,
+   "hotkeys": {},
+   "private_settings": {}
+  },
+  {
+   "prev_ver": 537001986,
+   "name": "Camera frame",
+   "uuid": "8a1bf67d-bdc8-582d-8264-e192b9df52fe",
+   "id": "image_source",
+   "versioned_id": "image_source",
+   "settings": {
+    "file": "$HOME/.config/obs-studio/omarchy-scene/cam-frame.svg"
+   },
+   "mixers": 0,
+   "sync": 0,
+   "flags": 0,
+   "volume": 1,
+   "balance": 0.5,
+   "enabled": true,
+   "muted": false,
+   "hotkeys": {},
+   "private_settings": {}
+  },
+  {
+   "prev_ver": 537001986,
+   "name": "Avatar back",
+   "uuid": "af60abe4-9680-59ac-9f6f-0b16f7df2f5b",
+   "id": "image_source",
+   "versioned_id": "image_source",
+   "settings": {
+    "file": "$HOME/.config/obs-studio/omarchy-scene/avatar-back.png"
+   },
+   "mixers": 0,
+   "sync": 0,
+   "flags": 0,
+   "volume": 1,
+   "balance": 0.5,
+   "enabled": true,
+   "muted": false,
+   "hotkeys": {},
+   "private_settings": {}
+  },
+  {
+   "prev_ver": 537001986,
+   "name": "Avatar head1",
+   "uuid": "1f063441-d04c-56b9-8502-26d4c0c30654",
+   "id": "image_source",
+   "versioned_id": "image_source",
+   "settings": {
+    "file": "$HOME/.config/obs-studio/omarchy-scene/avatar-head1.png"
+   },
+   "mixers": 0,
+   "sync": 0,
+   "flags": 0,
+   "volume": 1,
+   "balance": 0.5,
+   "enabled": true,
+   "muted": false,
+   "hotkeys": {},
+   "private_settings": {}
+  },
+  {
+   "prev_ver": 537001986,
+   "name": "Avatar head2",
+   "uuid": "d6de4adf-8656-567b-9ec0-42565ae28e64",
+   "id": "image_source",
+   "versioned_id": "image_source",
+   "settings": {
+    "file": "$HOME/.config/obs-studio/omarchy-scene/avatar-head2.png"
+   },
+   "mixers": 0,
+   "sync": 0,
+   "flags": 0,
+   "volume": 1,
+   "balance": 0.5,
+   "enabled": true,
+   "muted": false,
+   "hotkeys": {},
+   "private_settings": {}
+  },
+  {
+   "prev_ver": 537001986,
+   "name": "Avatar head3",
+   "uuid": "5686935e-a9ef-5528-b985-932aead6c372",
+   "id": "image_source",
+   "versioned_id": "image_source",
+   "settings": {
+    "file": "$HOME/.config/obs-studio/omarchy-scene/avatar-head3.png"
+   },
+   "mixers": 0,
+   "sync": 0,
+   "flags": 0,
+   "volume": 1,
+   "balance": 0.5,
+   "enabled": true,
+   "muted": false,
+   "hotkeys": {},
+   "private_settings": {}
+  },
+  {
+   "prev_ver": 537001986,
+   "name": "Avatar eyes",
+   "uuid": "ff55ba53-4ad6-5a78-b646-72c197aa1442",
+   "id": "image_source",
+   "versioned_id": "image_source",
+   "settings": {
+    "file": "$HOME/.config/obs-studio/omarchy-scene/avatar-eyes.png"
+   },
+   "mixers": 0,
+   "sync": 0,
+   "flags": 0,
+   "volume": 1,
+   "balance": 0.5,
+   "enabled": true,
+   "muted": false,
+   "hotkeys": {},
+   "private_settings": {}
+  },
+  {
+   "prev_ver": 537001986,
+   "name": "Avatar glow",
+   "uuid": "a9be951c-e519-548f-be47-906461cd280f",
+   "id": "image_source",
+   "versioned_id": "image_source",
+   "settings": {
+    "file": "$HOME/.config/obs-studio/omarchy-scene/avatar-glow.png"
+   },
+   "mixers": 0,
+   "sync": 0,
+   "flags": 0,
+   "volume": 1,
+   "balance": 0.5,
+   "enabled": true,
+   "muted": false,
+   "hotkeys": {},
+   "private_settings": {},
+   "filters": [
+    {
+     "prev_ver": 537001986,
+     "name": "glow",
+     "uuid": "fe0dae90-37e4-5494-9ac5-c4908d9e9600",
+     "id": "color_filter",
+     "versioned_id": "color_filter_v2",
+     "settings": {
+      "opacity": 1
+     },
+     "mixers": 0,
+     "sync": 0,
+     "flags": 0,
+     "volume": 1,
+     "balance": 0.5,
+     "enabled": true,
+     "muted": false,
+     "hotkeys": {},
+     "private_settings": {}
+    }
+   ]
+  },
+  {
+   "prev_ver": 537001986,
+   "name": "Card starting",
+   "uuid": "731b47b9-5c50-581e-a33a-865fb711bbcc",
+   "id": "image_source",
+   "versioned_id": "image_source",
+   "settings": {
+    "file": "$HOME/.config/obs-studio/omarchy-scene/card-starting.svg"
+   },
+   "mixers": 0,
+   "sync": 0,
+   "flags": 0,
+   "volume": 1,
+   "balance": 0.5,
+   "enabled": true,
+   "muted": false,
+   "hotkeys": {},
+   "private_settings": {}
+  },
+  {
+   "prev_ver": 537001986,
+   "name": "Card intro",
+   "uuid": "7ac12270-51ff-588d-a419-51b8389c493e",
+   "id": "image_source",
+   "versioned_id": "image_source",
+   "settings": {
+    "file": "$HOME/.config/obs-studio/omarchy-scene/card-intro.svg"
+   },
+   "mixers": 0,
+   "sync": 0,
+   "flags": 0,
+   "volume": 1,
+   "balance": 0.5,
+   "enabled": true,
+   "muted": false,
+   "hotkeys": {},
+   "private_settings": {}
+  },
+  {
+   "prev_ver": 537001986,
+   "name": "Card brb",
+   "uuid": "3e47182d-99b0-59b4-a27c-419b25a95095",
+   "id": "image_source",
+   "versioned_id": "image_source",
+   "settings": {
+    "file": "$HOME/.config/obs-studio/omarchy-scene/card-brb.svg"
+   },
+   "mixers": 0,
+   "sync": 0,
+   "flags": 0,
+   "volume": 1,
+   "balance": 0.5,
+   "enabled": true,
+   "muted": false,
+   "hotkeys": {},
+   "private_settings": {}
+  },
+  {
+   "prev_ver": 537001986,
+   "name": "Card ending",
+   "uuid": "da6c0ea7-e8c2-53e6-85d7-65b7ab7579a0",
+   "id": "image_source",
+   "versioned_id": "image_source",
+   "settings": {
+    "file": "$HOME/.config/obs-studio/omarchy-scene/card-ending.svg"
+   },
+   "mixers": 0,
+   "sync": 0,
+   "flags": 0,
+   "volume": 1,
+   "balance": 0.5,
+   "enabled": true,
+   "muted": false,
+   "hotkeys": {},
+   "private_settings": {}
+  },
+  {
+   "prev_ver": 537001986,
+   "name": "Card privacy",
+   "uuid": "e5e02719-84dc-5f96-95c1-4e9955da8f1c",
+   "id": "image_source",
+   "versioned_id": "image_source",
+   "settings": {
+    "file": "$HOME/.config/obs-studio/omarchy-scene/card-privacy.svg"
+   },
+   "mixers": 0,
+   "sync": 0,
+   "flags": 0,
+   "volume": 1,
+   "balance": 0.5,
+   "enabled": true,
+   "muted": false,
+   "hotkeys": {},
+   "private_settings": {}
+  },
+  {
+   "prev_ver": 537001986,
+   "name": "Card pulse 0",
+   "uuid": "a6eea586-0a71-5dbb-b84c-43f821585825",
+   "id": "image_source",
+   "versioned_id": "image_source",
+   "settings": {
+    "file": "$HOME/.config/obs-studio/omarchy-scene/card-pulse-0.svg"
+   },
+   "mixers": 0,
+   "sync": 0,
+   "flags": 0,
+   "volume": 1,
+   "balance": 0.5,
+   "enabled": true,
+   "muted": false,
+   "hotkeys": {},
+   "private_settings": {},
+   "filters": [
+    {
+     "prev_ver": 537001986,
+     "name": "pulse",
+     "uuid": "960329c4-8ffd-5303-8490-5ccd18acffe7",
+     "id": "color_filter",
+     "versioned_id": "color_filter_v2",
+     "settings": {
+      "opacity": 0
+     },
+     "mixers": 0,
+     "sync": 0,
+     "flags": 0,
+     "volume": 1,
+     "balance": 0.5,
+     "enabled": true,
+     "muted": false,
+     "hotkeys": {},
+     "private_settings": {}
+    }
+   ]
+  },
+  {
+   "prev_ver": 537001986,
+   "name": "Card pulse 1",
+   "uuid": "70326cd3-e04e-5954-842d-c4b1506cccda",
+   "id": "image_source",
+   "versioned_id": "image_source",
+   "settings": {
+    "file": "$HOME/.config/obs-studio/omarchy-scene/card-pulse-1.svg"
+   },
+   "mixers": 0,
+   "sync": 0,
+   "flags": 0,
+   "volume": 1,
+   "balance": 0.5,
+   "enabled": true,
+   "muted": false,
+   "hotkeys": {},
+   "private_settings": {},
+   "filters": [
+    {
+     "prev_ver": 537001986,
+     "name": "pulse",
+     "uuid": "e69a876c-655d-5006-9c3e-3457993d6e16",
+     "id": "color_filter",
+     "versioned_id": "color_filter_v2",
+     "settings": {
+      "opacity": 0
+     },
+     "mixers": 0,
+     "sync": 0,
+     "flags": 0,
+     "volume": 1,
+     "balance": 0.5,
+     "enabled": true,
+     "muted": false,
+     "hotkeys": {},
+     "private_settings": {}
+    }
+   ]
+  },
+  {
+   "prev_ver": 537001986,
+   "name": "Card pulse 2",
+   "uuid": "dd9304aa-9169-5182-9359-8f7f5d2c1175",
+   "id": "image_source",
+   "versioned_id": "image_source",
+   "settings": {
+    "file": "$HOME/.config/obs-studio/omarchy-scene/card-pulse-2.svg"
+   },
+   "mixers": 0,
+   "sync": 0,
+   "flags": 0,
+   "volume": 1,
+   "balance": 0.5,
+   "enabled": true,
+   "muted": false,
+   "hotkeys": {},
+   "private_settings": {},
+   "filters": [
+    {
+     "prev_ver": 537001986,
+     "name": "pulse",
+     "uuid": "7a91afea-9985-5e34-9388-d638844cf631",
+     "id": "color_filter",
+     "versioned_id": "color_filter_v2",
+     "settings": {
+      "opacity": 0
+     },
+     "mixers": 0,
+     "sync": 0,
+     "flags": 0,
+     "volume": 1,
+     "balance": 0.5,
+     "enabled": true,
+     "muted": false,
+     "hotkeys": {},
+     "private_settings": {}
+    }
+   ]
+  },
+  {
+   "prev_ver": 537001986,
+   "name": "Card pulse 3",
+   "uuid": "c2605601-f8ad-5c47-97f1-6ef47d3e5980",
+   "id": "image_source",
+   "versioned_id": "image_source",
+   "settings": {
+    "file": "$HOME/.config/obs-studio/omarchy-scene/card-pulse-3.svg"
+   },
+   "mixers": 0,
+   "sync": 0,
+   "flags": 0,
+   "volume": 1,
+   "balance": 0.5,
+   "enabled": true,
+   "muted": false,
+   "hotkeys": {},
+   "private_settings": {},
+   "filters": [
+    {
+     "prev_ver": 537001986,
+     "name": "pulse",
+     "uuid": "3e648dc2-a71f-5ce7-a703-e9ae0e4ef572",
+     "id": "color_filter",
+     "versioned_id": "color_filter_v2",
+     "settings": {
+      "opacity": 0
+     },
+     "mixers": 0,
+     "sync": 0,
+     "flags": 0,
+     "volume": 1,
+     "balance": 0.5,
+     "enabled": true,
+     "muted": false,
+     "hotkeys": {},
+     "private_settings": {}
+    }
+   ]
+  },
+  {
+   "prev_ver": 537001986,
+   "name": "Card pulse 4",
+   "uuid": "0e91e660-c8d0-587f-86cf-81f3cfa1fccd",
+   "id": "image_source",
+   "versioned_id": "image_source",
+   "settings": {
+    "file": "$HOME/.config/obs-studio/omarchy-scene/card-pulse-4.svg"
+   },
+   "mixers": 0,
+   "sync": 0,
+   "flags": 0,
+   "volume": 1,
+   "balance": 0.5,
+   "enabled": true,
+   "muted": false,
+   "hotkeys": {},
+   "private_settings": {},
+   "filters": [
+    {
+     "prev_ver": 537001986,
+     "name": "pulse",
+     "uuid": "96d72b8f-ea34-5786-a899-463cbdb003d0",
+     "id": "color_filter",
+     "versioned_id": "color_filter_v2",
+     "settings": {
+      "opacity": 0
+     },
+     "mixers": 0,
+     "sync": 0,
+     "flags": 0,
+     "volume": 1,
+     "balance": 0.5,
+     "enabled": true,
+     "muted": false,
+     "hotkeys": {},
+     "private_settings": {}
+    }
+   ]
+  },
+  {
+   "prev_ver": 537001986,
+   "name": "Card pulse 5",
+   "uuid": "be3b6429-8771-56ea-9eb1-2ea48a5b32d7",
+   "id": "image_source",
+   "versioned_id": "image_source",
+   "settings": {
+    "file": "$HOME/.config/obs-studio/omarchy-scene/card-pulse-5.svg"
+   },
+   "mixers": 0,
+   "sync": 0,
+   "flags": 0,
+   "volume": 1,
+   "balance": 0.5,
+   "enabled": true,
+   "muted": false,
+   "hotkeys": {},
+   "private_settings": {},
+   "filters": [
+    {
+     "prev_ver": 537001986,
+     "name": "pulse",
+     "uuid": "1ef1b066-fa90-5972-a0ff-2ad44b033431",
+     "id": "color_filter",
+     "versioned_id": "color_filter_v2",
+     "settings": {
+      "opacity": 0
+     },
+     "mixers": 0,
+     "sync": 0,
+     "flags": 0,
+     "volume": 1,
+     "balance": 0.5,
+     "enabled": true,
+     "muted": false,
+     "hotkeys": {},
+     "private_settings": {}
+    }
+   ]
+  },
+  {
+   "prev_ver": 537001986,
+   "name": "Stream",
+   "uuid": "2a67c358-0d58-5ed8-96a1-ad35ef2846b7",
+   "id": "scene",
+   "versioned_id": "scene",
+   "settings": {
+    "id_counter": 12,
+    "custom_size": false,
+    "items": [
+     {
+      "name": "Screen",
+      "source_uuid": "9e33682c-88d4-5fed-87ce-40300f6988a2",
+      "visible": true,
+      "locked": true,
+      "rot": 0,
+      "scale_ref": {
+       "x": 2560,
+       "y": 1440
+      },
+      "align": 5,
+      "bounds_type": 2,
+      "bounds_align": 0,
+      "bounds_crop": false,
+      "crop_left": 0,
+      "crop_top": 26,
+      "crop_right": 0,
+      "crop_bottom": 0,
+      "id": 1,
+      "group_item_backup": false,
+      "pos": {
+       "x": 0,
+       "y": 0
+      },
+      "pos_rel": {
+       "x": -1.7777777777777777,
+       "y": -1
+      },
+      "scale": {
+       "x": 1,
+       "y": 1
+      },
+      "scale_rel": {
+       "x": 1,
+       "y": 1
+      },
+      "bounds": {
+       "x": 2560,
+       "y": 1440
+      },
+      "bounds_rel": {
+       "x": 3.5555555555555554,
+       "y": 2
+      },
+      "scale_filter": "lanczos",
+      "blend_method": "default",
+      "blend_type": "normal",
+      "private_settings": {}
+     },
+     {
+      "name": "Stream overlay",
+      "source_uuid": "e5daaa8e-0977-5be9-bdbb-23caf7493e1e",
+      "visible": true,
+      "locked": true,
+      "rot": 0,
+      "scale_ref": {
+       "x": 2560,
+       "y": 1440
+      },
+      "align": 5,
+      "bounds_type": 0,
+      "bounds_align": 0,
+      "bounds_crop": false,
+      "crop_left": 0,
+      "crop_top": 0,
+      "crop_right": 0,
+      "crop_bottom": 0,
+      "id": 2,
+      "group_item_backup": false,
+      "pos": {
+       "x": 0,
+       "y": 0
+      },
+      "pos_rel": {
+       "x": -1.7777777777777777,
+       "y": -1
+      },
+      "scale": {
+       "x": 1,
+       "y": 1
+      },
+      "scale_rel": {
+       "x": 1,
+       "y": 1
+      },
+      "bounds": {
+       "x": 0,
+       "y": 0
+      },
+      "bounds_rel": {
+       "x": 0,
+       "y": 0
+      },
+      "scale_filter": "lanczos",
+      "blend_method": "default",
+      "blend_type": "normal",
+      "private_settings": {}
+     },
+     {
+      "name": "Camera",
+      "source_uuid": "b4bf88c8-1003-50f5-9932-8e80914a0eb4",
+      "visible": true,
+      "locked": true,
+      "rot": 0,
+      "scale_ref": {
+       "x": 2560,
+       "y": 1440
+      },
+      "align": 5,
+      "bounds_type": 2,
+      "bounds_align": 0,
+      "bounds_crop": false,
+      "crop_left": 0,
+      "crop_top": 0,
+      "crop_right": 0,
+      "crop_bottom": 0,
+      "id": 3,
+      "group_item_backup": false,
+      "pos": {
+       "x": 1981,
+       "y": 45
+      },
+      "pos_rel": {
+       "x": 0.9736111111111111,
+       "y": -0.9375
+      },
+      "scale": {
+       "x": 1,
+       "y": 1
+      },
+      "scale_rel": {
+       "x": 1,
+       "y": 1
+      },
+      "bounds": {
+       "x": 534,
+       "y": 300
+      },
+      "bounds_rel": {
+       "x": 0.7416666666666667,
+       "y": 0.4166666666666667
+      },
+      "scale_filter": "lanczos",
+      "blend_method": "default",
+      "blend_type": "normal",
+      "private_settings": {}
+     },
+     {
+      "name": "Avatar back",
+      "source_uuid": "af60abe4-9680-59ac-9f6f-0b16f7df2f5b",
+      "visible": true,
+      "locked": true,
+      "rot": 0,
+      "scale_ref": {
+       "x": 2560,
+       "y": 1440
+      },
+      "align": 5,
+      "bounds_type": 2,
+      "bounds_align": 0,
+      "bounds_crop": false,
+      "crop_left": 0,
+      "crop_top": 0,
+      "crop_right": 0,
+      "crop_bottom": 0,
+      "id": 4,
+      "group_item_backup": false,
+      "pos": {
+       "x": 1981,
+       "y": 45
+      },
+      "pos_rel": {
+       "x": 0.9736111111111111,
+       "y": -0.9375
+      },
+      "scale": {
+       "x": 1,
+       "y": 1
+      },
+      "scale_rel": {
+       "x": 1,
+       "y": 1
+      },
+      "bounds": {
+       "x": 534,
+       "y": 300
+      },
+      "bounds_rel": {
+       "x": 0.7416666666666667,
+       "y": 0.4166666666666667
+      },
+      "scale_filter": "point",
+      "blend_method": "default",
+      "blend_type": "normal",
+      "private_settings": {}
+     },
+     {
+      "name": "Avatar head1",
+      "source_uuid": "1f063441-d04c-56b9-8502-26d4c0c30654",
+      "visible": true,
+      "locked": true,
+      "rot": 0,
+      "scale_ref": {
+       "x": 2560,
+       "y": 1440
+      },
+      "align": 5,
+      "bounds_type": 2,
+      "bounds_align": 0,
+      "bounds_crop": false,
+      "crop_left": 0,
+      "crop_top": 0,
+      "crop_right": 0,
+      "crop_bottom": 0,
+      "id": 5,
+      "group_item_backup": false,
+      "pos": {
+       "x": 1981,
+       "y": 45
+      },
+      "pos_rel": {
+       "x": 0.9736111111111111,
+       "y": -0.9375
+      },
+      "scale": {
+       "x": 1,
+       "y": 1
+      },
+      "scale_rel": {
+       "x": 1,
+       "y": 1
+      },
+      "bounds": {
+       "x": 534,
+       "y": 300
+      },
+      "bounds_rel": {
+       "x": 0.7416666666666667,
+       "y": 0.4166666666666667
+      },
+      "scale_filter": "point",
+      "blend_method": "default",
+      "blend_type": "normal",
+      "private_settings": {}
+     },
+     {
+      "name": "Avatar head2",
+      "source_uuid": "d6de4adf-8656-567b-9ec0-42565ae28e64",
+      "visible": true,
+      "locked": true,
+      "rot": 0,
+      "scale_ref": {
+       "x": 2560,
+       "y": 1440
+      },
+      "align": 5,
+      "bounds_type": 2,
+      "bounds_align": 0,
+      "bounds_crop": false,
+      "crop_left": 0,
+      "crop_top": 0,
+      "crop_right": 0,
+      "crop_bottom": 0,
+      "id": 6,
+      "group_item_backup": false,
+      "pos": {
+       "x": 1981,
+       "y": 45
+      },
+      "pos_rel": {
+       "x": 0.9736111111111111,
+       "y": -0.9375
+      },
+      "scale": {
+       "x": 1,
+       "y": 1
+      },
+      "scale_rel": {
+       "x": 1,
+       "y": 1
+      },
+      "bounds": {
+       "x": 534,
+       "y": 300
+      },
+      "bounds_rel": {
+       "x": 0.7416666666666667,
+       "y": 0.4166666666666667
+      },
+      "scale_filter": "point",
+      "blend_method": "default",
+      "blend_type": "normal",
+      "private_settings": {}
+     },
+     {
+      "name": "Avatar head3",
+      "source_uuid": "5686935e-a9ef-5528-b985-932aead6c372",
+      "visible": true,
+      "locked": true,
+      "rot": 0,
+      "scale_ref": {
+       "x": 2560,
+       "y": 1440
+      },
+      "align": 5,
+      "bounds_type": 2,
+      "bounds_align": 0,
+      "bounds_crop": false,
+      "crop_left": 0,
+      "crop_top": 0,
+      "crop_right": 0,
+      "crop_bottom": 0,
+      "id": 7,
+      "group_item_backup": false,
+      "pos": {
+       "x": 1981,
+       "y": 45
+      },
+      "pos_rel": {
+       "x": 0.9736111111111111,
+       "y": -0.9375
+      },
+      "scale": {
+       "x": 1,
+       "y": 1
+      },
+      "scale_rel": {
+       "x": 1,
+       "y": 1
+      },
+      "bounds": {
+       "x": 534,
+       "y": 300
+      },
+      "bounds_rel": {
+       "x": 0.7416666666666667,
+       "y": 0.4166666666666667
+      },
+      "scale_filter": "point",
+      "blend_method": "default",
+      "blend_type": "normal",
+      "private_settings": {}
+     },
+     {
+      "name": "Avatar eyes",
+      "source_uuid": "ff55ba53-4ad6-5a78-b646-72c197aa1442",
+      "visible": true,
+      "locked": true,
+      "rot": 0,
+      "scale_ref": {
+       "x": 2560,
+       "y": 1440
+      },
+      "align": 5,
+      "bounds_type": 2,
+      "bounds_align": 0,
+      "bounds_crop": false,
+      "crop_left": 0,
+      "crop_top": 0,
+      "crop_right": 0,
+      "crop_bottom": 0,
+      "id": 8,
+      "group_item_backup": false,
+      "pos": {
+       "x": 1981,
+       "y": 45
+      },
+      "pos_rel": {
+       "x": 0.9736111111111111,
+       "y": -0.9375
+      },
+      "scale": {
+       "x": 1,
+       "y": 1
+      },
+      "scale_rel": {
+       "x": 1,
+       "y": 1
+      },
+      "bounds": {
+       "x": 534,
+       "y": 300
+      },
+      "bounds_rel": {
+       "x": 0.7416666666666667,
+       "y": 0.4166666666666667
+      },
+      "scale_filter": "point",
+      "blend_method": "default",
+      "blend_type": "normal",
+      "private_settings": {}
+     },
+     {
+      "name": "Avatar glow",
+      "source_uuid": "a9be951c-e519-548f-be47-906461cd280f",
+      "visible": true,
+      "locked": true,
+      "rot": 0,
+      "scale_ref": {
+       "x": 2560,
+       "y": 1440
+      },
+      "align": 5,
+      "bounds_type": 2,
+      "bounds_align": 0,
+      "bounds_crop": false,
+      "crop_left": 0,
+      "crop_top": 0,
+      "crop_right": 0,
+      "crop_bottom": 0,
+      "id": 9,
+      "group_item_backup": false,
+      "pos": {
+       "x": 1981,
+       "y": 45
+      },
+      "pos_rel": {
+       "x": 0.9736111111111111,
+       "y": -0.9375
+      },
+      "scale": {
+       "x": 1,
+       "y": 1
+      },
+      "scale_rel": {
+       "x": 1,
+       "y": 1
+      },
+      "bounds": {
+       "x": 534,
+       "y": 300
+      },
+      "bounds_rel": {
+       "x": 0.7416666666666667,
+       "y": 0.4166666666666667
+      },
+      "scale_filter": "point",
+      "blend_method": "default",
+      "blend_type": "normal",
+      "private_settings": {}
+     },
+     {
+      "name": "Chat",
+      "source_uuid": "000c8d31-53c4-5a78-9d07-90c6647c5fbe",
+      "visible": true,
+      "locked": true,
+      "rot": 0,
+      "scale_ref": {
+       "x": 2560,
+       "y": 1440
+      },
+      "align": 5,
+      "bounds_type": 0,
+      "bounds_align": 0,
+      "bounds_crop": false,
+      "crop_left": 0,
+      "crop_top": 0,
+      "crop_right": 0,
+      "crop_bottom": 0,
+      "id": 10,
+      "group_item_backup": false,
+      "pos": {
+       "x": 1981,
+       "y": 392
+      },
+      "pos_rel": {
+       "x": 0.9736111111111111,
+       "y": -0.45555555555555555
+      },
+      "scale": {
+       "x": 1,
+       "y": 1
+      },
+      "scale_rel": {
+       "x": 1,
+       "y": 1
+      },
+      "bounds": {
+       "x": 0,
+       "y": 0
+      },
+      "bounds_rel": {
+       "x": 0,
+       "y": 0
+      },
+      "scale_filter": "lanczos",
+      "blend_method": "default",
+      "blend_type": "normal",
+      "private_settings": {}
+     },
+     {
+      "name": "Clock",
+      "source_uuid": "56470517-5670-5a61-a634-e74e1c7cb4d9",
+      "visible": true,
+      "locked": true,
+      "rot": 0,
+      "scale_ref": {
+       "x": 2560,
+       "y": 1440
+      },
+      "align": 5,
+      "bounds_type": 0,
+      "bounds_align": 0,
+      "bounds_crop": false,
+      "crop_left": 0,
+      "crop_top": 0,
+      "crop_right": 0,
+      "crop_bottom": 0,
+      "id": 11,
+      "group_item_backup": false,
+      "pos": {
+       "x": 2088,
+       "y": 1317
+      },
+      "pos_rel": {
+       "x": 1.1222222222222222,
+       "y": 0.8291666666666667
+      },
+      "scale": {
+       "x": 1,
+       "y": 1
+      },
+      "scale_rel": {
+       "x": 1,
+       "y": 1
+      },
+      "bounds": {
+       "x": 0,
+       "y": 0
+      },
+      "bounds_rel": {
+       "x": 0,
+       "y": 0
+      },
+      "scale_filter": "lanczos",
+      "blend_method": "default",
+      "blend_type": "normal",
+      "private_settings": {}
+     },
+     {
+      "name": "Date",
+      "source_uuid": "c979dece-eff2-5725-a906-525740e6f873",
+      "visible": true,
+      "locked": true,
+      "rot": 0,
+      "scale_ref": {
+       "x": 2560,
+       "y": 1440
+      },
+      "align": 5,
+      "bounds_type": 0,
+      "bounds_align": 0,
+      "bounds_crop": false,
+      "crop_left": 0,
+      "crop_top": 0,
+      "crop_right": 0,
+      "crop_bottom": 0,
+      "id": 12,
+      "group_item_backup": false,
+      "pos": {
+       "x": 2088,
+       "y": 1357
+      },
+      "pos_rel": {
+       "x": 1.1222222222222222,
+       "y": 0.8847222222222222
+      },
+      "scale": {
+       "x": 1,
+       "y": 1
+      },
+      "scale_rel": {
+       "x": 1,
+       "y": 1
+      },
+      "bounds": {
+       "x": 0,
+       "y": 0
+      },
+      "bounds_rel": {
+       "x": 0,
+       "y": 0
+      },
+      "scale_filter": "lanczos",
+      "blend_method": "default",
+      "blend_type": "normal",
+      "private_settings": {}
+     }
+    ]
+   },
+   "mixers": 0,
+   "sync": 0,
+   "flags": 0,
+   "volume": 1,
+   "balance": 0.5,
+   "enabled": true,
+   "muted": false,
+   "hotkeys": {},
+   "private_settings": {},
+   "canvas_uuid": "6c69626f-6273-4c00-9d88-c5136d61696e"
+  },
+  {
+   "prev_ver": 537001986,
+   "name": "Full",
+   "uuid": "17aa6b43-a029-5323-b44e-37712584557a",
+   "id": "scene",
+   "versioned_id": "scene",
+   "settings": {
+    "id_counter": 1,
+    "custom_size": false,
+    "items": [
+     {
+      "name": "Screen",
+      "source_uuid": "9e33682c-88d4-5fed-87ce-40300f6988a2",
+      "visible": true,
+      "locked": true,
+      "rot": 0,
+      "scale_ref": {
+       "x": 2560,
+       "y": 1440
+      },
+      "align": 5,
+      "bounds_type": 2,
+      "bounds_align": 0,
+      "bounds_crop": false,
+      "crop_left": 0,
+      "crop_top": 26,
+      "crop_right": 0,
+      "crop_bottom": 0,
+      "id": 1,
+      "group_item_backup": false,
+      "pos": {
+       "x": 0,
+       "y": 0
+      },
+      "pos_rel": {
+       "x": -1.7777777777777777,
+       "y": -1
+      },
+      "scale": {
+       "x": 1,
+       "y": 1
+      },
+      "scale_rel": {
+       "x": 1,
+       "y": 1
+      },
+      "bounds": {
+       "x": 2560,
+       "y": 1440
+      },
+      "bounds_rel": {
+       "x": 3.5555555555555554,
+       "y": 2
+      },
+      "scale_filter": "lanczos",
+      "blend_method": "default",
+      "blend_type": "normal",
+      "private_settings": {}
+     }
+    ]
+   },
+   "mixers": 0,
+   "sync": 0,
+   "flags": 0,
+   "volume": 1,
+   "balance": 0.5,
+   "enabled": true,
+   "muted": false,
+   "hotkeys": {},
+   "private_settings": {},
+   "canvas_uuid": "6c69626f-6273-4c00-9d88-c5136d61696e"
+  },
+  {
+   "prev_ver": 537001986,
+   "name": "Full cam",
+   "uuid": "d22632b8-7f3a-531f-948f-469479c7a12f",
+   "id": "scene",
+   "versioned_id": "scene",
+   "settings": {
+    "id_counter": 9,
+    "custom_size": false,
+    "items": [
+     {
+      "name": "Screen",
+      "source_uuid": "9e33682c-88d4-5fed-87ce-40300f6988a2",
+      "visible": true,
+      "locked": true,
+      "rot": 0,
+      "scale_ref": {
+       "x": 2560,
+       "y": 1440
+      },
+      "align": 5,
+      "bounds_type": 2,
+      "bounds_align": 0,
+      "bounds_crop": false,
+      "crop_left": 0,
+      "crop_top": 26,
+      "crop_right": 0,
+      "crop_bottom": 0,
+      "id": 1,
+      "group_item_backup": false,
+      "pos": {
+       "x": 0,
+       "y": 0
+      },
+      "pos_rel": {
+       "x": -1.7777777777777777,
+       "y": -1
+      },
+      "scale": {
+       "x": 1,
+       "y": 1
+      },
+      "scale_rel": {
+       "x": 1,
+       "y": 1
+      },
+      "bounds": {
+       "x": 2560,
+       "y": 1440
+      },
+      "bounds_rel": {
+       "x": 3.5555555555555554,
+       "y": 2
+      },
+      "scale_filter": "lanczos",
+      "blend_method": "default",
+      "blend_type": "normal",
+      "private_settings": {}
+     },
+     {
+      "name": "Camera frame",
+      "source_uuid": "8a1bf67d-bdc8-582d-8264-e192b9df52fe",
+      "visible": true,
+      "locked": true,
+      "rot": 0,
+      "scale_ref": {
+       "x": 2560,
+       "y": 1440
+      },
+      "align": 5,
+      "bounds_type": 0,
+      "bounds_align": 0,
+      "bounds_crop": false,
+      "crop_left": 0,
+      "crop_top": 0,
+      "crop_right": 0,
+      "crop_bottom": 0,
+      "id": 2,
+      "group_item_backup": false,
+      "pos": {
+       "x": 0,
+       "y": 0
+      },
+      "pos_rel": {
+       "x": -1.7777777777777777,
+       "y": -1
+      },
+      "scale": {
+       "x": 1,
+       "y": 1
+      },
+      "scale_rel": {
+       "x": 1,
+       "y": 1
+      },
+      "bounds": {
+       "x": 0,
+       "y": 0
+      },
+      "bounds_rel": {
+       "x": 0,
+       "y": 0
+      },
+      "scale_filter": "lanczos",
+      "blend_method": "default",
+      "blend_type": "normal",
+      "private_settings": {}
+     },
+     {
+      "name": "Camera",
+      "source_uuid": "b4bf88c8-1003-50f5-9932-8e80914a0eb4",
+      "visible": true,
+      "locked": true,
+      "rot": 0,
+      "scale_ref": {
+       "x": 2560,
+       "y": 1440
+      },
+      "align": 5,
+      "bounds_type": 2,
+      "bounds_align": 0,
+      "bounds_crop": false,
+      "crop_left": 0,
+      "crop_top": 0,
+      "crop_right": 0,
+      "crop_bottom": 0,
+      "id": 3,
+      "group_item_backup": false,
+      "pos": {
+       "x": 1981,
+       "y": 1095
+      },
+      "pos_rel": {
+       "x": 0.9736111111111111,
+       "y": 0.5208333333333334
+      },
+      "scale": {
+       "x": 1,
+       "y": 1
+      },
+      "scale_rel": {
+       "x": 1,
+       "y": 1
+      },
+      "bounds": {
+       "x": 534,
+       "y": 300
+      },
+      "bounds_rel": {
+       "x": 0.7416666666666667,
+       "y": 0.4166666666666667
+      },
+      "scale_filter": "lanczos",
+      "blend_method": "default",
+      "blend_type": "normal",
+      "private_settings": {}
+     },
+     {
+      "name": "Avatar back",
+      "source_uuid": "af60abe4-9680-59ac-9f6f-0b16f7df2f5b",
+      "visible": true,
+      "locked": true,
+      "rot": 0,
+      "scale_ref": {
+       "x": 2560,
+       "y": 1440
+      },
+      "align": 5,
+      "bounds_type": 2,
+      "bounds_align": 0,
+      "bounds_crop": false,
+      "crop_left": 0,
+      "crop_top": 0,
+      "crop_right": 0,
+      "crop_bottom": 0,
+      "id": 4,
+      "group_item_backup": false,
+      "pos": {
+       "x": 1981,
+       "y": 1095
+      },
+      "pos_rel": {
+       "x": 0.9736111111111111,
+       "y": 0.5208333333333334
+      },
+      "scale": {
+       "x": 1,
+       "y": 1
+      },
+      "scale_rel": {
+       "x": 1,
+       "y": 1
+      },
+      "bounds": {
+       "x": 534,
+       "y": 300
+      },
+      "bounds_rel": {
+       "x": 0.7416666666666667,
+       "y": 0.4166666666666667
+      },
+      "scale_filter": "point",
+      "blend_method": "default",
+      "blend_type": "normal",
+      "private_settings": {}
+     },
+     {
+      "name": "Avatar head1",
+      "source_uuid": "1f063441-d04c-56b9-8502-26d4c0c30654",
+      "visible": true,
+      "locked": true,
+      "rot": 0,
+      "scale_ref": {
+       "x": 2560,
+       "y": 1440
+      },
+      "align": 5,
+      "bounds_type": 2,
+      "bounds_align": 0,
+      "bounds_crop": false,
+      "crop_left": 0,
+      "crop_top": 0,
+      "crop_right": 0,
+      "crop_bottom": 0,
+      "id": 5,
+      "group_item_backup": false,
+      "pos": {
+       "x": 1981,
+       "y": 1095
+      },
+      "pos_rel": {
+       "x": 0.9736111111111111,
+       "y": 0.5208333333333334
+      },
+      "scale": {
+       "x": 1,
+       "y": 1
+      },
+      "scale_rel": {
+       "x": 1,
+       "y": 1
+      },
+      "bounds": {
+       "x": 534,
+       "y": 300
+      },
+      "bounds_rel": {
+       "x": 0.7416666666666667,
+       "y": 0.4166666666666667
+      },
+      "scale_filter": "point",
+      "blend_method": "default",
+      "blend_type": "normal",
+      "private_settings": {}
+     },
+     {
+      "name": "Avatar head2",
+      "source_uuid": "d6de4adf-8656-567b-9ec0-42565ae28e64",
+      "visible": true,
+      "locked": true,
+      "rot": 0,
+      "scale_ref": {
+       "x": 2560,
+       "y": 1440
+      },
+      "align": 5,
+      "bounds_type": 2,
+      "bounds_align": 0,
+      "bounds_crop": false,
+      "crop_left": 0,
+      "crop_top": 0,
+      "crop_right": 0,
+      "crop_bottom": 0,
+      "id": 6,
+      "group_item_backup": false,
+      "pos": {
+       "x": 1981,
+       "y": 1095
+      },
+      "pos_rel": {
+       "x": 0.9736111111111111,
+       "y": 0.5208333333333334
+      },
+      "scale": {
+       "x": 1,
+       "y": 1
+      },
+      "scale_rel": {
+       "x": 1,
+       "y": 1
+      },
+      "bounds": {
+       "x": 534,
+       "y": 300
+      },
+      "bounds_rel": {
+       "x": 0.7416666666666667,
+       "y": 0.4166666666666667
+      },
+      "scale_filter": "point",
+      "blend_method": "default",
+      "blend_type": "normal",
+      "private_settings": {}
+     },
+     {
+      "name": "Avatar head3",
+      "source_uuid": "5686935e-a9ef-5528-b985-932aead6c372",
+      "visible": true,
+      "locked": true,
+      "rot": 0,
+      "scale_ref": {
+       "x": 2560,
+       "y": 1440
+      },
+      "align": 5,
+      "bounds_type": 2,
+      "bounds_align": 0,
+      "bounds_crop": false,
+      "crop_left": 0,
+      "crop_top": 0,
+      "crop_right": 0,
+      "crop_bottom": 0,
+      "id": 7,
+      "group_item_backup": false,
+      "pos": {
+       "x": 1981,
+       "y": 1095
+      },
+      "pos_rel": {
+       "x": 0.9736111111111111,
+       "y": 0.5208333333333334
+      },
+      "scale": {
+       "x": 1,
+       "y": 1
+      },
+      "scale_rel": {
+       "x": 1,
+       "y": 1
+      },
+      "bounds": {
+       "x": 534,
+       "y": 300
+      },
+      "bounds_rel": {
+       "x": 0.7416666666666667,
+       "y": 0.4166666666666667
+      },
+      "scale_filter": "point",
+      "blend_method": "default",
+      "blend_type": "normal",
+      "private_settings": {}
+     },
+     {
+      "name": "Avatar eyes",
+      "source_uuid": "ff55ba53-4ad6-5a78-b646-72c197aa1442",
+      "visible": true,
+      "locked": true,
+      "rot": 0,
+      "scale_ref": {
+       "x": 2560,
+       "y": 1440
+      },
+      "align": 5,
+      "bounds_type": 2,
+      "bounds_align": 0,
+      "bounds_crop": false,
+      "crop_left": 0,
+      "crop_top": 0,
+      "crop_right": 0,
+      "crop_bottom": 0,
+      "id": 8,
+      "group_item_backup": false,
+      "pos": {
+       "x": 1981,
+       "y": 1095
+      },
+      "pos_rel": {
+       "x": 0.9736111111111111,
+       "y": 0.5208333333333334
+      },
+      "scale": {
+       "x": 1,
+       "y": 1
+      },
+      "scale_rel": {
+       "x": 1,
+       "y": 1
+      },
+      "bounds": {
+       "x": 534,
+       "y": 300
+      },
+      "bounds_rel": {
+       "x": 0.7416666666666667,
+       "y": 0.4166666666666667
+      },
+      "scale_filter": "point",
+      "blend_method": "default",
+      "blend_type": "normal",
+      "private_settings": {}
+     },
+     {
+      "name": "Avatar glow",
+      "source_uuid": "a9be951c-e519-548f-be47-906461cd280f",
+      "visible": true,
+      "locked": true,
+      "rot": 0,
+      "scale_ref": {
+       "x": 2560,
+       "y": 1440
+      },
+      "align": 5,
+      "bounds_type": 2,
+      "bounds_align": 0,
+      "bounds_crop": false,
+      "crop_left": 0,
+      "crop_top": 0,
+      "crop_right": 0,
+      "crop_bottom": 0,
+      "id": 9,
+      "group_item_backup": false,
+      "pos": {
+       "x": 1981,
+       "y": 1095
+      },
+      "pos_rel": {
+       "x": 0.9736111111111111,
+       "y": 0.5208333333333334
+      },
+      "scale": {
+       "x": 1,
+       "y": 1
+      },
+      "scale_rel": {
+       "x": 1,
+       "y": 1
+      },
+      "bounds": {
+       "x": 534,
+       "y": 300
+      },
+      "bounds_rel": {
+       "x": 0.7416666666666667,
+       "y": 0.4166666666666667
+      },
+      "scale_filter": "point",
+      "blend_method": "default",
+      "blend_type": "normal",
+      "private_settings": {}
+     }
+    ]
+   },
+   "mixers": 0,
+   "sync": 0,
+   "flags": 0,
+   "volume": 1,
+   "balance": 0.5,
+   "enabled": true,
+   "muted": false,
+   "hotkeys": {},
+   "private_settings": {},
+   "canvas_uuid": "6c69626f-6273-4c00-9d88-c5136d61696e"
+  },
+  {
+   "prev_ver": 537001986,
+   "name": "Starting",
+   "uuid": "788efb3a-7075-5f60-8bcf-d21bbea3e17c",
+   "id": "scene",
+   "versioned_id": "scene",
+   "settings": {
+    "id_counter": 8,
+    "custom_size": false,
+    "items": [
+     {
+      "name": "Card starting",
+      "source_uuid": "731b47b9-5c50-581e-a33a-865fb711bbcc",
+      "visible": true,
+      "locked": true,
+      "rot": 0,
+      "scale_ref": {
+       "x": 2560,
+       "y": 1440
+      },
+      "align": 5,
+      "bounds_type": 0,
+      "bounds_align": 0,
+      "bounds_crop": false,
+      "crop_left": 0,
+      "crop_top": 0,
+      "crop_right": 0,
+      "crop_bottom": 0,
+      "id": 1,
+      "group_item_backup": false,
+      "pos": {
+       "x": 0,
+       "y": 0
+      },
+      "pos_rel": {
+       "x": -1.7777777777777777,
+       "y": -1
+      },
+      "scale": {
+       "x": 1,
+       "y": 1
+      },
+      "scale_rel": {
+       "x": 1,
+       "y": 1
+      },
+      "bounds": {
+       "x": 0,
+       "y": 0
+      },
+      "bounds_rel": {
+       "x": 0,
+       "y": 0
+      },
+      "scale_filter": "lanczos",
+      "blend_method": "default",
+      "blend_type": "normal",
+      "private_settings": {}
+     },
+     {
+      "name": "Card pulse 0",
+      "source_uuid": "a6eea586-0a71-5dbb-b84c-43f821585825",
+      "visible": true,
+      "locked": true,
+      "rot": 0,
+      "scale_ref": {
+       "x": 2560,
+       "y": 1440
+      },
+      "align": 5,
+      "bounds_type": 0,
+      "bounds_align": 0,
+      "bounds_crop": false,
+      "crop_left": 0,
+      "crop_top": 0,
+      "crop_right": 0,
+      "crop_bottom": 0,
+      "id": 2,
+      "group_item_backup": false,
+      "pos": {
+       "x": 0,
+       "y": 0
+      },
+      "pos_rel": {
+       "x": -1.7777777777777777,
+       "y": -1
+      },
+      "scale": {
+       "x": 1,
+       "y": 1
+      },
+      "scale_rel": {
+       "x": 1,
+       "y": 1
+      },
+      "bounds": {
+       "x": 0,
+       "y": 0
+      },
+      "bounds_rel": {
+       "x": 0,
+       "y": 0
+      },
+      "scale_filter": "lanczos",
+      "blend_method": "default",
+      "blend_type": "normal",
+      "private_settings": {}
+     },
+     {
+      "name": "Card pulse 1",
+      "source_uuid": "70326cd3-e04e-5954-842d-c4b1506cccda",
+      "visible": true,
+      "locked": true,
+      "rot": 0,
+      "scale_ref": {
+       "x": 2560,
+       "y": 1440
+      },
+      "align": 5,
+      "bounds_type": 0,
+      "bounds_align": 0,
+      "bounds_crop": false,
+      "crop_left": 0,
+      "crop_top": 0,
+      "crop_right": 0,
+      "crop_bottom": 0,
+      "id": 3,
+      "group_item_backup": false,
+      "pos": {
+       "x": 0,
+       "y": 0
+      },
+      "pos_rel": {
+       "x": -1.7777777777777777,
+       "y": -1
+      },
+      "scale": {
+       "x": 1,
+       "y": 1
+      },
+      "scale_rel": {
+       "x": 1,
+       "y": 1
+      },
+      "bounds": {
+       "x": 0,
+       "y": 0
+      },
+      "bounds_rel": {
+       "x": 0,
+       "y": 0
+      },
+      "scale_filter": "lanczos",
+      "blend_method": "default",
+      "blend_type": "normal",
+      "private_settings": {}
+     },
+     {
+      "name": "Card pulse 2",
+      "source_uuid": "dd9304aa-9169-5182-9359-8f7f5d2c1175",
+      "visible": true,
+      "locked": true,
+      "rot": 0,
+      "scale_ref": {
+       "x": 2560,
+       "y": 1440
+      },
+      "align": 5,
+      "bounds_type": 0,
+      "bounds_align": 0,
+      "bounds_crop": false,
+      "crop_left": 0,
+      "crop_top": 0,
+      "crop_right": 0,
+      "crop_bottom": 0,
+      "id": 4,
+      "group_item_backup": false,
+      "pos": {
+       "x": 0,
+       "y": 0
+      },
+      "pos_rel": {
+       "x": -1.7777777777777777,
+       "y": -1
+      },
+      "scale": {
+       "x": 1,
+       "y": 1
+      },
+      "scale_rel": {
+       "x": 1,
+       "y": 1
+      },
+      "bounds": {
+       "x": 0,
+       "y": 0
+      },
+      "bounds_rel": {
+       "x": 0,
+       "y": 0
+      },
+      "scale_filter": "lanczos",
+      "blend_method": "default",
+      "blend_type": "normal",
+      "private_settings": {}
+     },
+     {
+      "name": "Card pulse 3",
+      "source_uuid": "c2605601-f8ad-5c47-97f1-6ef47d3e5980",
+      "visible": true,
+      "locked": true,
+      "rot": 0,
+      "scale_ref": {
+       "x": 2560,
+       "y": 1440
+      },
+      "align": 5,
+      "bounds_type": 0,
+      "bounds_align": 0,
+      "bounds_crop": false,
+      "crop_left": 0,
+      "crop_top": 0,
+      "crop_right": 0,
+      "crop_bottom": 0,
+      "id": 5,
+      "group_item_backup": false,
+      "pos": {
+       "x": 0,
+       "y": 0
+      },
+      "pos_rel": {
+       "x": -1.7777777777777777,
+       "y": -1
+      },
+      "scale": {
+       "x": 1,
+       "y": 1
+      },
+      "scale_rel": {
+       "x": 1,
+       "y": 1
+      },
+      "bounds": {
+       "x": 0,
+       "y": 0
+      },
+      "bounds_rel": {
+       "x": 0,
+       "y": 0
+      },
+      "scale_filter": "lanczos",
+      "blend_method": "default",
+      "blend_type": "normal",
+      "private_settings": {}
+     },
+     {
+      "name": "Card pulse 4",
+      "source_uuid": "0e91e660-c8d0-587f-86cf-81f3cfa1fccd",
+      "visible": true,
+      "locked": true,
+      "rot": 0,
+      "scale_ref": {
+       "x": 2560,
+       "y": 1440
+      },
+      "align": 5,
+      "bounds_type": 0,
+      "bounds_align": 0,
+      "bounds_crop": false,
+      "crop_left": 0,
+      "crop_top": 0,
+      "crop_right": 0,
+      "crop_bottom": 0,
+      "id": 6,
+      "group_item_backup": false,
+      "pos": {
+       "x": 0,
+       "y": 0
+      },
+      "pos_rel": {
+       "x": -1.7777777777777777,
+       "y": -1
+      },
+      "scale": {
+       "x": 1,
+       "y": 1
+      },
+      "scale_rel": {
+       "x": 1,
+       "y": 1
+      },
+      "bounds": {
+       "x": 0,
+       "y": 0
+      },
+      "bounds_rel": {
+       "x": 0,
+       "y": 0
+      },
+      "scale_filter": "lanczos",
+      "blend_method": "default",
+      "blend_type": "normal",
+      "private_settings": {}
+     },
+     {
+      "name": "Card pulse 5",
+      "source_uuid": "be3b6429-8771-56ea-9eb1-2ea48a5b32d7",
+      "visible": true,
+      "locked": true,
+      "rot": 0,
+      "scale_ref": {
+       "x": 2560,
+       "y": 1440
+      },
+      "align": 5,
+      "bounds_type": 0,
+      "bounds_align": 0,
+      "bounds_crop": false,
+      "crop_left": 0,
+      "crop_top": 0,
+      "crop_right": 0,
+      "crop_bottom": 0,
+      "id": 7,
+      "group_item_backup": false,
+      "pos": {
+       "x": 0,
+       "y": 0
+      },
+      "pos_rel": {
+       "x": -1.7777777777777777,
+       "y": -1
+      },
+      "scale": {
+       "x": 1,
+       "y": 1
+      },
+      "scale_rel": {
+       "x": 1,
+       "y": 1
+      },
+      "bounds": {
+       "x": 0,
+       "y": 0
+      },
+      "bounds_rel": {
+       "x": 0,
+       "y": 0
+      },
+      "scale_filter": "lanczos",
+      "blend_method": "default",
+      "blend_type": "normal",
+      "private_settings": {}
+     },
+     {
+      "name": "Countdown",
+      "source_uuid": "df55d1da-1f1e-5866-a181-8103d2f2d0b6",
+      "visible": true,
+      "locked": true,
+      "rot": 0,
+      "scale_ref": {
+       "x": 2560,
+       "y": 1440
+      },
+      "align": 0,
+      "bounds_type": 0,
+      "bounds_align": 0,
+      "bounds_crop": false,
+      "crop_left": 0,
+      "crop_top": 0,
+      "crop_right": 0,
+      "crop_bottom": 0,
+      "id": 8,
+      "group_item_backup": false,
+      "pos": {
+       "x": 1280,
+       "y": 773
+      },
+      "pos_rel": {
+       "x": 0,
+       "y": 0.07361111111111111
+      },
+      "scale": {
+       "x": 1,
+       "y": 1
+      },
+      "scale_rel": {
+       "x": 1,
+       "y": 1
+      },
+      "bounds": {
+       "x": 0,
+       "y": 0
+      },
+      "bounds_rel": {
+       "x": 0,
+       "y": 0
+      },
+      "scale_filter": "lanczos",
+      "blend_method": "default",
+      "blend_type": "normal",
+      "private_settings": {}
+     }
+    ]
+   },
+   "mixers": 0,
+   "sync": 0,
+   "flags": 0,
+   "volume": 1,
+   "balance": 0.5,
+   "enabled": true,
+   "muted": false,
+   "hotkeys": {},
+   "private_settings": {},
+   "canvas_uuid": "6c69626f-6273-4c00-9d88-c5136d61696e"
+  },
+  {
+   "prev_ver": 537001986,
+   "name": "Intro",
+   "uuid": "5049f500-20f8-5e76-93d8-fde6da115754",
+   "id": "scene",
+   "versioned_id": "scene",
+   "settings": {
+    "id_counter": 8,
+    "custom_size": false,
+    "items": [
+     {
+      "name": "Card intro",
+      "source_uuid": "7ac12270-51ff-588d-a419-51b8389c493e",
+      "visible": true,
+      "locked": true,
+      "rot": 0,
+      "scale_ref": {
+       "x": 2560,
+       "y": 1440
+      },
+      "align": 5,
+      "bounds_type": 0,
+      "bounds_align": 0,
+      "bounds_crop": false,
+      "crop_left": 0,
+      "crop_top": 0,
+      "crop_right": 0,
+      "crop_bottom": 0,
+      "id": 1,
+      "group_item_backup": false,
+      "pos": {
+       "x": 0,
+       "y": 0
+      },
+      "pos_rel": {
+       "x": -1.7777777777777777,
+       "y": -1
+      },
+      "scale": {
+       "x": 1,
+       "y": 1
+      },
+      "scale_rel": {
+       "x": 1,
+       "y": 1
+      },
+      "bounds": {
+       "x": 0,
+       "y": 0
+      },
+      "bounds_rel": {
+       "x": 0,
+       "y": 0
+      },
+      "scale_filter": "lanczos",
+      "blend_method": "default",
+      "blend_type": "normal",
+      "private_settings": {}
+     },
+     {
+      "name": "Card pulse 0",
+      "source_uuid": "a6eea586-0a71-5dbb-b84c-43f821585825",
+      "visible": true,
+      "locked": true,
+      "rot": 0,
+      "scale_ref": {
+       "x": 2560,
+       "y": 1440
+      },
+      "align": 5,
+      "bounds_type": 0,
+      "bounds_align": 0,
+      "bounds_crop": false,
+      "crop_left": 0,
+      "crop_top": 0,
+      "crop_right": 0,
+      "crop_bottom": 0,
+      "id": 2,
+      "group_item_backup": false,
+      "pos": {
+       "x": 0,
+       "y": 0
+      },
+      "pos_rel": {
+       "x": -1.7777777777777777,
+       "y": -1
+      },
+      "scale": {
+       "x": 1,
+       "y": 1
+      },
+      "scale_rel": {
+       "x": 1,
+       "y": 1
+      },
+      "bounds": {
+       "x": 0,
+       "y": 0
+      },
+      "bounds_rel": {
+       "x": 0,
+       "y": 0
+      },
+      "scale_filter": "lanczos",
+      "blend_method": "default",
+      "blend_type": "normal",
+      "private_settings": {}
+     },
+     {
+      "name": "Card pulse 1",
+      "source_uuid": "70326cd3-e04e-5954-842d-c4b1506cccda",
+      "visible": true,
+      "locked": true,
+      "rot": 0,
+      "scale_ref": {
+       "x": 2560,
+       "y": 1440
+      },
+      "align": 5,
+      "bounds_type": 0,
+      "bounds_align": 0,
+      "bounds_crop": false,
+      "crop_left": 0,
+      "crop_top": 0,
+      "crop_right": 0,
+      "crop_bottom": 0,
+      "id": 3,
+      "group_item_backup": false,
+      "pos": {
+       "x": 0,
+       "y": 0
+      },
+      "pos_rel": {
+       "x": -1.7777777777777777,
+       "y": -1
+      },
+      "scale": {
+       "x": 1,
+       "y": 1
+      },
+      "scale_rel": {
+       "x": 1,
+       "y": 1
+      },
+      "bounds": {
+       "x": 0,
+       "y": 0
+      },
+      "bounds_rel": {
+       "x": 0,
+       "y": 0
+      },
+      "scale_filter": "lanczos",
+      "blend_method": "default",
+      "blend_type": "normal",
+      "private_settings": {}
+     },
+     {
+      "name": "Card pulse 2",
+      "source_uuid": "dd9304aa-9169-5182-9359-8f7f5d2c1175",
+      "visible": true,
+      "locked": true,
+      "rot": 0,
+      "scale_ref": {
+       "x": 2560,
+       "y": 1440
+      },
+      "align": 5,
+      "bounds_type": 0,
+      "bounds_align": 0,
+      "bounds_crop": false,
+      "crop_left": 0,
+      "crop_top": 0,
+      "crop_right": 0,
+      "crop_bottom": 0,
+      "id": 4,
+      "group_item_backup": false,
+      "pos": {
+       "x": 0,
+       "y": 0
+      },
+      "pos_rel": {
+       "x": -1.7777777777777777,
+       "y": -1
+      },
+      "scale": {
+       "x": 1,
+       "y": 1
+      },
+      "scale_rel": {
+       "x": 1,
+       "y": 1
+      },
+      "bounds": {
+       "x": 0,
+       "y": 0
+      },
+      "bounds_rel": {
+       "x": 0,
+       "y": 0
+      },
+      "scale_filter": "lanczos",
+      "blend_method": "default",
+      "blend_type": "normal",
+      "private_settings": {}
+     },
+     {
+      "name": "Card pulse 3",
+      "source_uuid": "c2605601-f8ad-5c47-97f1-6ef47d3e5980",
+      "visible": true,
+      "locked": true,
+      "rot": 0,
+      "scale_ref": {
+       "x": 2560,
+       "y": 1440
+      },
+      "align": 5,
+      "bounds_type": 0,
+      "bounds_align": 0,
+      "bounds_crop": false,
+      "crop_left": 0,
+      "crop_top": 0,
+      "crop_right": 0,
+      "crop_bottom": 0,
+      "id": 5,
+      "group_item_backup": false,
+      "pos": {
+       "x": 0,
+       "y": 0
+      },
+      "pos_rel": {
+       "x": -1.7777777777777777,
+       "y": -1
+      },
+      "scale": {
+       "x": 1,
+       "y": 1
+      },
+      "scale_rel": {
+       "x": 1,
+       "y": 1
+      },
+      "bounds": {
+       "x": 0,
+       "y": 0
+      },
+      "bounds_rel": {
+       "x": 0,
+       "y": 0
+      },
+      "scale_filter": "lanczos",
+      "blend_method": "default",
+      "blend_type": "normal",
+      "private_settings": {}
+     },
+     {
+      "name": "Card pulse 4",
+      "source_uuid": "0e91e660-c8d0-587f-86cf-81f3cfa1fccd",
+      "visible": true,
+      "locked": true,
+      "rot": 0,
+      "scale_ref": {
+       "x": 2560,
+       "y": 1440
+      },
+      "align": 5,
+      "bounds_type": 0,
+      "bounds_align": 0,
+      "bounds_crop": false,
+      "crop_left": 0,
+      "crop_top": 0,
+      "crop_right": 0,
+      "crop_bottom": 0,
+      "id": 6,
+      "group_item_backup": false,
+      "pos": {
+       "x": 0,
+       "y": 0
+      },
+      "pos_rel": {
+       "x": -1.7777777777777777,
+       "y": -1
+      },
+      "scale": {
+       "x": 1,
+       "y": 1
+      },
+      "scale_rel": {
+       "x": 1,
+       "y": 1
+      },
+      "bounds": {
+       "x": 0,
+       "y": 0
+      },
+      "bounds_rel": {
+       "x": 0,
+       "y": 0
+      },
+      "scale_filter": "lanczos",
+      "blend_method": "default",
+      "blend_type": "normal",
+      "private_settings": {}
+     },
+     {
+      "name": "Card pulse 5",
+      "source_uuid": "be3b6429-8771-56ea-9eb1-2ea48a5b32d7",
+      "visible": true,
+      "locked": true,
+      "rot": 0,
+      "scale_ref": {
+       "x": 2560,
+       "y": 1440
+      },
+      "align": 5,
+      "bounds_type": 0,
+      "bounds_align": 0,
+      "bounds_crop": false,
+      "crop_left": 0,
+      "crop_top": 0,
+      "crop_right": 0,
+      "crop_bottom": 0,
+      "id": 7,
+      "group_item_backup": false,
+      "pos": {
+       "x": 0,
+       "y": 0
+      },
+      "pos_rel": {
+       "x": -1.7777777777777777,
+       "y": -1
+      },
+      "scale": {
+       "x": 1,
+       "y": 1
+      },
+      "scale_rel": {
+       "x": 1,
+       "y": 1
+      },
+      "bounds": {
+       "x": 0,
+       "y": 0
+      },
+      "bounds_rel": {
+       "x": 0,
+       "y": 0
+      },
+      "scale_filter": "lanczos",
+      "blend_method": "default",
+      "blend_type": "normal",
+      "private_settings": {}
+     },
+     {
+      "name": "Title",
+      "source_uuid": "273c453c-9fc8-5483-b0c2-d7719ea6e043",
+      "visible": true,
+      "locked": true,
+      "rot": 0,
+      "scale_ref": {
+       "x": 2560,
+       "y": 1440
+      },
+      "align": 0,
+      "bounds_type": 0,
+      "bounds_align": 0,
+      "bounds_crop": false,
+      "crop_left": 0,
+      "crop_top": 0,
+      "crop_right": 0,
+      "crop_bottom": 0,
+      "id": 8,
+      "group_item_backup": false,
+      "pos": {
+       "x": 1280,
+       "y": 666
+      },
+      "pos_rel": {
+       "x": 0,
+       "y": -0.075
+      },
+      "scale": {
+       "x": 1,
+       "y": 1
+      },
+      "scale_rel": {
+       "x": 1,
+       "y": 1
+      },
+      "bounds": {
+       "x": 0,
+       "y": 0
+      },
+      "bounds_rel": {
+       "x": 0,
+       "y": 0
+      },
+      "scale_filter": "lanczos",
+      "blend_method": "default",
+      "blend_type": "normal",
+      "private_settings": {}
+     }
+    ]
+   },
+   "mixers": 0,
+   "sync": 0,
+   "flags": 0,
+   "volume": 1,
+   "balance": 0.5,
+   "enabled": true,
+   "muted": false,
+   "hotkeys": {},
+   "private_settings": {},
+   "canvas_uuid": "6c69626f-6273-4c00-9d88-c5136d61696e"
+  },
+  {
+   "prev_ver": 537001986,
+   "name": "BRB",
+   "uuid": "5254a243-b9fd-549a-b1dc-d0fe4d0935b9",
+   "id": "scene",
+   "versioned_id": "scene",
+   "settings": {
+    "id_counter": 7,
+    "custom_size": false,
+    "items": [
+     {
+      "name": "Card brb",
+      "source_uuid": "3e47182d-99b0-59b4-a27c-419b25a95095",
+      "visible": true,
+      "locked": true,
+      "rot": 0,
+      "scale_ref": {
+       "x": 2560,
+       "y": 1440
+      },
+      "align": 5,
+      "bounds_type": 0,
+      "bounds_align": 0,
+      "bounds_crop": false,
+      "crop_left": 0,
+      "crop_top": 0,
+      "crop_right": 0,
+      "crop_bottom": 0,
+      "id": 1,
+      "group_item_backup": false,
+      "pos": {
+       "x": 0,
+       "y": 0
+      },
+      "pos_rel": {
+       "x": -1.7777777777777777,
+       "y": -1
+      },
+      "scale": {
+       "x": 1,
+       "y": 1
+      },
+      "scale_rel": {
+       "x": 1,
+       "y": 1
+      },
+      "bounds": {
+       "x": 0,
+       "y": 0
+      },
+      "bounds_rel": {
+       "x": 0,
+       "y": 0
+      },
+      "scale_filter": "lanczos",
+      "blend_method": "default",
+      "blend_type": "normal",
+      "private_settings": {}
+     },
+     {
+      "name": "Card pulse 0",
+      "source_uuid": "a6eea586-0a71-5dbb-b84c-43f821585825",
+      "visible": true,
+      "locked": true,
+      "rot": 0,
+      "scale_ref": {
+       "x": 2560,
+       "y": 1440
+      },
+      "align": 5,
+      "bounds_type": 0,
+      "bounds_align": 0,
+      "bounds_crop": false,
+      "crop_left": 0,
+      "crop_top": 0,
+      "crop_right": 0,
+      "crop_bottom": 0,
+      "id": 2,
+      "group_item_backup": false,
+      "pos": {
+       "x": 0,
+       "y": 0
+      },
+      "pos_rel": {
+       "x": -1.7777777777777777,
+       "y": -1
+      },
+      "scale": {
+       "x": 1,
+       "y": 1
+      },
+      "scale_rel": {
+       "x": 1,
+       "y": 1
+      },
+      "bounds": {
+       "x": 0,
+       "y": 0
+      },
+      "bounds_rel": {
+       "x": 0,
+       "y": 0
+      },
+      "scale_filter": "lanczos",
+      "blend_method": "default",
+      "blend_type": "normal",
+      "private_settings": {}
+     },
+     {
+      "name": "Card pulse 1",
+      "source_uuid": "70326cd3-e04e-5954-842d-c4b1506cccda",
+      "visible": true,
+      "locked": true,
+      "rot": 0,
+      "scale_ref": {
+       "x": 2560,
+       "y": 1440
+      },
+      "align": 5,
+      "bounds_type": 0,
+      "bounds_align": 0,
+      "bounds_crop": false,
+      "crop_left": 0,
+      "crop_top": 0,
+      "crop_right": 0,
+      "crop_bottom": 0,
+      "id": 3,
+      "group_item_backup": false,
+      "pos": {
+       "x": 0,
+       "y": 0
+      },
+      "pos_rel": {
+       "x": -1.7777777777777777,
+       "y": -1
+      },
+      "scale": {
+       "x": 1,
+       "y": 1
+      },
+      "scale_rel": {
+       "x": 1,
+       "y": 1
+      },
+      "bounds": {
+       "x": 0,
+       "y": 0
+      },
+      "bounds_rel": {
+       "x": 0,
+       "y": 0
+      },
+      "scale_filter": "lanczos",
+      "blend_method": "default",
+      "blend_type": "normal",
+      "private_settings": {}
+     },
+     {
+      "name": "Card pulse 2",
+      "source_uuid": "dd9304aa-9169-5182-9359-8f7f5d2c1175",
+      "visible": true,
+      "locked": true,
+      "rot": 0,
+      "scale_ref": {
+       "x": 2560,
+       "y": 1440
+      },
+      "align": 5,
+      "bounds_type": 0,
+      "bounds_align": 0,
+      "bounds_crop": false,
+      "crop_left": 0,
+      "crop_top": 0,
+      "crop_right": 0,
+      "crop_bottom": 0,
+      "id": 4,
+      "group_item_backup": false,
+      "pos": {
+       "x": 0,
+       "y": 0
+      },
+      "pos_rel": {
+       "x": -1.7777777777777777,
+       "y": -1
+      },
+      "scale": {
+       "x": 1,
+       "y": 1
+      },
+      "scale_rel": {
+       "x": 1,
+       "y": 1
+      },
+      "bounds": {
+       "x": 0,
+       "y": 0
+      },
+      "bounds_rel": {
+       "x": 0,
+       "y": 0
+      },
+      "scale_filter": "lanczos",
+      "blend_method": "default",
+      "blend_type": "normal",
+      "private_settings": {}
+     },
+     {
+      "name": "Card pulse 3",
+      "source_uuid": "c2605601-f8ad-5c47-97f1-6ef47d3e5980",
+      "visible": true,
+      "locked": true,
+      "rot": 0,
+      "scale_ref": {
+       "x": 2560,
+       "y": 1440
+      },
+      "align": 5,
+      "bounds_type": 0,
+      "bounds_align": 0,
+      "bounds_crop": false,
+      "crop_left": 0,
+      "crop_top": 0,
+      "crop_right": 0,
+      "crop_bottom": 0,
+      "id": 5,
+      "group_item_backup": false,
+      "pos": {
+       "x": 0,
+       "y": 0
+      },
+      "pos_rel": {
+       "x": -1.7777777777777777,
+       "y": -1
+      },
+      "scale": {
+       "x": 1,
+       "y": 1
+      },
+      "scale_rel": {
+       "x": 1,
+       "y": 1
+      },
+      "bounds": {
+       "x": 0,
+       "y": 0
+      },
+      "bounds_rel": {
+       "x": 0,
+       "y": 0
+      },
+      "scale_filter": "lanczos",
+      "blend_method": "default",
+      "blend_type": "normal",
+      "private_settings": {}
+     },
+     {
+      "name": "Card pulse 4",
+      "source_uuid": "0e91e660-c8d0-587f-86cf-81f3cfa1fccd",
+      "visible": true,
+      "locked": true,
+      "rot": 0,
+      "scale_ref": {
+       "x": 2560,
+       "y": 1440
+      },
+      "align": 5,
+      "bounds_type": 0,
+      "bounds_align": 0,
+      "bounds_crop": false,
+      "crop_left": 0,
+      "crop_top": 0,
+      "crop_right": 0,
+      "crop_bottom": 0,
+      "id": 6,
+      "group_item_backup": false,
+      "pos": {
+       "x": 0,
+       "y": 0
+      },
+      "pos_rel": {
+       "x": -1.7777777777777777,
+       "y": -1
+      },
+      "scale": {
+       "x": 1,
+       "y": 1
+      },
+      "scale_rel": {
+       "x": 1,
+       "y": 1
+      },
+      "bounds": {
+       "x": 0,
+       "y": 0
+      },
+      "bounds_rel": {
+       "x": 0,
+       "y": 0
+      },
+      "scale_filter": "lanczos",
+      "blend_method": "default",
+      "blend_type": "normal",
+      "private_settings": {}
+     },
+     {
+      "name": "Card pulse 5",
+      "source_uuid": "be3b6429-8771-56ea-9eb1-2ea48a5b32d7",
+      "visible": true,
+      "locked": true,
+      "rot": 0,
+      "scale_ref": {
+       "x": 2560,
+       "y": 1440
+      },
+      "align": 5,
+      "bounds_type": 0,
+      "bounds_align": 0,
+      "bounds_crop": false,
+      "crop_left": 0,
+      "crop_top": 0,
+      "crop_right": 0,
+      "crop_bottom": 0,
+      "id": 7,
+      "group_item_backup": false,
+      "pos": {
+       "x": 0,
+       "y": 0
+      },
+      "pos_rel": {
+       "x": -1.7777777777777777,
+       "y": -1
+      },
+      "scale": {
+       "x": 1,
+       "y": 1
+      },
+      "scale_rel": {
+       "x": 1,
+       "y": 1
+      },
+      "bounds": {
+       "x": 0,
+       "y": 0
+      },
+      "bounds_rel": {
+       "x": 0,
+       "y": 0
+      },
+      "scale_filter": "lanczos",
+      "blend_method": "default",
+      "blend_type": "normal",
+      "private_settings": {}
+     }
+    ]
+   },
+   "mixers": 0,
+   "sync": 0,
+   "flags": 0,
+   "volume": 1,
+   "balance": 0.5,
+   "enabled": true,
+   "muted": false,
+   "hotkeys": {},
+   "private_settings": {},
+   "canvas_uuid": "6c69626f-6273-4c00-9d88-c5136d61696e"
+  },
+  {
+   "prev_ver": 537001986,
+   "name": "Ending",
+   "uuid": "3020cde6-d22c-5622-83db-e51c6ea02f66",
+   "id": "scene",
+   "versioned_id": "scene",
+   "settings": {
+    "id_counter": 7,
+    "custom_size": false,
+    "items": [
+     {
+      "name": "Card ending",
+      "source_uuid": "da6c0ea7-e8c2-53e6-85d7-65b7ab7579a0",
+      "visible": true,
+      "locked": true,
+      "rot": 0,
+      "scale_ref": {
+       "x": 2560,
+       "y": 1440
+      },
+      "align": 5,
+      "bounds_type": 0,
+      "bounds_align": 0,
+      "bounds_crop": false,
+      "crop_left": 0,
+      "crop_top": 0,
+      "crop_right": 0,
+      "crop_bottom": 0,
+      "id": 1,
+      "group_item_backup": false,
+      "pos": {
+       "x": 0,
+       "y": 0
+      },
+      "pos_rel": {
+       "x": -1.7777777777777777,
+       "y": -1
+      },
+      "scale": {
+       "x": 1,
+       "y": 1
+      },
+      "scale_rel": {
+       "x": 1,
+       "y": 1
+      },
+      "bounds": {
+       "x": 0,
+       "y": 0
+      },
+      "bounds_rel": {
+       "x": 0,
+       "y": 0
+      },
+      "scale_filter": "lanczos",
+      "blend_method": "default",
+      "blend_type": "normal",
+      "private_settings": {}
+     },
+     {
+      "name": "Card pulse 0",
+      "source_uuid": "a6eea586-0a71-5dbb-b84c-43f821585825",
+      "visible": true,
+      "locked": true,
+      "rot": 0,
+      "scale_ref": {
+       "x": 2560,
+       "y": 1440
+      },
+      "align": 5,
+      "bounds_type": 0,
+      "bounds_align": 0,
+      "bounds_crop": false,
+      "crop_left": 0,
+      "crop_top": 0,
+      "crop_right": 0,
+      "crop_bottom": 0,
+      "id": 2,
+      "group_item_backup": false,
+      "pos": {
+       "x": 0,
+       "y": 0
+      },
+      "pos_rel": {
+       "x": -1.7777777777777777,
+       "y": -1
+      },
+      "scale": {
+       "x": 1,
+       "y": 1
+      },
+      "scale_rel": {
+       "x": 1,
+       "y": 1
+      },
+      "bounds": {
+       "x": 0,
+       "y": 0
+      },
+      "bounds_rel": {
+       "x": 0,
+       "y": 0
+      },
+      "scale_filter": "lanczos",
+      "blend_method": "default",
+      "blend_type": "normal",
+      "private_settings": {}
+     },
+     {
+      "name": "Card pulse 1",
+      "source_uuid": "70326cd3-e04e-5954-842d-c4b1506cccda",
+      "visible": true,
+      "locked": true,
+      "rot": 0,
+      "scale_ref": {
+       "x": 2560,
+       "y": 1440
+      },
+      "align": 5,
+      "bounds_type": 0,
+      "bounds_align": 0,
+      "bounds_crop": false,
+      "crop_left": 0,
+      "crop_top": 0,
+      "crop_right": 0,
+      "crop_bottom": 0,
+      "id": 3,
+      "group_item_backup": false,
+      "pos": {
+       "x": 0,
+       "y": 0
+      },
+      "pos_rel": {
+       "x": -1.7777777777777777,
+       "y": -1
+      },
+      "scale": {
+       "x": 1,
+       "y": 1
+      },
+      "scale_rel": {
+       "x": 1,
+       "y": 1
+      },
+      "bounds": {
+       "x": 0,
+       "y": 0
+      },
+      "bounds_rel": {
+       "x": 0,
+       "y": 0
+      },
+      "scale_filter": "lanczos",
+      "blend_method": "default",
+      "blend_type": "normal",
+      "private_settings": {}
+     },
+     {
+      "name": "Card pulse 2",
+      "source_uuid": "dd9304aa-9169-5182-9359-8f7f5d2c1175",
+      "visible": true,
+      "locked": true,
+      "rot": 0,
+      "scale_ref": {
+       "x": 2560,
+       "y": 1440
+      },
+      "align": 5,
+      "bounds_type": 0,
+      "bounds_align": 0,
+      "bounds_crop": false,
+      "crop_left": 0,
+      "crop_top": 0,
+      "crop_right": 0,
+      "crop_bottom": 0,
+      "id": 4,
+      "group_item_backup": false,
+      "pos": {
+       "x": 0,
+       "y": 0
+      },
+      "pos_rel": {
+       "x": -1.7777777777777777,
+       "y": -1
+      },
+      "scale": {
+       "x": 1,
+       "y": 1
+      },
+      "scale_rel": {
+       "x": 1,
+       "y": 1
+      },
+      "bounds": {
+       "x": 0,
+       "y": 0
+      },
+      "bounds_rel": {
+       "x": 0,
+       "y": 0
+      },
+      "scale_filter": "lanczos",
+      "blend_method": "default",
+      "blend_type": "normal",
+      "private_settings": {}
+     },
+     {
+      "name": "Card pulse 3",
+      "source_uuid": "c2605601-f8ad-5c47-97f1-6ef47d3e5980",
+      "visible": true,
+      "locked": true,
+      "rot": 0,
+      "scale_ref": {
+       "x": 2560,
+       "y": 1440
+      },
+      "align": 5,
+      "bounds_type": 0,
+      "bounds_align": 0,
+      "bounds_crop": false,
+      "crop_left": 0,
+      "crop_top": 0,
+      "crop_right": 0,
+      "crop_bottom": 0,
+      "id": 5,
+      "group_item_backup": false,
+      "pos": {
+       "x": 0,
+       "y": 0
+      },
+      "pos_rel": {
+       "x": -1.7777777777777777,
+       "y": -1
+      },
+      "scale": {
+       "x": 1,
+       "y": 1
+      },
+      "scale_rel": {
+       "x": 1,
+       "y": 1
+      },
+      "bounds": {
+       "x": 0,
+       "y": 0
+      },
+      "bounds_rel": {
+       "x": 0,
+       "y": 0
+      },
+      "scale_filter": "lanczos",
+      "blend_method": "default",
+      "blend_type": "normal",
+      "private_settings": {}
+     },
+     {
+      "name": "Card pulse 4",
+      "source_uuid": "0e91e660-c8d0-587f-86cf-81f3cfa1fccd",
+      "visible": true,
+      "locked": true,
+      "rot": 0,
+      "scale_ref": {
+       "x": 2560,
+       "y": 1440
+      },
+      "align": 5,
+      "bounds_type": 0,
+      "bounds_align": 0,
+      "bounds_crop": false,
+      "crop_left": 0,
+      "crop_top": 0,
+      "crop_right": 0,
+      "crop_bottom": 0,
+      "id": 6,
+      "group_item_backup": false,
+      "pos": {
+       "x": 0,
+       "y": 0
+      },
+      "pos_rel": {
+       "x": -1.7777777777777777,
+       "y": -1
+      },
+      "scale": {
+       "x": 1,
+       "y": 1
+      },
+      "scale_rel": {
+       "x": 1,
+       "y": 1
+      },
+      "bounds": {
+       "x": 0,
+       "y": 0
+      },
+      "bounds_rel": {
+       "x": 0,
+       "y": 0
+      },
+      "scale_filter": "lanczos",
+      "blend_method": "default",
+      "blend_type": "normal",
+      "private_settings": {}
+     },
+     {
+      "name": "Card pulse 5",
+      "source_uuid": "be3b6429-8771-56ea-9eb1-2ea48a5b32d7",
+      "visible": true,
+      "locked": true,
+      "rot": 0,
+      "scale_ref": {
+       "x": 2560,
+       "y": 1440
+      },
+      "align": 5,
+      "bounds_type": 0,
+      "bounds_align": 0,
+      "bounds_crop": false,
+      "crop_left": 0,
+      "crop_top": 0,
+      "crop_right": 0,
+      "crop_bottom": 0,
+      "id": 7,
+      "group_item_backup": false,
+      "pos": {
+       "x": 0,
+       "y": 0
+      },
+      "pos_rel": {
+       "x": -1.7777777777777777,
+       "y": -1
+      },
+      "scale": {
+       "x": 1,
+       "y": 1
+      },
+      "scale_rel": {
+       "x": 1,
+       "y": 1
+      },
+      "bounds": {
+       "x": 0,
+       "y": 0
+      },
+      "bounds_rel": {
+       "x": 0,
+       "y": 0
+      },
+      "scale_filter": "lanczos",
+      "blend_method": "default",
+      "blend_type": "normal",
+      "private_settings": {}
+     }
+    ]
+   },
+   "mixers": 0,
+   "sync": 0,
+   "flags": 0,
+   "volume": 1,
+   "balance": 0.5,
+   "enabled": true,
+   "muted": false,
+   "hotkeys": {},
+   "private_settings": {},
+   "canvas_uuid": "6c69626f-6273-4c00-9d88-c5136d61696e"
+  },
+  {
+   "prev_ver": 537001986,
+   "name": "Privacy",
+   "uuid": "fdacae81-b8ae-5f0f-b47f-c0c0391885da",
+   "id": "scene",
+   "versioned_id": "scene",
+   "settings": {
+    "id_counter": 7,
+    "custom_size": false,
+    "items": [
+     {
+      "name": "Card privacy",
+      "source_uuid": "e5e02719-84dc-5f96-95c1-4e9955da8f1c",
+      "visible": true,
+      "locked": true,
+      "rot": 0,
+      "scale_ref": {
+       "x": 2560,
+       "y": 1440
+      },
+      "align": 5,
+      "bounds_type": 0,
+      "bounds_align": 0,
+      "bounds_crop": false,
+      "crop_left": 0,
+      "crop_top": 0,
+      "crop_right": 0,
+      "crop_bottom": 0,
+      "id": 1,
+      "group_item_backup": false,
+      "pos": {
+       "x": 0,
+       "y": 0
+      },
+      "pos_rel": {
+       "x": -1.7777777777777777,
+       "y": -1
+      },
+      "scale": {
+       "x": 1,
+       "y": 1
+      },
+      "scale_rel": {
+       "x": 1,
+       "y": 1
+      },
+      "bounds": {
+       "x": 0,
+       "y": 0
+      },
+      "bounds_rel": {
+       "x": 0,
+       "y": 0
+      },
+      "scale_filter": "lanczos",
+      "blend_method": "default",
+      "blend_type": "normal",
+      "private_settings": {}
+     },
+     {
+      "name": "Card pulse 0",
+      "source_uuid": "a6eea586-0a71-5dbb-b84c-43f821585825",
+      "visible": true,
+      "locked": true,
+      "rot": 0,
+      "scale_ref": {
+       "x": 2560,
+       "y": 1440
+      },
+      "align": 5,
+      "bounds_type": 0,
+      "bounds_align": 0,
+      "bounds_crop": false,
+      "crop_left": 0,
+      "crop_top": 0,
+      "crop_right": 0,
+      "crop_bottom": 0,
+      "id": 2,
+      "group_item_backup": false,
+      "pos": {
+       "x": 0,
+       "y": 0
+      },
+      "pos_rel": {
+       "x": -1.7777777777777777,
+       "y": -1
+      },
+      "scale": {
+       "x": 1,
+       "y": 1
+      },
+      "scale_rel": {
+       "x": 1,
+       "y": 1
+      },
+      "bounds": {
+       "x": 0,
+       "y": 0
+      },
+      "bounds_rel": {
+       "x": 0,
+       "y": 0
+      },
+      "scale_filter": "lanczos",
+      "blend_method": "default",
+      "blend_type": "normal",
+      "private_settings": {}
+     },
+     {
+      "name": "Card pulse 1",
+      "source_uuid": "70326cd3-e04e-5954-842d-c4b1506cccda",
+      "visible": true,
+      "locked": true,
+      "rot": 0,
+      "scale_ref": {
+       "x": 2560,
+       "y": 1440
+      },
+      "align": 5,
+      "bounds_type": 0,
+      "bounds_align": 0,
+      "bounds_crop": false,
+      "crop_left": 0,
+      "crop_top": 0,
+      "crop_right": 0,
+      "crop_bottom": 0,
+      "id": 3,
+      "group_item_backup": false,
+      "pos": {
+       "x": 0,
+       "y": 0
+      },
+      "pos_rel": {
+       "x": -1.7777777777777777,
+       "y": -1
+      },
+      "scale": {
+       "x": 1,
+       "y": 1
+      },
+      "scale_rel": {
+       "x": 1,
+       "y": 1
+      },
+      "bounds": {
+       "x": 0,
+       "y": 0
+      },
+      "bounds_rel": {
+       "x": 0,
+       "y": 0
+      },
+      "scale_filter": "lanczos",
+      "blend_method": "default",
+      "blend_type": "normal",
+      "private_settings": {}
+     },
+     {
+      "name": "Card pulse 2",
+      "source_uuid": "dd9304aa-9169-5182-9359-8f7f5d2c1175",
+      "visible": true,
+      "locked": true,
+      "rot": 0,
+      "scale_ref": {
+       "x": 2560,
+       "y": 1440
+      },
+      "align": 5,
+      "bounds_type": 0,
+      "bounds_align": 0,
+      "bounds_crop": false,
+      "crop_left": 0,
+      "crop_top": 0,
+      "crop_right": 0,
+      "crop_bottom": 0,
+      "id": 4,
+      "group_item_backup": false,
+      "pos": {
+       "x": 0,
+       "y": 0
+      },
+      "pos_rel": {
+       "x": -1.7777777777777777,
+       "y": -1
+      },
+      "scale": {
+       "x": 1,
+       "y": 1
+      },
+      "scale_rel": {
+       "x": 1,
+       "y": 1
+      },
+      "bounds": {
+       "x": 0,
+       "y": 0
+      },
+      "bounds_rel": {
+       "x": 0,
+       "y": 0
+      },
+      "scale_filter": "lanczos",
+      "blend_method": "default",
+      "blend_type": "normal",
+      "private_settings": {}
+     },
+     {
+      "name": "Card pulse 3",
+      "source_uuid": "c2605601-f8ad-5c47-97f1-6ef47d3e5980",
+      "visible": true,
+      "locked": true,
+      "rot": 0,
+      "scale_ref": {
+       "x": 2560,
+       "y": 1440
+      },
+      "align": 5,
+      "bounds_type": 0,
+      "bounds_align": 0,
+      "bounds_crop": false,
+      "crop_left": 0,
+      "crop_top": 0,
+      "crop_right": 0,
+      "crop_bottom": 0,
+      "id": 5,
+      "group_item_backup": false,
+      "pos": {
+       "x": 0,
+       "y": 0
+      },
+      "pos_rel": {
+       "x": -1.7777777777777777,
+       "y": -1
+      },
+      "scale": {
+       "x": 1,
+       "y": 1
+      },
+      "scale_rel": {
+       "x": 1,
+       "y": 1
+      },
+      "bounds": {
+       "x": 0,
+       "y": 0
+      },
+      "bounds_rel": {
+       "x": 0,
+       "y": 0
+      },
+      "scale_filter": "lanczos",
+      "blend_method": "default",
+      "blend_type": "normal",
+      "private_settings": {}
+     },
+     {
+      "name": "Card pulse 4",
+      "source_uuid": "0e91e660-c8d0-587f-86cf-81f3cfa1fccd",
+      "visible": true,
+      "locked": true,
+      "rot": 0,
+      "scale_ref": {
+       "x": 2560,
+       "y": 1440
+      },
+      "align": 5,
+      "bounds_type": 0,
+      "bounds_align": 0,
+      "bounds_crop": false,
+      "crop_left": 0,
+      "crop_top": 0,
+      "crop_right": 0,
+      "crop_bottom": 0,
+      "id": 6,
+      "group_item_backup": false,
+      "pos": {
+       "x": 0,
+       "y": 0
+      },
+      "pos_rel": {
+       "x": -1.7777777777777777,
+       "y": -1
+      },
+      "scale": {
+       "x": 1,
+       "y": 1
+      },
+      "scale_rel": {
+       "x": 1,
+       "y": 1
+      },
+      "bounds": {
+       "x": 0,
+       "y": 0
+      },
+      "bounds_rel": {
+       "x": 0,
+       "y": 0
+      },
+      "scale_filter": "lanczos",
+      "blend_method": "default",
+      "blend_type": "normal",
+      "private_settings": {}
+     },
+     {
+      "name": "Card pulse 5",
+      "source_uuid": "be3b6429-8771-56ea-9eb1-2ea48a5b32d7",
+      "visible": true,
+      "locked": true,
+      "rot": 0,
+      "scale_ref": {
+       "x": 2560,
+       "y": 1440
+      },
+      "align": 5,
+      "bounds_type": 0,
+      "bounds_align": 0,
+      "bounds_crop": false,
+      "crop_left": 0,
+      "crop_top": 0,
+      "crop_right": 0,
+      "crop_bottom": 0,
+      "id": 7,
+      "group_item_backup": false,
+      "pos": {
+       "x": 0,
+       "y": 0
+      },
+      "pos_rel": {
+       "x": -1.7777777777777777,
+       "y": -1
+      },
+      "scale": {
+       "x": 1,
+       "y": 1
+      },
+      "scale_rel": {
+       "x": 1,
+       "y": 1
+      },
+      "bounds": {
+       "x": 0,
+       "y": 0
+      },
+      "bounds_rel": {
+       "x": 0,
+       "y": 0
+      },
+      "scale_filter": "lanczos",
+      "blend_method": "default",
+      "blend_type": "normal",
+      "private_settings": {}
+     }
+    ]
+   },
+   "mixers": 0,
+   "sync": 0,
+   "flags": 0,
+   "volume": 1,
+   "balance": 0.5,
+   "enabled": true,
+   "muted": false,
+   "hotkeys": {},
+   "private_settings": {},
+   "canvas_uuid": "6c69626f-6273-4c00-9d88-c5136d61696e"
+  }
+ ],
+ "groups": [],
+ "quick_transitions": [
+  {
+   "name": "Cut",
+   "duration": 300,
+   "hotkeys": [],
+   "id": 1,
+   "fade_to_black": false
+  },
+  {
+   "name": "Fade",
+   "duration": 300,
+   "hotkeys": [],
+   "id": 2,
+   "fade_to_black": false
+  },
+  {
+   "name": "Fade",
+   "duration": 300,
+   "hotkeys": [],
+   "id": 3,
+   "fade_to_black": true
+  }
+ ],
+ "transitions": [],
+ "current_transition": "Fade",
+ "transition_duration": 300,
+ "saved_projectors": [],
+ "canvases": [],
+ "modules": {
+  "scripts-tool": [
+   {
+    "path": "$HOME/.local/libexec/dotfiles/obs-scene/omarchy-scene.lua",
+    "settings": {}
+   }
+  ]
+ },
+ "resolution": {
+  "x": 2560,
+  "y": 1440
+ },
+ "version": 2
+}

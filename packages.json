@@ -199,5 +199,43 @@
 			"Vencord settings, including enabledThemes, ~/.config/Vencord/settings/quickCss.css, and ~/.config/Vencord/dist remain client-owned and in place",
 			"Only the newest ~/.config/discord/app-* directory is unpatched; older app-* directories keep any Vencord patch"
 		]
+	}, {
+		"name": "obs-theme",
+		"path": "config/obs-theme",
+		"description": "OBS Studio theme that follows the Omarchy theme and font",
+		"dependencies": [],
+		"arch_packages": ["obs-studio"],
+		"prerequisites": [],
+		"validators": [
+			"bash -n \"$HOME/.config/omarchy/hooks/theme-set.d/obs-theme\"",
+			"bash -n \"$HOME/.config/omarchy/hooks/font-set.d/obs-theme\""
+		],
+		"documentation": "docs/obs.md",
+		"cleanup": [
+			"AutoReload=true remains in ~/.config/obs-studio/user.ini",
+			"Arch package obs-studio remains installed",
+			"The stale rendered obs-omarchy.ovt stays in Omarchy's theme state until the next omarchy theme set",
+			"Copied OBS profiles and scene collections belong to OBS and are left untouched"
+		]
+	}, {
+		"name": "obs-scene",
+		"path": "config/obs-scene",
+		"description": "TUI-styled OBS scene assets that follow the Omarchy theme and font",
+		"dependencies": ["obs-theme"],
+		"arch_packages": ["obs-studio", "obs-studio-plugin-browser", "imagemagick", "bun"],
+		"aur_packages": ["obs-backgroundremoval"],
+		"prerequisites": [],
+		"validators": [
+			"bash -n \"$HOME/.config/omarchy/hooks/theme-set.d/obs-scene\"",
+			"bash -n \"$HOME/.config/omarchy/hooks/font-set.d/obs-scene\"",
+			"luajit -bl \"$HOME/.local/libexec/dotfiles/obs-scene/omarchy-scene.lua\" /dev/null"
+		],
+		"documentation": "docs/obs.md",
+		"cleanup": [
+			"The copied Omarchy Scene collection stays in OBS and shows missing images and a missing script until you delete it in OBS",
+			"title.txt was deleted with ~/.config/obs-studio/omarchy-scene/",
+			"The avatar source image ~/.config/dotfiles/obs-avatar.jpg was left in place",
+			"Packages obs-backgroundremoval, obs-studio-plugin-browser, imagemagick, bun and obs-studio remain installed"
+		]
 	}]
 }

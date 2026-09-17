@@ -1,6 +1,6 @@
 # Dotfiles
 
-Portable dotfiles for Omarchy version 4. GNU Stow links tracked configuration into the user's home directory. The Dotfiles wizard manages prerequisites, pinned global agent skills, application cleanup, optional application installation, Stow packages, repository wallpapers, the Shell layout, the optional shared Brave configuration, optional laptop power policy, Telegram Desktop's optional Omarchy theme integration, Discord's optional system24 theme integration, and selective active-theme Omarchy screensaver effects.
+Portable dotfiles for Omarchy version 4. GNU Stow links tracked configuration into the user's home directory. The Dotfiles wizard manages prerequisites, pinned global agent skills, application cleanup, optional application installation, Stow packages, repository wallpapers, the Shell layout, the optional shared Brave configuration, optional laptop power policy, Telegram Desktop's optional Omarchy theme integration, Discord's optional system24 theme integration, OBS Studio's optional Omarchy theme, scene and machine sets, and selective active-theme Omarchy screensaver effects.
 
 ## Requirements
 
@@ -29,6 +29,8 @@ The `claude` Stow package owns Claude Code user settings, including the claude-h
 The `discord` Stow package owns the Discord desktop client's local settings and no account data. Its package plan installs `discord` through Omarchy after confirmation.
 
 The `discord-system24` Stow package applies the system24 theme to Discord through Vencord and supports Omarchy 4.0. It was tested with Omarchy `4.0.3-1`, `discord` `1:1.0.156-1`, and `vencord-installer-cli-bin` `1.4.0-3`. It depends on the `discord` package. Its package plan installs the AUR package `vencord-installer-cli-bin` through Omarchy after confirmation. That package supplies the `vencordinstallercli` command, which the patch action and the removal both require. Discord requires network access to load the theme, because the theme imports system24 from `refact0r.github.io`.
+
+The `obs-theme` and `obs-scene` Stow packages and the `Install OBS set` action support Omarchy 4.0 and OBS Studio 32.2. They were tested with Omarchy `4.0.3-1`, the native Arch `obs-studio` `32.2.2-1`, `obs-studio-plugin-browser` with CEF 151, the AUR package `obs-backgroundremoval` `1.4.1`, `imagemagick` `7.1.2.31-1` and `bun` `1.4.0-1`. The `obs-theme` plan installs `obs-studio` through Omarchy after confirmation. The `obs-scene` plan also installs `obs-studio-plugin-browser`, `imagemagick` and `bun`, and the AUR package `obs-backgroundremoval`. `Install OBS set` requires the `obs` command, `ffmpeg` and a VAAPI render node at `/dev/dri/renderD128`, and installs nothing. The optional camera-off avatar needs a portrait image that you place yourself; see the OBS guide.
 
 The `telegram-theme` Stow package supports Omarchy 4.0 and Telegram Desktop 7.2. It was tested with Omarchy `4.0.3-1` and Telegram Desktop `7.2.5-1`. It requires Node.js 22.20.0 or newer, `zip`, `flock`, and writable absolute XDG state and runtime directories. The package plan installs `telegram-desktop` and `zip` through Omarchy after confirmation.
 
@@ -71,7 +73,7 @@ cd dotfiles
 make
 ```
 
-Choose `Guided setup` to prepare prerequisites, install pinned global agent skills, clean up Omarchy applications, install selected optional applications, apply Stow packages, and deploy the Wallpaper library. The optional Brave policy is phase 7, followed by the optional laptop power policy as phase 8.
+Choose `Guided setup` to prepare prerequisites, install pinned global agent skills, clean up Omarchy applications, install selected optional applications, apply Stow packages, and deploy the Wallpaper library. The optional Brave policy is phase 7, followed by the optional laptop power policy as phase 8 and an optional OBS machine set as phase 9.
 
 Choose `Install optional applications` or run `make applications`. The picker starts empty. For a nonempty selection, the wizard shows package names, sources, and installation status in one plan. It blocks installed conflicts and asks once before installing and verifying each package. The catalog does not own application configuration or state.
 
@@ -84,6 +86,8 @@ Choose `Manage laptop power policy` for `Status`, `Apply`, `Remove`, and recover
 Choose `Apply Shell layout` to move Omarchy's keyboard layout indicator to the start of the bar's right side, just before the system tray. Omarchy owns `~/.config/omarchy/shell.json` and rewrites it itself, so the action goes through `omarchy bar move` instead of linking the file. You can also run `bin/dotfiles --action shell-layout`.
 
 Choose `Patch Discord with Vencord` to patch the newest `~/.config/discord/app-*` directory after you confirm the command. Applying the `discord-system24` package does not patch Discord, and each Discord self-update requires the action again.
+
+Choose `Install OBS set` to copy this machine's OBS profile and the Omarchy scene into OBS. Close OBS first.
 
 Choose `Apply Stow packages` and select `screensaver-effects` to link and activate the selective screensaver integration. After activation, run `make screensaver-effects` to change the tracked allowlist or preview an installed mapped effect. The manager requires terminal input and output.
 
@@ -101,6 +105,9 @@ Place candidate images in `wallpapers/inbox/`, then choose `Manage wallpapers` o
 - `config/screensaver-effects/`: tracked allowlist, Omarchy plugin clones, launcher, runtime shim, and selector
 - `config/discord-system24/`: Omarchy system24 theme template and the Vencord publication hooks
 - `config/hyprland/`: complete Hyprland user configuration, including US and Russian keyboard layouts
+- `config/obs-theme/`: OBS theme template and the Omarchy publication hooks
+- `config/obs-scene/`: OBS scene generator, Lua scene script and render hooks
+- `obs/sets/`: OBS machine sets, each with its profiles and scene collection
 - `wallpapers/inbox/`: ignored Intake images awaiting review
 - `wallpapers/library/`: tracked Managed wallpapers grouped by Theme assignment
 - `packages.json`: package catalog
@@ -135,6 +142,7 @@ bash tests/opencode_test.sh
 - [OpenCode](docs/opencode.md)
 - [Telegram Desktop theme integration](docs/telegram-theme.md)
 - [Discord system24 theme integration](docs/discord-system24.md)
+- [OBS Studio integration](docs/obs.md)
 - [Selective screensaver effects](docs/screensaver-effects.md)
 - [ZTE USB modem recovery](docs/usb-modem.md)
 - [Application cleanup](docs/cleanup.md)

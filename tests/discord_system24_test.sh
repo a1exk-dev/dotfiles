@@ -126,14 +126,15 @@ test_catalog_entry_is_appended_with_the_approved_fields() {
 	local catalog=$FIXTURE_REPO/packages.json
 	local hooks='$HOME/.config/omarchy/hooks'
 
-	assert_eq '["hyprland","claude","discord","discord-system24"]' "$(jq -c '[.packages[-4:][].name]' "$catalog")" \
+	assert_eq '["hyprland","claude","discord","discord-system24"]' \
+		"$(jq -c '[.packages[].name] | .[index("hyprland"):index("discord-system24") + 1]' "$catalog")" \
 		'discord-system24 should follow every earlier entry so their wizard numbers stay stable' || return 1
 	assert_eq '{"path":"config/discord-system24","dependencies":["discord"],"arch_packages":[],"aur_packages":["vencord-installer-cli-bin"],"documentation":"docs/discord-system24.md"}' \
-		"$(jq -c '.packages[-1] | {path, dependencies, arch_packages, aur_packages, documentation}' "$catalog")" \
+		"$(jq -c '.packages[] | select(.name == "discord-system24") | {path, dependencies, arch_packages, aur_packages, documentation}' "$catalog")" \
 		'the discord-system24 entry should declare the approved fields' || return 1
 	assert_eq "bash -n \"$hooks/theme-set.d/discord-system24\""$'\n'"bash -n \"$hooks/font-set.d/discord-system24\"" \
-		"$(jq -r '.packages[-1].validators[]' "$catalog")" 'the validators should run bash -n on both hooks' || return 1
-	assert_contains "$(jq -r '.packages[-1].cleanup[]' "$catalog")" 'vencord-installer-cli-bin' \
+		"$(jq -r '.packages[] | select(.name == "discord-system24") | .validators[]' "$catalog")" 'the validators should run bash -n on both hooks' || return 1
+	assert_contains "$(jq -r '.packages[] | select(.name == "discord-system24") | .cleanup[]' "$catalog")" 'vencord-installer-cli-bin' \
 		'cleanup notes should say the Vencord installer stays installed'
 }
 
