@@ -34,6 +34,7 @@ readonly SUITES=(
 	wallpaper_curation_test.sh
 	wallpaper_lifecycle_test.sh
 	shell_layout_test.sh
+	voxtype_test.sh
 	wizard_test.sh
 )
 

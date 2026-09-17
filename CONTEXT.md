@@ -60,6 +60,10 @@ The `obs-scene` Stow package, which depends on OBS theme integration, that rende
 
 A repository-tracked bundle under `obs/sets/<set>/` of one machine's OBS profiles and its generated `Omarchy Scene` collection with the `geometry.json` that drives the scene render. `Install OBS set` copies a set into OBS instead of linking it, because OBS rewrites those files; once copied, the profiles and collection belong to OBS, with no receipt and no Remove. Sets are chosen by the human and never coupled to the hostname.
 
+## Voxtype profile
+
+One tracked Voxtype configuration file in the `voxtype` Stow package, named for the machine it configures (`pc` or `laptop`). The package links every profile into `~/.config/dotfiles/voxtype/` and changes no active configuration. The `Select Voxtype profile` action owns one link, `~/.config/voxtype/config.toml`, and points it at the profile the human chooses, so the machine is never inferred from its hostname. Voxtype owns everything else below `~/.config/voxtype/`, and the installed executable variant that selects CPU or GPU acceleration stays outside this boundary.
+
 ## Screensaver effect allowlist
 
 The repository-owned nonempty set of verified `ttfx` effects available to the selective Omarchy screensaver integration. One member fixes the effect; several members are sampled independently and uniformly at each effect start. Members may have Full or Partial active-theme mappings, while effects without a verified mapping remain outside the allowlist.

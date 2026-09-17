@@ -1,6 +1,6 @@
 .DEFAULT_GOAL := wizard
 
-.PHONY: wizard applications skills skills-update wallpapers screensaver-effects test
+.PHONY: wizard applications skills skills-update wallpapers screensaver-effects voxtype voxtype-gpu test
 wizard:
 	@./bin/dotfiles
 
@@ -18,6 +18,14 @@ wallpapers:
 
 screensaver-effects:
 	@./bin/dotfiles --action screensaver-effects
+
+voxtype:
+	@./bin/dotfiles --action voxtype-profile
+
+voxtype-gpu:
+	@sudo voxtype setup gpu --enable
+	@systemctl --user restart voxtype
+	@voxtype info accel
 
 test:
 	@./tests/run.sh

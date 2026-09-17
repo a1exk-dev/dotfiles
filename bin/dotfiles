@@ -34,6 +34,8 @@ source "$DOTFILES_ENTRY_ROOT/lib/dotfiles/discord-system24.sh"
 source "$DOTFILES_ENTRY_ROOT/lib/dotfiles/obs.sh"
 # shellcheck source=../lib/dotfiles/obs-set.sh
 source "$DOTFILES_ENTRY_ROOT/lib/dotfiles/obs-set.sh"
+# shellcheck source=../lib/dotfiles/voxtype.sh
+source "$DOTFILES_ENTRY_ROOT/lib/dotfiles/voxtype.sh"
 # shellcheck source=../lib/dotfiles/wizard.sh
 source "$DOTFILES_ENTRY_ROOT/lib/dotfiles/wizard.sh"
 
@@ -45,7 +47,7 @@ elif (($# == 3 || $# == 4)) && [[ $1 == --action && $2 == obs-set && ${4---force
 	wizard_run_action obs-set "${@:3}"
 else
 	printf '%s\n' \
-		'Usage: bin/dotfiles [--action <guided|status|check|apply|migrate|remove|prerequisites|cleanup|applications|skills|skills-update|modem|brave|telegram-theme|wallpapers|wallpapers-apply|wallpapers-remove|shell-layout|screensaver-effects|screensaver-effects-migrate|power-policy|discord-patch|obs-set|obs-diagnose>]' \
+		'Usage: bin/dotfiles [--action <guided|status|check|apply|migrate|remove|prerequisites|cleanup|applications|skills|skills-update|modem|brave|telegram-theme|wallpapers|wallpapers-apply|wallpapers-remove|shell-layout|screensaver-effects|screensaver-effects-migrate|power-policy|discord-patch|obs-set|obs-diagnose|voxtype-profile>]' \
 		'  wallpapers: curate the repository Wallpaper library' \
 		'  wallpapers-apply: deploy the Wallpaper library' \
 		'  wallpapers-remove: remove receipt-owned deployed wallpapers' \
@@ -54,6 +56,7 @@ else
 		'  screensaver-effects-migrate: migrate competing Omarchy idle or Indicators clones' \
 		'  discord-patch: patch the newest Discord app directory with Vencord' \
 		'  obs-set [set [--force]]: copy an OBS machine set from obs/sets/ into OBS; --force replaces existing items after a backup' \
-		'  obs-diagnose: report the display and encoder facts an OBS machine set needs' >&2
+		'  obs-diagnose: report the display and encoder facts an OBS machine set needs' \
+		'  voxtype-profile: point ~/.config/voxtype/config.toml at a tracked pc or laptop profile' >&2
 	exit 2
 fi

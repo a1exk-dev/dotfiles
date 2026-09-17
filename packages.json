@@ -237,5 +237,21 @@
 			"The avatar portrait is unlinked with the package, and any portrait you put at ~/.config/dotfiles/obs-avatar.jpg yourself is left in place",
 			"Packages obs-backgroundremoval, obs-studio-plugin-browser, imagemagick, bun and obs-studio remain installed"
 		]
+	}, {
+		"name": "voxtype",
+		"path": "config/voxtype",
+		"description": "Tracked Voxtype pc and laptop configuration profiles",
+		"dependencies": [],
+		"arch_packages": [],
+		"prerequisites": ["/usr/bin/voxtype"],
+		"validators": [
+			"voxtype -c \"$HOME/.config/dotfiles/voxtype/pc.toml\" config get engine >/dev/null",
+			"voxtype -c \"$HOME/.config/dotfiles/voxtype/laptop.toml\" config get engine >/dev/null"
+		],
+		"documentation": "docs/voxtype.md",
+		"cleanup": [
+			"A selected profile leaves ~/.config/voxtype/config.toml as a broken link to the unlinked profile; delete that link, or apply the package and choose Select Voxtype profile again",
+			"Voxtype itself, its models and its runtime state below ~/.config/voxtype/ and ~/.local/share/voxtype/ are left in place"
+		]
 	}]
 }
