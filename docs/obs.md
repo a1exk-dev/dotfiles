@@ -37,6 +37,8 @@ After it links the package, the apply step changes two keys in `~/.config/obs-st
 
 Then run `omarchy theme set` once, so the hook writes `Omarchy.ovt`, and start OBS. OBS finds a new theme file only when it starts.
 
+`Omarchy.ovt` extends the stock Yami theme, so OBS treats it as a variant. In **Settings → Appearance**, the **Theme** list shows `Yami` and the **Variant** list shows `Omarchy`. The **Theme** list has no `Omarchy` entry.
+
 ### Following the theme
 
 With both keys set, a running OBS changes colour about a second after `omarchy theme set` or `omarchy font set`, and you don't need to restart it.
