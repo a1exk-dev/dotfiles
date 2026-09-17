@@ -89,6 +89,8 @@ Choose `Patch Discord with Vencord` to patch the newest `~/.config/discord/app-*
 
 Choose `Install OBS set` to copy this machine's OBS profile and the Omarchy scene into OBS. Close OBS first.
 
+Choose `Diagnose OBS machine` to report this machine's display geometry and working VAAPI encoders, which is what a new OBS machine set needs.
+
 Choose `Apply Stow packages` and select `screensaver-effects` to link and activate the selective screensaver integration. After activation, run `make screensaver-effects` to change the tracked allowlist or preview an installed mapped effect. The manager requires terminal input and output.
 
 Place candidate images in `wallpapers/inbox/`, then choose `Manage wallpapers` or run `make wallpapers`. The manager validates each Intake image, adds its Theme assignments under `wallpapers/library/`, and creates one Git commit for new assignment paths. The commit subject is `Add managed wallpaper <digest-prefix>`. If every assignment is already in Git, Add removes the duplicate Intake image without creating an empty commit. Choose `Apply wallpapers` to deploy the library as regular Omarchy background files. Choose `Remove deployed wallpapers` to remove unchanged receipt-owned copies.

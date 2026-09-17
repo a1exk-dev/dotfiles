@@ -300,7 +300,7 @@ wizard() {
 		labels+=('Migrate competing screensaver clones')
 		actions+=(screensaver-effects-migrate)
 	fi
-	labels+=('Manage screensaver effects' 'Manage laptop power policy' 'Patch Discord with Vencord' 'Install OBS set' 'Diagnose OBS machine (temporary)' 'Exit')
+	labels+=('Manage screensaver effects' 'Manage laptop power policy' 'Patch Discord with Vencord' 'Install OBS set' 'Diagnose OBS machine' 'Exit')
 	actions+=(screensaver-effects power-policy discord-patch obs-set obs-diagnose exit)
 	if ! choice=$(wizard_choose 'Choose an action (none selected by default)' "${labels[@]}"); then
 		printf 'No action selected.\n'

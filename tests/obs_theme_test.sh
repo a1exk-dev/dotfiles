@@ -436,7 +436,19 @@ test_apply_skips_the_step_before_obs_first_ran() {
 	assert_contains "$COMMAND_OUTPUT" 'Start and close OBS once' 'apply should say how to create user.ini'
 }
 
+# The wizard version gates can be switched off in core.sh, which removes the
+# consent prompts these checks assert.
+version_gates_disabled() {
+	grep -Fxq 'readonly DOTFILES_VERSION_CHECKS_DISABLED=true' "$SOURCE_REPO/lib/dotfiles/core.sh"
+}
+
+skip_without_version_gates() {
+	version_gates_disabled || return 1
+	printf '  notice: wizard version gates are disabled in core.sh; skipped %s\n' "$1" >&2
+}
+
 test_apply_asks_for_consent_outside_the_obs_series() {
+	skip_without_version_gates 'the OBS consent check' && return 0
 	setup_obs_apply_fixture || return 1
 	write_user_ini '[Appearance]' 'Theme=com.obsproject.Yami'
 	set_obs_version 33.0.1

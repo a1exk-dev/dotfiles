@@ -297,7 +297,19 @@ test_install_refuses_while_obs_runs() {
 	assert_no_changes "$before" 'running OBS'
 }
 
+# The wizard version gates can be switched off in core.sh, which removes the
+# consent prompts these checks assert.
+version_gates_disabled() {
+	grep -Fxq 'readonly DOTFILES_VERSION_CHECKS_DISABLED=true' "$SOURCE_REPO/lib/dotfiles/core.sh"
+}
+
+skip_without_version_gates() {
+	version_gates_disabled || return 1
+	printf '  notice: wizard version gates are disabled in core.sh; skipped %s\n' "$1" >&2
+}
+
 test_install_asks_for_consent_outside_the_version_series() {
+	skip_without_version_gates 'the OBS and Omarchy consent checks' && return 0
 	setup_set_fixture || return 1
 	set_obs_version 33.0.1
 	local before=$(obs_tree)
@@ -413,7 +425,6 @@ test_install_rejects_an_unknown_set() {
 	assert_contains "$COMMAND_OUTPUT" 'unknown OBS machine set: studio' 'the unknown set is named'
 }
 
-# TEMPORARY with the obs-diagnose action.
 test_diagnose_reports_display_geometry_and_trial_encodes() {
 	new_fixture || return 1
 	set_obs_version 32.2.2
@@ -446,5 +457,5 @@ run_test test_install_skips_existing_items_unless_forced_with_a_backup 'Install 
 run_test test_install_leaves_no_partial_copy_when_a_copy_fails 'Install OBS set leaves no partial copy when a copy fails'
 run_test test_install_offers_the_sets_and_writes_no_receipt 'Install OBS set offers the sets and writes no receipt'
 run_test test_install_rejects_an_unknown_set 'Install OBS set rejects an unknown set'
-run_test test_diagnose_reports_display_geometry_and_trial_encodes 'temporary OBS diagnosis reports display geometry and trial encodes'
+run_test test_diagnose_reports_display_geometry_and_trial_encodes 'OBS diagnosis reports display geometry and trial encodes'
 finish_tests

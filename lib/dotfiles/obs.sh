@@ -193,9 +193,8 @@ obs_trial_encode() {
 		-f lavfi -i color=black:s=256x256:r=1 -frames:v 1 -vf format=nv12,hwupload -c:v "$1" -f null - >/dev/null 2>&1
 }
 
-# TEMPORARY: collects the display and encoder facts an OBS machine set needs,
-# so the pc set can be filled in from the PC. Remove this action once the pc
-# set is complete.
+# Collects the display and encoder facts a new OBS machine set needs, so a set
+# can be written from the machine it targets.
 obs_diagnose_machine() {
 	local report encoder
 	report=${XDG_STATE_HOME:-$HOME/.local/state}/dotfiles/obs-diagnosis.txt
