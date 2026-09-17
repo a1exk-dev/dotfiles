@@ -329,14 +329,17 @@ test_catalog_entry_follows_obs_theme_with_the_approved_fields() {
 
 test_package_tracks_exactly_the_generator_script_and_hooks() {
 	new_fixture || return 1
-	local package=$FIXTURE_REPO/$OBS_SCENE_PACKAGE expected
+	local package=$FIXTURE_REPO/$OBS_SCENE_PACKAGE expected tracked_hash
 	expected=$(printf '%s\n' \
 		"$package/$OBS_SCENE_LIBEXEC/generate.ts" \
 		"$package/$OBS_SCENE_LIBEXEC/omarchy-scene.lua" \
+		"$package/.config/dotfiles/obs-avatar.jpg" \
 		"$package/.config/omarchy/hooks/font-set.d/obs-scene" \
 		"$package/.config/omarchy/hooks/theme-set.d/obs-scene" | sort)
 	assert_eq "$expected" "$(find "$package" \( -type f -o -type l \) -print | sort)" \
-		'the package should track only the generator, the Lua script and both hooks' || return 1
+		'the package should track the generator, the Lua script, the portrait and both hooks' || return 1
+	read -r tracked_hash _ < <(sha256sum "$package/.config/dotfiles/obs-avatar.jpg")
+	assert_eq "$PINNED_AVATAR_SHA256" "$tracked_hash" 'the tracked portrait should be the pinned image' || return 1
 	assert_eq "$package/.config/omarchy/hooks/theme-set.d/obs-scene" \
 		"$(readlink -f "$package/.config/omarchy/hooks/font-set.d/obs-scene")" \
 		'the font-set hook should run the same render'
@@ -355,12 +358,15 @@ setup_scene_package_fixture() {
 	assert_contains "$COMMAND_OUTPUT" 'Package state: obs-scene: succeeded' 'apply should link obs-scene' || return 1
 	SCENE_OUTPUT=$FIXTURE_CONFIG/obs-studio/omarchy-scene
 	SCENE_COLLECTION=$FIXTURE_CONFIG/obs-studio/basic/scenes/Omarchy_Scene.json
-	SCENE_AVATAR=$FIXTURE_CONFIG/dotfiles/obs-avatar.jpg
-	mkdir -p "$SCENE_OUTPUT" "${SCENE_COLLECTION%/*}" "${SCENE_AVATAR%/*}" || return 1
+	SCENE_AVATAR=$FIXTURE_HOME/.config/dotfiles/obs-avatar.jpg
+	mkdir -p "$SCENE_OUTPUT" "${SCENE_COLLECTION%/*}" || return 1
 	printf '%s\n' "$LAPTOP_GEOMETRY" >"$SCENE_OUTPUT/geometry.json"
 	printf 'my episode\n' >"$SCENE_OUTPUT/title.txt"
 	printf '{}\n' >"$SCENE_COLLECTION"
-	printf 'image\n' >"$SCENE_AVATAR"
+	[[ -L $SCENE_AVATAR ]] || {
+		printf '  apply should link the tracked portrait to %s\n' "$SCENE_AVATAR" >&2
+		return 1
+	}
 }
 
 test_remove_is_blocked_while_obs_runs() {
@@ -381,16 +387,17 @@ test_remove_deletes_the_scene_folder_and_keeps_the_collection_and_image() {
 	assert_eq 0 "$COMMAND_STATUS" "removal should succeed: $COMMAND_OUTPUT" || return 1
 	assert_path_absent "$SCENE_OUTPUT" 'removal should delete the scene folder' || return 1
 	assert_path_absent "$FIXTURE_HOME/.config/omarchy/hooks/theme-set.d/obs-scene" 'removal should unlink the package' || return 1
-	[[ -f $SCENE_COLLECTION && -f $SCENE_AVATAR ]] || {
-		printf '  removal must keep the collection and the avatar image\n' >&2
+	[[ -f $SCENE_COLLECTION ]] || {
+		printf '  removal must keep the copied collection\n' >&2
 		return 1
 	}
+	assert_path_absent "$SCENE_AVATAR" 'removal should unlink the tracked portrait' || return 1
 	[[ -L $FIXTURE_HOME/.config/omarchy/hooks/theme-set.d/obs-theme ]] || {
 		printf '  removal must keep obs-theme\n' >&2
 		return 1
 	}
 	local note
-	for note in 'missing images and a missing script' 'title.txt was deleted' '~/.config/dotfiles/obs-avatar.jpg' \
+	for note in 'missing images and a missing script' 'title.txt was deleted' 'portrait is unlinked' \
 		'obs-backgroundremoval' 'obs-studio-plugin-browser' 'imagemagick' 'bun' 'obs-studio remain installed'; do
 		assert_contains "$COMMAND_OUTPUT" "$note" 'removal should print every cleanup note' || return 1
 	done
@@ -403,7 +410,7 @@ readonly PINNED_AVATAR_SHA256=df58402f9dde4149751c0a6dae239169efb752cc567849431c
 # geometry the generator pins: a hood rim, glowing eyes, a window and a black
 # and a white patch of body colour on a grey sky.
 make_avatar_fixture() {
-	SCENE_AVATAR=$FIXTURE_CONFIG/dotfiles/obs-avatar.jpg
+	SCENE_AVATAR=$FIXTURE_HOME/.config/dotfiles/obs-avatar.jpg
 	mkdir -p "${SCENE_AVATAR%/*}" || return 1
 	magick -size 860x1229 xc:'#3c3c3c' \
 		-fill '#bc005e' -draw 'rectangle 250,200 270,580' -draw 'rectangle 570,200 590,580' \
@@ -540,7 +547,7 @@ run_test test_avatar_is_recoloured_on_a_dark_and_a_light_theme 'scene avatar is 
 run_test test_avatar_is_skipped_with_one_warning_when_the_image_is_missing_or_different 'scene avatar is skipped with one warning when the image is missing or different'
 run_test test_lua_script_exposes_the_avatar_tempo_setting 'scene Lua script exposes the avatar tempo setting'
 run_test test_catalog_entry_follows_obs_theme_with_the_approved_fields 'obs-scene catalog entry follows obs-theme with the approved fields'
-run_test test_package_tracks_exactly_the_generator_script_and_hooks 'obs-scene package tracks exactly the generator, script and hooks'
+run_test test_package_tracks_exactly_the_generator_script_and_hooks 'obs-scene package tracks the generator, script, portrait and hooks'
 run_test test_remove_is_blocked_while_obs_runs 'obs-scene removal is blocked while OBS runs'
-run_test test_remove_deletes_the_scene_folder_and_keeps_the_collection_and_image 'obs-scene removal deletes the scene folder and keeps the collection and image'
+run_test test_remove_deletes_the_scene_folder_and_keeps_the_collection_and_image 'obs-scene removal deletes the scene folder and unlinks the portrait'
 finish_tests

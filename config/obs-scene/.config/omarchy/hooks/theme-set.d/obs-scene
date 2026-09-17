@@ -13,7 +13,8 @@ readonly CONFIG_HOME="${XDG_CONFIG_HOME:-$HOME/.config}"
 readonly SCENE_DIR="$CONFIG_HOME/obs-studio/omarchy-scene"
 readonly GEOMETRY="$SCENE_DIR/geometry.json"
 readonly COLORS="$HOME/.local/state/omarchy/current/theme/colors.toml"
-readonly AVATAR="$CONFIG_HOME/dotfiles/obs-avatar.jpg"
+# Stow links the tracked portrait here; a portrait placed by hand lives here too.
+readonly AVATAR="$HOME/.config/dotfiles/obs-avatar.jpg"
 readonly PACKAGE_ROOT="$(readlink -f -- "$(dirname -- "$(readlink -f -- "${BASH_SOURCE[0]}")")/../../../..")"
 readonly GENERATOR="$PACKAGE_ROOT/.local/libexec/dotfiles/obs-scene/generate.ts"
 

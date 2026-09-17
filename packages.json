@@ -234,7 +234,7 @@
 		"cleanup": [
 			"The copied Omarchy Scene collection stays in OBS and shows missing images and a missing script until you delete it in OBS",
 			"title.txt was deleted with ~/.config/obs-studio/omarchy-scene/",
-			"The avatar source image ~/.config/dotfiles/obs-avatar.jpg was left in place",
+			"The avatar portrait is unlinked with the package, and any portrait you put at ~/.config/dotfiles/obs-avatar.jpg yourself is left in place",
 			"Packages obs-backgroundremoval, obs-studio-plugin-browser, imagemagick, bun and obs-studio remain installed"
 		]
 	}]

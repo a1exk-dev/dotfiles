@@ -100,13 +100,7 @@ The Camera source ships with no device. On each machine, open its properties and
 
 When the camera is off, the Stream and Full cam camera boxes show an animated avatar: a hooded figure that nods to a beat, with eyes that glow and blink. The avatar takes its colours from the Omarchy theme.
 
-The avatar is a pixel-art portrait made with [Craiyon](https://www.craiyon.com/). The repository does not include the image. To use the avatar, download the portrait, then save it on each machine as:
-
-```text
-~/.config/dotfiles/obs-avatar.jpg
-```
-
-The generator accepts only that exact image: its SHA-256 must be `df58402f9dde4149751c0a6dae239169efb752cc567849431c0836fd664dcf02`. The avatar's crop and animation are measured for that picture. If the file is missing or different, the hooks print one warning and skip the avatar, and the rest of the scene still renders.
+The avatar is a pixel-art portrait made with [Craiyon](https://www.craiyon.com/). The `obs-scene` package includes it and links it to `~/.config/dotfiles/obs-avatar.jpg`, so applying the package is all you need. If you replace that file with another picture, the hooks print one warning and skip the avatar, because the crop and the animation are measured for the shipped portrait. The rest of the scene still renders. Removing the package unlinks the portrait.
 
 The avatar shows when you hide the Camera item (the eye icon in the Sources list) or when the camera sends no picture, for example when it is unplugged or busy. It hides when the camera shows a picture. To change the nod speed, open **Tools → Scripts** and set **Avatar nod tempo (BPM)** between 40 and 200. The default is 90.
 
@@ -115,7 +109,7 @@ The avatar shows when you hide the Camera item (the eye icon in the Sources list
 Close OBS, select `Remove Stow package`, then select `obs-scene`. The removal is blocked while OBS runs. It deletes `~/.config/obs-studio/omarchy-scene/`, including `title.txt`, the avatar layers and the geometry file. These things stay:
 
 - the copied `Omarchy Scene` collection. It shows missing images and a missing script until you delete it in OBS.
-- `~/.config/dotfiles/obs-avatar.jpg`
+- any portrait you placed at `~/.config/dotfiles/obs-avatar.jpg` yourself, in place of the linked one
 - the `obs-backgroundremoval`, `obs-studio-plugin-browser`, `imagemagick`, `bun` and `obs-studio` packages
 
 ## Install OBS set
