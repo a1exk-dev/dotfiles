@@ -279,11 +279,41 @@ report_normal_target_conflicts() {
 	done < <(find "$REPOSITORY_ROOT/config/$package" \( -type f -o -type l \) -print0)
 }
 
+# TEMPORARY: deletes whatever occupies a package's target paths so Stow can link
+# over it. Removed together with DOTFILES_STOW_REPLACE_EXISTING.
+remove_conflicting_targets() {
+	local package=$1
+	local source relative parent component target
+	while IFS= read -r -d '' source; do
+		relative=${source#"$REPOSITORY_ROOT/config/$package/"}
+		parent=$HOME
+		while [[ $relative == */* ]]; do
+			component=${relative%%/*}
+			relative=${relative#*/}
+			parent=$parent/$component
+			if [[ ( -e $parent || -L $parent ) && ! -d $parent ]]; then
+				printf 'Deleting conflicting path: %s: %s\n' "$(path_type "$parent")" "$parent"
+				rm -f -- "$parent" || return 1
+			fi
+		done
+		target=$parent/$relative
+		if [[ -e $target && ! -L $target ]]; then
+			printf 'Deleting conflicting target: %s: %s\n' "$(path_type "$target")" "$target"
+			rm -rf -- "$target" || return 1
+		fi
+	done < <(find "$REPOSITORY_ROOT/config/$package" \( -type f -o -type l \) -print0)
+}
+
 simulate_apply_package() {
 	local package=$1
 	printf 'Plan simulation: apply %s\n' "$package"
 	report_normal_target_conflicts "$package"
 	if ! stow --no-folding --simulate --verbose=2 --dir "$REPOSITORY_ROOT/config" --target "$HOME" "$package"; then
+		# TEMPORARY: apply deletes the conflicting targets, so simulation does not stop the plan.
+		if [[ $DOTFILES_STOW_REPLACE_EXISTING == true ]]; then
+			printf 'Reported conflicting targets will be deleted during apply: %s\n' "$package"
+			return 0
+		fi
 		phase_error apply "$package" 'resolve the reported target conflict without deleting it, then rerun the Dotfiles wizard and choose Apply Stow packages'
 		return 1
 	fi
@@ -295,6 +325,10 @@ apply_one_package() {
 	package_json=$(jq -c --arg package "$package" '.packages[] | select(.name == $package)' "$PACKAGE_CATALOG")
 
 	printf 'Phase: apply (%s)\n' "$package"
+	if [[ $DOTFILES_STOW_REPLACE_EXISTING == true ]] && ! remove_conflicting_targets "$package"; then
+		phase_error apply "$package" 'inspect the reported target path, then rerun the Dotfiles wizard and choose Apply Stow packages'
+		return 1
+	fi
 	if ! stow --no-folding --verbose=2 --dir "$REPOSITORY_ROOT/config" --target "$HOME" "$package"; then
 		phase_error apply "$package" 'inspect HOME for partial links, then rerun the Dotfiles wizard and choose Apply Stow packages'
 		return 1

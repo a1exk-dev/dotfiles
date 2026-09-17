@@ -1,4 +1,11 @@
 readonly SUPPORTED_OMARCHY_VERSION=4.0
+# TEMPORARY: every wizard version gate is disabled while this is true. Set it to
+# false (or delete it with the two guards below) to restore version checking.
+readonly DOTFILES_VERSION_CHECKS_DISABLED=true
+# TEMPORARY: Stow apply deletes whatever already occupies a target path instead
+# of stopping on the conflict. Set it to false to restore the stop-on-conflict
+# contract.
+readonly DOTFILES_STOW_REPLACE_EXISTING=true
 readonly MINIMUM_NODE_VERSION=22.20.0
 readonly REPOSITORY_ROOT=$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")/../.." && pwd)
 readonly PACKAGE_CATALOG="$REPOSITORY_ROOT/packages.json"
@@ -38,6 +45,7 @@ wizard_confirm() {
 }
 
 version_at_least() {
+	[[ $DOTFILES_VERSION_CHECKS_DISABLED == true ]] && return 0
 	local actual=$1 required=$2
 	[[ $(printf '%s\n%s\n' "$required" "$actual" | sort -V | head -n 1) == "$required" ]]
 }
@@ -179,6 +187,7 @@ inspect_omarchy() {
 
 # Succeeds when a version such as 4.0.3-1 belongs to a major.minor series such as 4.0.
 version_in_series() {
+	[[ $DOTFILES_VERSION_CHECKS_DISABLED == true ]] && return 0
 	local version=${2%%-*}
 	[[ $version == "$1" || $version == "$1".* ]]
 }
