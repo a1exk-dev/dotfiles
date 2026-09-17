@@ -70,6 +70,33 @@ EOF
 	make_fake bun "exec '$HOST_BUN' --preload '$FIXTURE_ROOT/rename-spy.ts' \"\$@\""
 }
 
+readonly AVATAR_LAYERS=(avatar-back.png avatar-eyes.png avatar-glow.png avatar-head1.png avatar-head2.png avatar-head3.png)
+readonly PINNED_AVATAR_SHA256=df58402f9dde4149751c0a6dae239169efb752cc567849431c0836fd664dcf02
+
+# A synthetic 860x1229 stand-in for the tracked portrait, laid out on the
+# geometry the generator pins: a hood rim, glowing eyes, a window and a black
+# and a white patch of body colour on a grey sky. Every render needs one,
+# because the package ships a portrait and every collection declares the layers.
+make_avatar_fixture() {
+	SCENE_AVATAR=$FIXTURE_HOME/.config/dotfiles/obs-avatar.jpg
+	mkdir -p "${SCENE_AVATAR%/*}" || return 1
+	magick -size 860x1229 xc:'#3c3c3c' \
+		-fill '#bc005e' -draw 'rectangle 250,200 270,580' -draw 'rectangle 570,200 590,580' \
+		-fill '#ff0080' -draw 'rectangle 380,398 460,428' \
+		-fill '#8c0046' -draw 'rectangle 336,398 356,428' \
+		-fill '#ff8c00' -draw 'rectangle 700,250 800,350' \
+		-fill '#ffffff' -draw 'rectangle 20,250 120,350' \
+		-fill '#000000' -draw 'rectangle 20,450 120,550' \
+		-quality 100 "$SCENE_AVATAR" || return 1
+}
+
+# Pins the fixture copy of the generator to the synthetic image.
+pin_avatar_fixture() {
+	local hash
+	read -r hash _ < <(sha256sum "$SCENE_AVATAR")
+	sed -i "s/$PINNED_AVATAR_SHA256/$hash/" "$FIXTURE_REPO/$OBS_SCENE_PACKAGE/$OBS_SCENE_LIBEXEC/generate.ts"
+}
+
 setup_scene_fixture() {
 	new_fixture || return 1
 	SCENE_THEME_HOOK=$FIXTURE_REPO/$OBS_SCENE_PACKAGE/.config/omarchy/hooks/theme-set.d/obs-scene
@@ -81,6 +108,7 @@ setup_scene_fixture() {
 	set_scene_obs_version 32.2.2
 	make_renaming_bun
 	use_scene_theme catppuccin
+	make_avatar_fixture && pin_avatar_fixture || return 1
 	write_geometry "$LAPTOP_GEOMETRY"
 }
 
@@ -102,7 +130,7 @@ svg_size() {
 
 assert_scene_render() {
 	local width=$1 height=$2 strips=$3 context=$4 name expected background foreground accent border
-	local -a names=(chat.css geometry.json theme.txt title.txt "${SCENE_SVGS[@]}")
+	local -a names=(chat.css geometry.json theme.txt title.txt "${AVATAR_LAYERS[@]}" "${SCENE_SVGS[@]}")
 	[[ $strips == false ]] || names+=("${STRIP_SVGS[@]}")
 	expected=$(printf '%s\n' "${names[@]}" | sort)
 	assert_eq "$expected" "$(scene_file_list)" "$context: the render should write exactly the listed files" || return 1
@@ -190,7 +218,7 @@ test_render_writes_every_file_through_a_same_folder_rename() {
 	assert_eq 0 "$COMMAND_STATUS" "the hook should render: $COMMAND_OUTPUT" || return 1
 	local name renames
 	renames=$(grep '^rename ' "$CALL_LOG")
-	for name in chat.css theme.txt title.txt "${SCENE_SVGS[@]}" "${STRIP_SVGS[@]}"; do
+	for name in chat.css theme.txt title.txt "${AVATAR_LAYERS[@]}" "${SCENE_SVGS[@]}" "${STRIP_SVGS[@]}"; do
 		[[ $renames =~ rename\ $SCENE_OUTPUT/\.$name\.[A-Za-z0-9]+\ $SCENE_OUTPUT/$name($'\n'|$) ]] || {
 			printf '  %s should be renamed into place from a same-folder temporary file, renames:\n%s\n' "$name" "$renames" >&2
 			return 1
@@ -345,6 +373,42 @@ test_package_tracks_exactly_the_generator_script_and_hooks() {
 		'the font-set hook should run the same render'
 }
 
+# An installed set leaves a geometry file behind, so applying the package has to
+# reach it: this is what a package update owes an already copied collection.
+test_apply_renders_the_scene_of_an_installed_set() {
+	new_fixture || return 1
+	ln -sf /usr/bin/stow "$FIXTURE_BIN/stow"
+	set_installed_arch_packages obs-studio obs-studio-plugin-browser imagemagick bun obs-backgroundremoval
+	set_scene_obs_version 32.2.2
+	set_scene_font 'JetBrainsMono Nerd Font'
+	make_fake pgrep 'exit 1'
+	mkdir -p "$FIXTURE_CONFIG/obs-studio" "$FIXTURE_HOME/.local/state/omarchy/current/theme" || return 1
+	printf '[Appearance]\nTheme=com.obsproject.Yami\n' >"$FIXTURE_CONFIG/obs-studio/user.ini"
+	use_scene_theme catppuccin
+	printf 'catppuccin\n' >"$FIXTURE_HOME/.local/state/omarchy/current/theme.name"
+	SCENE_OUTPUT=$FIXTURE_CONFIG/obs-studio/omarchy-scene
+	write_geometry "$LAPTOP_GEOMETRY" || return 1
+
+	DOTFILES_TEST_INPUT='y\n' run_operation "$FIXTURE_ROOT" apply_packages obs-scene
+	assert_eq 0 "$COMMAND_STATUS" "apply should pass: $COMMAND_OUTPUT" || return 1
+	assert_contains "$COMMAND_OUTPUT" 'Phase: render the scene assets' 'apply should render the installed scene' || return 1
+	local name
+	for name in theme.txt "${AVATAR_LAYERS[@]}"; do
+		[[ -f $SCENE_OUTPUT/$name ]] || {
+			printf '  apply should render %s from the linked portrait\n' "$name" >&2
+			return 1
+		}
+	done
+
+	rm "$FIXTURE_HOME/.local/state/omarchy/current/theme/colors.toml"
+	DOTFILES_TEST_INPUT='y\n' run_operation "$FIXTURE_ROOT" apply_packages obs-scene
+	[[ $COMMAND_STATUS != 0 ]] || {
+		printf '  a failed render should fail the apply: %s\n' "$COMMAND_OUTPUT" >&2
+		return 1
+	}
+	assert_contains "$COMMAND_OUTPUT" 'Stow linked, scene assets not rendered' 'apply should name the failed render'
+}
+
 setup_scene_package_fixture() {
 	new_fixture || return 1
 	ln -sf /usr/bin/stow "$FIXTURE_BIN/stow"
@@ -401,32 +465,6 @@ test_remove_deletes_the_scene_folder_and_keeps_the_collection_and_image() {
 		'obs-backgroundremoval' 'obs-studio-plugin-browser' 'imagemagick' 'bun' 'obs-studio remain installed'; do
 		assert_contains "$COMMAND_OUTPUT" "$note" 'removal should print every cleanup note' || return 1
 	done
-}
-
-readonly AVATAR_LAYERS=(avatar-back.png avatar-eyes.png avatar-glow.png avatar-head1.png avatar-head2.png avatar-head3.png)
-readonly PINNED_AVATAR_SHA256=df58402f9dde4149751c0a6dae239169efb752cc567849431c0836fd664dcf02
-
-# A synthetic 860x1229 stand-in for the untracked portrait, laid out on the
-# geometry the generator pins: a hood rim, glowing eyes, a window and a black
-# and a white patch of body colour on a grey sky.
-make_avatar_fixture() {
-	SCENE_AVATAR=$FIXTURE_HOME/.config/dotfiles/obs-avatar.jpg
-	mkdir -p "${SCENE_AVATAR%/*}" || return 1
-	magick -size 860x1229 xc:'#3c3c3c' \
-		-fill '#bc005e' -draw 'rectangle 250,200 270,580' -draw 'rectangle 570,200 590,580' \
-		-fill '#ff0080' -draw 'rectangle 380,398 460,428' \
-		-fill '#8c0046' -draw 'rectangle 336,398 356,428' \
-		-fill '#ff8c00' -draw 'rectangle 700,250 800,350' \
-		-fill '#ffffff' -draw 'rectangle 20,250 120,350' \
-		-fill '#000000' -draw 'rectangle 20,450 120,550' \
-		-quality 100 "$SCENE_AVATAR" || return 1
-}
-
-# Pins the fixture copy of the generator to the synthetic image.
-pin_avatar_fixture() {
-	local hash
-	read -r hash _ < <(sha256sum "$SCENE_AVATAR")
-	sed -i "s/$PINNED_AVATAR_SHA256/$hash/" "$FIXTURE_REPO/$OBS_SCENE_PACKAGE/$OBS_SCENE_LIBEXEC/generate.ts"
 }
 
 pixel() {
@@ -487,7 +525,6 @@ assert_no_avatar_layers() {
 
 test_avatar_is_recoloured_on_a_dark_and_a_light_theme() {
 	setup_scene_fixture || return 1
-	make_avatar_fixture && pin_avatar_fixture || return 1
 	local theme name
 	for theme in catppuccin catppuccin-latte; do
 		use_scene_theme "$theme"
@@ -499,29 +536,46 @@ test_avatar_is_recoloured_on_a_dark_and_a_light_theme() {
 		assert_avatar_colours "$theme" || return 1
 		assert_avatar_bands || return 1
 	done
-	assert_contains "$(grep '^rename ' "$CALL_LOG")" "$SCENE_OUTPUT/avatar-glow.png" 'avatar layers are renamed into place' || return 1
 	local before
 	before=$(scene_state)
 	run_scene_hook "$SCENE_THEME_HOOK" catppuccin-latte
 	assert_eq "$before" "$(scene_state)" 'an unchanged avatar render leaves every layer untouched'
 }
 
-test_avatar_is_skipped_with_one_warning_when_the_image_is_missing_or_different() {
+test_render_fails_when_the_portrait_is_missing_or_different() {
 	local case
 	for case in missing different; do
 		setup_scene_fixture || return 1
-		make_avatar_fixture || return 1
-		[[ $case == different ]] || rm "$SCENE_AVATAR"
+		# The collection declares the avatar layers, so a scene without them is broken.
+		if [[ $case == different ]]; then
+			magick -size 860x1229 xc:'#101010' -quality 100 "$SCENE_AVATAR" || return 1
+		else
+			rm "$SCENE_AVATAR" || return 1
+		fi
 		run_scene_hook "$SCENE_THEME_HOOK" catppuccin
-		assert_eq 0 "$COMMAND_STATUS" "a $case image should not fail the hook: $COMMAND_OUTPUT" || return 1
-		assert_eq 1 "$(grep -c 'avatar' <<<"$COMMAND_OUTPUT")" "a $case image should print exactly one avatar warning: $COMMAND_OUTPUT" || return 1
-		assert_contains "$COMMAND_OUTPUT" 'Warning:' "a $case image should warn" || return 1
-		assert_no_avatar_layers "$case image" || return 1
-		[[ -f $SCENE_OUTPUT/theme.txt ]] || {
-			printf '  the rest of the scene should still render\n' >&2
+		[[ $COMMAND_STATUS != 0 ]] || {
+			printf '  a %s portrait should fail the hook: %s\n' "$case" "$COMMAND_OUTPUT" >&2
 			return 1
 		}
+		assert_contains "$COMMAND_OUTPUT" 'OBS scene hook failed:' "a $case portrait should explain the failure" || return 1
+		assert_contains "$COMMAND_OUTPUT" 'avatar' "a $case portrait should name the avatar" || return 1
+		assert_no_avatar_layers "$case portrait" || return 1
+		assert_path_absent "$SCENE_OUTPUT/theme.txt" "a $case portrait should write no asset at all" || return 1
 	done
+	# A portrait that breaks after a good render keeps the last output.
+	setup_scene_fixture || return 1
+	run_scene_hook "$SCENE_THEME_HOOK" catppuccin
+	assert_eq 0 "$COMMAND_STATUS" "the hook should render: $COMMAND_OUTPUT" || return 1
+	local before
+	before=$(scene_state)
+	rm "$SCENE_AVATAR"
+	use_scene_theme catppuccin-latte
+	run_scene_hook "$SCENE_THEME_HOOK" catppuccin-latte
+	[[ $COMMAND_STATUS != 0 ]] || {
+		printf '  a removed portrait should fail the hook: %s\n' "$COMMAND_OUTPUT" >&2
+		return 1
+	}
+	assert_eq "$before" "$(scene_state)" 'a failed avatar render keeps the last output'
 }
 
 test_lua_script_exposes_the_avatar_tempo_setting() {
@@ -544,10 +598,11 @@ run_test test_hooks_warn_and_render_outside_the_obs_series 'scene hooks warn and
 run_test test_hooks_without_geometry_write_nothing_and_succeed 'scene hooks without geometry write nothing and succeed'
 run_test test_lua_script_compiles_and_exposes_the_countdown_setting 'scene Lua script compiles and exposes the countdown setting'
 run_test test_avatar_is_recoloured_on_a_dark_and_a_light_theme 'scene avatar is recoloured on a dark and a light theme'
-run_test test_avatar_is_skipped_with_one_warning_when_the_image_is_missing_or_different 'scene avatar is skipped with one warning when the image is missing or different'
+run_test test_render_fails_when_the_portrait_is_missing_or_different 'scene render fails when the portrait is missing or different'
 run_test test_lua_script_exposes_the_avatar_tempo_setting 'scene Lua script exposes the avatar tempo setting'
 run_test test_catalog_entry_follows_obs_theme_with_the_approved_fields 'obs-scene catalog entry follows obs-theme with the approved fields'
 run_test test_package_tracks_exactly_the_generator_script_and_hooks 'obs-scene package tracks the generator, script, portrait and hooks'
+run_test test_apply_renders_the_scene_of_an_installed_set 'obs-scene apply renders the scene of an installed set'
 run_test test_remove_is_blocked_while_obs_runs 'obs-scene removal is blocked while OBS runs'
 run_test test_remove_deletes_the_scene_folder_and_keeps_the_collection_and_image 'obs-scene removal deletes the scene folder and unlinks the portrait'
 finish_tests

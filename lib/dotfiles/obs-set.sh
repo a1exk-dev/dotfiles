@@ -158,13 +158,6 @@ obs_set_write_geometry() {
 	printf 'Wrote %s\n' "$target"
 }
 
-obs_set_render_scene() {
-	local hook=$HOME/.config/omarchy/hooks/theme-set.d/obs-scene theme=''
-	[[ -r $HOME/.local/state/omarchy/current/theme.name ]] && theme=$(<"$HOME/.local/state/omarchy/current/theme.name")
-	printf 'Phase: render the scene assets\n'
-	bash "$hook" "$theme"
-}
-
 # install_obs_set [SET] [--force] [--guided]
 # --force replaces existing profiles and the collection without asking, after a
 # backup. In guided setup a running OBS, a declined plan or a set that does not
@@ -312,7 +305,7 @@ install_obs_set() {
 			printf 'Error: could not write the scene geometry.\n' >&2
 			return 1
 		}
-		obs_set_render_scene ||
+		obs_scene_render ||
 			printf 'Warning: the scene assets were not rendered; fix the reported problem, then run omarchy theme set.\n' >&2
 	fi
 

@@ -1055,6 +1055,11 @@ apply_packages() {
 				printf 'Recovery: rerun the Dotfiles wizard and choose Apply Stow packages.\n' >&2
 				return 1
 			fi
+			if [[ $package == obs-scene ]] && ! obs_scene_render; then
+				printf 'Package state: %s: Stow linked, scene assets not rendered\n' "$package" >&2
+				printf 'Recovery: fix the reported problem, then choose Apply Stow packages again.\n' >&2
+				return 1
+			fi
 			printf 'Package state: %s: succeeded\n' "$package"
 		else
 			printf 'Package state: %s: failed\n' "$package" >&2

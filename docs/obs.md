@@ -56,7 +56,7 @@ Close OBS, select `Remove Stow package`, then select `obs-theme`. The removal is
 
 ### What it does
 
-The `obs-scene` package links a scene generator, a Lua script for OBS, and two hooks. The hooks render the scene files into `~/.config/obs-studio/omarchy-scene/` for your machine's canvas. They render only after `Install OBS set` has written `geometry.json` there. Until then, they do nothing.
+The `obs-scene` package links a scene generator, a Lua script for OBS, and two hooks. The hooks render the scene files into `~/.config/obs-studio/omarchy-scene/` for your machine's canvas. They render only after `Install OBS set` has written `geometry.json` there. Until then, they do nothing. Once a set is installed, `Apply Stow packages` renders the scene again, so a package update reaches the collection OBS already holds.
 
 The collection, `Omarchy Scene`, holds eight scenes:
 
@@ -102,7 +102,7 @@ The Camera source ships with no device. On each machine, open its properties and
 
 When the camera is off, the Stream and Full cam camera boxes show an animated avatar: a hooded figure that nods to a beat, with eyes that glow and blink. The avatar takes its colours from the Omarchy theme.
 
-The avatar is a pixel-art portrait made with [Craiyon](https://www.craiyon.com/). The `obs-scene` package includes it and links it to `~/.config/dotfiles/obs-avatar.jpg`, so applying the package is all you need. If you replace that file with another picture, the hooks print one warning and skip the avatar, because the crop and the animation are measured for the shipped portrait. The rest of the scene still renders. Removing the package unlinks the portrait.
+The avatar is a pixel-art portrait made with [Craiyon](https://www.craiyon.com/). The `obs-scene` package includes it and links it to `~/.config/dotfiles/obs-avatar.jpg`, so applying the package is all you need. The crop and the animation are measured for that one picture. Every `Omarchy Scene` collection expects the six avatar layers, so the hooks refuse any other file: they stop with an error and keep the last render. Removing the package unlinks the portrait.
 
 The avatar shows when you hide the Camera item (the eye icon in the Sources list) or when the camera sends no picture, for example when it is unplugged or busy. It hides when the camera shows a picture. To change the nod speed, open **Tools → Scripts** and set **Avatar nod tempo (BPM)** between 40 and 200. The default is 90.
 

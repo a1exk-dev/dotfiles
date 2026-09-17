@@ -479,3 +479,11 @@ Applies when: A Stow package links files into `~/.config/omarchy/hooks/<name>.d/
 Guidance: Link only executable hook scripts directly into a hook folder. Put data a hook reads into a subfolder beside it (for example `theme-set.d/obs-theme.d/`) or under `~/.local/libexec/dotfiles/`, and have the hook find it through `readlink -f` on its own path.
 
 Reason: `omarchy-hook` runs every regular file in a hook folder with `bash`, except `*.sample`, and skips directories, so a data file placed there runs as a script on every theme or font change.
+
+## Render every asset a copied consumer declares
+
+Applies when: A Stow package generates deployed assets that a copied or user-owned consumer references by path, such as the OBS scene integration's assets and an installed OBS machine set's collection.
+
+Guidance: Render the complete declared set, or stop with an error and keep the previous output. Render from the package apply path as well as from the Omarchy hook, so a package change reaches a consumer that was copied earlier.
+
+Reason: The copy leaves repository control, so a partial render stays invisible until the consumer reports its own missing files, often on another machine and long after the run that caused it. A warning printed inside a theme hook reaches nobody.

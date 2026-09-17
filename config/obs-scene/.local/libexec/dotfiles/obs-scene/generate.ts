@@ -4,8 +4,8 @@
 //     Renders the scene assets for one machine set's canvas from the active
 //     Omarchy theme. Every file is written through a same-folder temporary file
 //     and a rename, and unchanged files are left alone. title.txt is created
-//     only when it is missing, and the avatar layers only when the avatar image
-//     is the pinned one.
+//     only when it is missing. The avatar image must be the pinned portrait, or
+//     nothing is written.
 //
 //   bun generate.ts collection --geometry FILE --output FILE
 //     Writes a machine set's "Omarchy Scene" collection for the same canvas.
@@ -453,18 +453,18 @@ function encodePng(layer: Layer): Uint8Array {
 		"-define", "png:exclude-chunks=date,time", "png:-"], rgba);
 }
 
-// Prints one warning and returns nothing when the image is missing or not the pinned one.
+// Fails when the image is missing or not the pinned one. Every scene collection
+// declares the six avatar sources, so a render without them leaves OBS pointing
+// at files that never arrive.
 function drawAvatar(file: string, t: Theme): Map<string, Uint8Array> {
 	let image: Buffer;
 	try {
 		image = fs.readFileSync(file);
 	} catch {
-		console.error(`Warning: no avatar image at ${file}; the camera-off avatar was skipped.`);
-		return new Map();
+		throw new Error(`no avatar image at ${file}; apply the obs-scene package, which links the portrait it tracks`);
 	}
 	if (crypto.createHash("sha256").update(image).digest("hex") !== AVATAR_SHA256) {
-		console.error(`Warning: ${file} is not the pinned avatar image; the camera-off avatar was skipped.`);
-		return new Map();
+		throw new Error(`${file} is not the pinned avatar image; restore the portrait the obs-scene package tracks`);
 	}
 	const pixels = magick(["-", "-crop", AVATAR_CROP, "+repage", "-filter", "box", "-resize", `${AVATAR_W}x${AVATAR_H}!`,
 		"-depth", "8", "rgb:-"], image);

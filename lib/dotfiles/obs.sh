@@ -168,6 +168,17 @@ obs_scene_dir() {
 	printf '%s/omarchy-scene\n' "$(obs_config_dir)"
 }
 
+# Renders the scene assets through the deployed theme hook, so applying the
+# package and installing a set both reach the copied collection. Without a
+# geometry file no set is installed yet and there is nothing to render.
+obs_scene_render() {
+	local hook=$HOME/.config/omarchy/hooks/theme-set.d/obs-scene theme=''
+	[[ -f $(obs_scene_dir)/geometry.json ]] || return 0
+	[[ -r $HOME/.local/state/omarchy/current/theme.name ]] && theme=$(<"$HOME/.local/state/omarchy/current/theme.name")
+	printf 'Phase: render the scene assets\n'
+	bash "$hook" "$theme"
+}
+
 obs_scene_prepare_remove() {
 	if obs_is_running; then
 		printf 'Error: OBS is running. Close OBS before removing obs-scene, because the copied collection uses its files.\n' >&2

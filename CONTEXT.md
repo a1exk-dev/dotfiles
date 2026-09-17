@@ -54,7 +54,7 @@ The `obs-theme` Stow package that makes OBS Studio's interface follow the active
 
 ## OBS scene integration
 
-The `obs-scene` Stow package, which depends on OBS theme integration, that renders the Omarchy-styled scene assets (SVG chrome, `theme.txt`, `chat.css`, the camera-off avatar layers and `title.txt`) into `~/.config/obs-studio/omarchy-scene/` at one OBS machine set's canvas, plus the Lua script that carries theme changes into a running OBS. The repository owns the generator, the script and that asset folder. The copied scene collection belongs to OBS. The avatar portrait is tracked in the package and linked to `~/.config/dotfiles/obs-avatar.jpg`, and the generator renders the avatar only for that exact image.
+The `obs-scene` Stow package, which depends on OBS theme integration, that renders the Omarchy-styled scene assets (SVG chrome, `theme.txt`, `chat.css`, the camera-off avatar layers and `title.txt`) into `~/.config/obs-studio/omarchy-scene/` at one OBS machine set's canvas, plus the Lua script that carries theme changes into a running OBS. The repository owns the generator, the script and that asset folder. The copied scene collection belongs to OBS. The avatar portrait is tracked in the package and linked to `~/.config/dotfiles/obs-avatar.jpg`; the generator renders for that exact image and stops with an error for any other file, because every collection declares the avatar layers. A render runs on `Install OBS set`, on an Omarchy theme or font change, and on applying the package once a set's `geometry.json` exists.
 
 ## OBS machine set
 
