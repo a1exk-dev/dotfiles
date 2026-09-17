@@ -5,15 +5,21 @@ source "$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)/support/test_helper.
 readonly OBS_SCENE_PACKAGE=config/obs-scene
 readonly OBS_SCENE_LIBEXEC=.local/libexec/dotfiles/obs-scene
 readonly HOST_BUN=$(command -v bun)
-readonly LAPTOP_GEOMETRY='{"canvas": {"width": 1920, "height": 1080}, "bar_crop": 52, "strip_width": 70}'
-readonly PC_GEOMETRY='{"canvas": {"width": 2560, "height": 1440}, "bar_crop": 52, "strip_width": 0}'
+readonly LAPTOP_GEOMETRY='{"canvas": {"width": 1920, "height": 1080}, "bar_crop": 52, "strip_width": 70, "band_height": 0}'
+readonly PC_GEOMETRY='{"canvas": {"width": 2560, "height": 1440}, "bar_crop": 52, "strip_width": 0, "band_height": 16}'
+readonly FLUSH_GEOMETRY='{"canvas": {"width": 2560, "height": 1440}, "bar_crop": 52, "strip_width": 0}'
+# The pc bands leave 16 px above and below the screen, so their edge lines sit
+# half a 2 px stroke inside each band.
+readonly PC_TOP_EDGE=15
+readonly PC_BOTTOM_EDGE=1425
 readonly -a SCENE_SVGS=(
 	cam-frame.svg card-brb.svg card-ending.svg card-intro.svg card-privacy.svg card-starting.svg
 	card-pulse-0.svg card-pulse-1.svg card-pulse-2.svg card-pulse-3.svg card-pulse-4.svg card-pulse-5.svg
 	stream-overlay.svg
 )
-readonly -a STRIP_SVGS=(
-	screen.svg strip-pulse-0.svg strip-pulse-1.svg strip-pulse-2.svg strip-pulse-3.svg strip-pulse-4.svg strip-pulse-5.svg
+readonly CHROME_SVG=screen.svg
+readonly -a STRIP_PULSE_SVGS=(
+	strip-pulse-0.svg strip-pulse-1.svg strip-pulse-2.svg strip-pulse-3.svg strip-pulse-4.svg strip-pulse-5.svg
 )
 
 stock_color() {
@@ -128,10 +134,13 @@ svg_size() {
 	sed -n 's/^<svg[^>]* width="\([0-9]*\)" height="\([0-9]*\)".*/\1x\2/p' "$1"
 }
 
+# The chrome argument is strips, bands or none: which leftover canvas the
+# geometry leaves around the screen.
 assert_scene_render() {
-	local width=$1 height=$2 strips=$3 context=$4 name expected background foreground accent border
+	local width=$1 height=$2 chrome=$3 context=$4 name expected background foreground accent border
 	local -a names=(chat.css geometry.json theme.txt title.txt "${AVATAR_LAYERS[@]}" "${SCENE_SVGS[@]}")
-	[[ $strips == false ]] || names+=("${STRIP_SVGS[@]}")
+	[[ $chrome == none ]] || names+=("$CHROME_SVG")
+	[[ $chrome != strips ]] || names+=("${STRIP_PULSE_SVGS[@]}")
 	expected=$(printf '%s\n' "${names[@]}" | sort)
 	assert_eq "$expected" "$(scene_file_list)" "$context: the render should write exactly the listed files" || return 1
 	for name in "${SCENE_SVGS[@]}"; do
@@ -152,9 +161,18 @@ assert_scene_render() {
 	assert_contains "$(<"$SCENE_OUTPUT/stream-overlay.svg")" "fill=\"$background\" fill-opacity=\"0.88\"" "$context: overlay boxes are translucent" || return 1
 	assert_contains "$(<"$SCENE_OUTPUT/stream-overlay.svg")" "stroke=\"$border\"" "$context: overlay boxes use the border mix" || return 1
 	assert_contains "$(<"$SCENE_OUTPUT/cam-frame.svg")" "stroke=\"$accent\"" "$context: the camera box uses an accent border" || return 1
-	if [[ $strips == true ]]; then
-		assert_contains "$(<"$SCENE_OUTPUT/screen.svg")" "stroke=\"$border\"" "$context: the screen edges use the border mix" || return 1
+	if [[ $chrome == strips ]]; then
+		assert_contains "$(<"$SCENE_OUTPUT/$CHROME_SVG")" "stroke=\"$border\"" "$context: the screen edges use the border mix" || return 1
 		assert_eq "${width}x$height" "$(svg_size "$SCENE_OUTPUT/strip-pulse-0.svg")" "$context: strip pulses use the canvas size" || return 1
+	elif [[ $chrome == bands ]]; then
+		assert_contains "$(<"$SCENE_OUTPUT/$CHROME_SVG")" "<rect width=\"$width\" height=\"$height\" fill=\"$background\"/>" \
+			"$context: the bands take the theme ground instead of black" || return 1
+		assert_contains "$(<"$SCENE_OUTPUT/$CHROME_SVG")" "<line x1=\"0\" y1=\"$PC_TOP_EDGE\" x2=\"$width\" y2=\"$PC_TOP_EDGE\" stroke=\"$border\"" \
+			"$context: the top band ends at the screen edge" || return 1
+		assert_contains "$(<"$SCENE_OUTPUT/$CHROME_SVG")" "<line x1=\"0\" y1=\"$PC_BOTTOM_EDGE\" x2=\"$width\" y2=\"$PC_BOTTOM_EDGE\" stroke=\"$border\"" \
+			"$context: the bottom band ends at the screen edge" || return 1
+		assert_eq 2 "$(grep -o '<line ' "$SCENE_OUTPUT/$CHROME_SVG" | wc -l)" "$context: bands carry no side edges" || return 1
+		assert_eq 1 "$(grep -o '<rect ' "$SCENE_OUTPUT/$CHROME_SVG" | wc -l)" "$context: bands are too thin for block cells" || return 1
 	fi
 
 	assert_eq 'face=JetBrainsMono Nerd Font' "$(head -n 1 "$SCENE_OUTPUT/theme.txt")" "$context: theme.txt names the font face" || return 1
@@ -184,7 +202,7 @@ test_render_on_a_dark_theme_at_the_laptop_geometry() {
 	setup_scene_fixture || return 1
 	run_scene_hook "$SCENE_THEME_HOOK" catppuccin
 	assert_eq 0 "$COMMAND_STATUS" "the hook should render: $COMMAND_OUTPUT" || return 1
-	assert_scene_render 1920 1080 true 'dark laptop'
+	assert_scene_render 1920 1080 strips 'dark laptop'
 }
 
 test_render_on_a_light_theme_at_the_pc_geometry() {
@@ -193,7 +211,7 @@ test_render_on_a_light_theme_at_the_pc_geometry() {
 	write_geometry "$PC_GEOMETRY"
 	run_scene_hook "$SCENE_THEME_HOOK" catppuccin-latte
 	assert_eq 0 "$COMMAND_STATUS" "the hook should render: $COMMAND_OUTPUT" || return 1
-	assert_scene_render 2560 1440 false 'light pc'
+	assert_scene_render 2560 1440 bands 'light pc'
 }
 
 test_render_on_a_light_theme_at_the_laptop_geometry() {
@@ -201,7 +219,7 @@ test_render_on_a_light_theme_at_the_laptop_geometry() {
 	use_scene_theme catppuccin-latte
 	run_scene_hook "$SCENE_THEME_HOOK" catppuccin-latte
 	assert_eq 0 "$COMMAND_STATUS" "the hook should render: $COMMAND_OUTPUT" || return 1
-	assert_scene_render 1920 1080 true 'light laptop'
+	assert_scene_render 1920 1080 strips 'light laptop'
 }
 
 test_render_on_a_dark_theme_at_the_pc_geometry() {
@@ -209,7 +227,17 @@ test_render_on_a_dark_theme_at_the_pc_geometry() {
 	write_geometry "$PC_GEOMETRY"
 	run_scene_hook "$SCENE_THEME_HOOK" catppuccin
 	assert_eq 0 "$COMMAND_STATUS" "the hook should render: $COMMAND_OUTPUT" || return 1
-	assert_scene_render 2560 1440 false 'dark pc'
+	assert_scene_render 2560 1440 bands 'dark pc'
+}
+
+# A geometry written before bands existed leaves the screen at full height, so
+# there is no leftover canvas and no chrome to draw.
+test_render_without_a_band_height_keeps_the_full_height_screen() {
+	setup_scene_fixture || return 1
+	write_geometry "$FLUSH_GEOMETRY"
+	run_scene_hook "$SCENE_THEME_HOOK" catppuccin
+	assert_eq 0 "$COMMAND_STATUS" "the hook should render: $COMMAND_OUTPUT" || return 1
+	assert_scene_render 2560 1440 none 'flush pc'
 }
 
 test_render_writes_every_file_through_a_same_folder_rename() {
@@ -218,7 +246,7 @@ test_render_writes_every_file_through_a_same_folder_rename() {
 	assert_eq 0 "$COMMAND_STATUS" "the hook should render: $COMMAND_OUTPUT" || return 1
 	local name renames
 	renames=$(grep '^rename ' "$CALL_LOG")
-	for name in chat.css theme.txt title.txt "${AVATAR_LAYERS[@]}" "${SCENE_SVGS[@]}" "${STRIP_SVGS[@]}"; do
+	for name in chat.css theme.txt title.txt "${AVATAR_LAYERS[@]}" "${SCENE_SVGS[@]}" "$CHROME_SVG" "${STRIP_PULSE_SVGS[@]}"; do
 		[[ $renames =~ rename\ $SCENE_OUTPUT/\.$name\.[A-Za-z0-9]+\ $SCENE_OUTPUT/$name($'\n'|$) ]] || {
 			printf '  %s should be renamed into place from a same-folder temporary file, renames:\n%s\n' "$name" "$renames" >&2
 			return 1
@@ -587,8 +615,9 @@ test_lua_script_exposes_the_avatar_tempo_setting() {
 
 run_test test_render_on_a_dark_theme_at_the_laptop_geometry 'scene renders a dark theme at the laptop geometry'
 run_test test_render_on_a_light_theme_at_the_laptop_geometry 'scene renders a light theme at the laptop geometry'
-run_test test_render_on_a_dark_theme_at_the_pc_geometry 'scene renders a dark theme at the pc geometry without strips'
-run_test test_render_on_a_light_theme_at_the_pc_geometry 'scene renders a light theme at the pc geometry without strips'
+run_test test_render_on_a_dark_theme_at_the_pc_geometry 'scene renders a dark theme at the pc geometry with bands'
+run_test test_render_on_a_light_theme_at_the_pc_geometry 'scene renders a light theme at the pc geometry with bands'
+run_test test_render_without_a_band_height_keeps_the_full_height_screen 'scene without a band height draws no chrome'
 run_test test_render_writes_every_file_through_a_same_folder_rename 'scene render writes every file through a same-folder rename'
 run_test test_title_is_created_once_and_never_overwritten 'scene title is created once and never overwritten'
 run_test test_font_hook_rerenders_with_the_new_font 'scene font hook rerenders with the new font'

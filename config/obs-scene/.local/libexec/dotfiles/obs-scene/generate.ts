@@ -18,7 +18,7 @@ import fs from "node:fs";
 import path from "node:path";
 import crypto from "node:crypto";
 
-type Geometry = { canvas: { width: number; height: number }; bar_crop: number; strip_width: number };
+type Geometry = { canvas: { width: number; height: number }; bar_crop: number; strip_width: number; band_height: number };
 type Rect = { x: number; y: number; w: number; h: number };
 type Theme = {
 	background: string;
@@ -44,10 +44,14 @@ const CARDS = [
 // Layout: every size is designed at 1080p and scaled to the canvas height.
 
 function readGeometry(file: string): Geometry {
-	const g = JSON.parse(fs.readFileSync(file, "utf8"));
+	const raw = JSON.parse(fs.readFileSync(file, "utf8"));
+	// band_height joined the geometry after the first sets shipped, so a file
+	// written without it keeps the full-height screen it was made for.
+	const g: Geometry = { ...raw, band_height: raw?.band_height ?? 0 };
 	const positive = (n: unknown) => Number.isInteger(n) && (n as number) > 0;
+	const slack = (n: unknown, limit: number) => Number.isInteger(n) && (n as number) >= 0 && 2 * (n as number) < limit;
 	if (!positive(g?.canvas?.width) || !positive(g?.canvas?.height) || !Number.isInteger(g.bar_crop) || g.bar_crop < 0 ||
-		!Number.isInteger(g.strip_width) || g.strip_width < 0 || 2 * g.strip_width >= g.canvas.width) {
+		!slack(g.strip_width, g.canvas.width) || !slack(g.band_height, g.canvas.height)) {
 		throw new Error(`invalid geometry in ${file}`);
 	}
 	return g;
@@ -57,7 +61,9 @@ function metrics(g: Geometry) {
 	const W = g.canvas.width;
 	const H = g.canvas.height;
 	const s = (n: number) => Math.round((n * H) / 1080);
-	const screen: Rect = { x: g.strip_width, y: 0, w: W - 2 * g.strip_width, h: H };
+	// The screen keeps the capture's own shape, so whichever axis the canvas
+	// does not fill is left to the chrome: side strips or top and bottom bands.
+	const screen: Rect = { x: g.strip_width, y: g.band_height, w: W - 2 * g.strip_width, h: H - 2 * g.band_height };
 	const gap = s(24);
 	const pad = s(16);
 	const inset = s(10);
@@ -65,17 +71,18 @@ function metrics(g: Geometry) {
 	const camW = boxW - 2 * inset;
 	const camH = Math.round((camW * 9) / 16);
 	const stackX = screen.x + screen.w - gap - boxW;
-	const cam: Rect = { x: stackX, y: gap, w: boxW, h: camH + 2 * inset };
-	const time: Rect = { x: stackX, y: H - gap - s(84), w: boxW, h: s(84) };
+	const cam: Rect = { x: stackX, y: screen.y + gap, w: boxW, h: camH + 2 * inset };
+	const time: Rect = { x: stackX, y: screen.y + screen.h - gap - s(84), w: boxW, h: s(84) };
 	const chatY = cam.y + cam.h + pad;
 	const chat: Rect = { x: stackX, y: chatY, w: boxW, h: time.y - pad - chatY };
-	const fullCam: Rect = { x: stackX, y: H - gap - cam.h, w: boxW, h: cam.h };
+	const fullCam: Rect = { x: stackX, y: screen.y + screen.h - gap - cam.h, w: boxW, h: cam.h };
 	const cardW = s(1000);
 	const cardH = s(380);
 	const card: Rect = { x: Math.floor((W - cardW) / 2), y: Math.floor((H - cardH) / 2), w: cardW, h: cardH };
 	return {
 		W, H, s, screen, inset, camW, camH, cam, time, chat, fullCam, card,
 		strips: g.strip_width > 0,
+		bands: g.band_height > 0,
 		barCrop: g.bar_crop,
 		fontSize: s(20),
 		stroke: 2 * Math.max(1, Math.round(H / 1080)),
@@ -234,10 +241,14 @@ function drawAssets(g: Geometry, t: Theme): Map<string, string> {
 	const files = new Map<string, string>();
 	const { s, screen } = m;
 
-	if (m.strips) {
-		const strips = stripBlocks(d);
-		const edges = [screen.x - m.stroke / 2, screen.x + screen.w + m.stroke / 2]
+	// Bands are the bar crop's leftover height, too thin for a block cell, so
+	// they carry the ground and the screen's edge alone.
+	if (m.strips || m.bands) {
+		const strips = m.strips ? stripBlocks(d) : { cells: "", pulses: [] as string[] };
+		const edges = (m.strips ? [screen.x - m.stroke / 2, screen.x + screen.w + m.stroke / 2] : [])
 			.map((x) => `<line x1="${x}" y1="0" x2="${x}" y2="${m.H}" stroke="${d.border}" stroke-width="${m.stroke}"/>`)
+			.concat((m.bands ? [screen.y - m.stroke / 2, screen.y + screen.h + m.stroke / 2] : [])
+				.map((y) => `<line x1="0" y1="${y}" x2="${m.W}" y2="${y}" stroke="${d.border}" stroke-width="${m.stroke}"/>`))
 			.join("");
 		files.set("screen.svg", d.svg(strips.cells + edges, true));
 		strips.pulses.forEach((layer, k) => files.set(`strip-pulse-${k}.svg`, layer));
@@ -549,7 +560,8 @@ function scenes(m: Metrics): [string, Placement[]][] {
 		return [{ source: "Camera", x, y, bounds }, ...AVATAR_SOURCES.map((name) => ({ source: name, x, y, bounds, point: true }))];
 	};
 	const screen: Placement[] = [
-		...(m.strips ? [at("Screen chrome"), ...pulses("Strip").map((name) => at(name))] : []),
+		...(m.strips || m.bands ? [at("Screen chrome")] : []),
+		...(m.strips ? pulses("Strip").map((name) => at(name)) : []),
 		{ source: "Screen", x: m.screen.x, y: m.screen.y, bounds: [m.screen.w, m.screen.h], cropTop: m.barCrop },
 	];
 	const text = (name: keyof Metrics["texts"], align = ALIGN_TOP_LEFT): Placement => ({
@@ -598,8 +610,8 @@ function collection(g: Geometry): Json {
 		...CARDS.map((card) => image(`Card ${card.key}`, `card-${card.key}.svg`)),
 		...pulses("Card").map((name, k) => image(name, `card-pulse-${k}.svg`, [opacityFilter(name, "pulse", 0.0)])),
 	];
+	if (m.strips || m.bands) sources.push(image("Screen chrome", "screen.svg"));
 	if (m.strips) {
-		sources.push(image("Screen chrome", "screen.svg"));
 		sources.push(...pulses("Strip").map((name, k) => image(name, `strip-pulse-${k}.svg`, [opacityFilter(name, "pulse", 0.0)])));
 	}
 	const order = scenes(m);

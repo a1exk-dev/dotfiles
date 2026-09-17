@@ -86,8 +86,10 @@ test_sets_carry_the_approved_profile_values() {
 	assert_contains "$(<"$OBS_SETS/laptop/profiles/Twitch/basic.ini")" $'BaseCX=1920\nBaseCY=1080\nOutputCX=1920\nOutputCY=1080' 'laptop canvas' || return 1
 	assert_contains "$(<"$OBS_SETS/pc/profiles/Twitch/basic.ini")" $'BaseCX=2560\nBaseCY=1440\nOutputCX=1920\nOutputCY=1080' 'pc canvas' || return 1
 	assert_contains "$(<"$OBS_SETS/pc/profiles/Twitch/basic.ini")" 'ScaleType=lanczos' 'pc downscale filter' || return 1
-	assert_eq '{"canvas":{"width":1920,"height":1080},"bar_crop":52,"strip_width":70}' "$(jq -c . "$OBS_SETS/laptop/scene/geometry.json")" 'laptop geometry' || return 1
-	assert_eq '{"canvas":{"width":2560,"height":1440},"strip_width":0}' "$(jq -c '{canvas, strip_width}' "$OBS_SETS/pc/scene/geometry.json")" 'pc geometry'
+	assert_eq '{"canvas":{"width":1920,"height":1080},"bar_crop":52,"strip_width":70,"band_height":0}' \
+		"$(jq -c . "$OBS_SETS/laptop/scene/geometry.json")" 'laptop geometry' || return 1
+	assert_eq '{"canvas":{"width":2560,"height":1440},"strip_width":0,"band_height":16}' \
+		"$(jq -c '{canvas, strip_width, band_height}' "$OBS_SETS/pc/scene/geometry.json")" 'pc geometry'
 }
 
 test_committed_collections_equal_a_fresh_generation() {
@@ -142,9 +144,11 @@ test_collections_hold_the_eight_scenes_and_their_sources() {
 		assert_contains "$(scene_items "$collection" Stream)" $'Chat\nClock\nDate' "$set: the Stream stack" || return 1
 	done
 	assert_contains "$(scene_items "$OBS_SETS/laptop/scene/$COLLECTION_FILE" Full)" $'Screen chrome\nStrip pulse 0' 'laptop screen scenes have strips' || return 1
+	# The pc bands hold the chrome ground alone, so they carry no pulse layers.
 	for scene in Stream Full 'Full cam'; do
-		if scene_items "$OBS_SETS/pc/scene/$COLLECTION_FILE" "$scene" | grep -Eq '^(Screen chrome|Strip pulse)'; then
-			printf '  pc %s should have no strip layers\n' "$scene" >&2
+		assert_contains "$(scene_items "$OBS_SETS/pc/scene/$COLLECTION_FILE" "$scene")" 'Screen chrome' "pc $scene has the chrome" || return 1
+		if scene_items "$OBS_SETS/pc/scene/$COLLECTION_FILE" "$scene" | grep -Eq '^Strip pulse'; then
+			printf '  pc %s should have no strip pulse layers\n' "$scene" >&2
 			return 1
 		fi
 	done
@@ -435,7 +439,8 @@ test_diagnose_reports_display_geometry_and_trial_encodes() {
 	assert_eq 0 "$COMMAND_STATUS" "diagnosis should succeed: $COMMAND_OUTPUT" || return 1
 	assert_contains "$COMMAND_OUTPUT" 'OBS: 32.2.2' 'the report should name the OBS version' || return 1
 	assert_contains "$COMMAND_OUTPUT" 'DP-1: 2560x1440 at scale 1.25, bar crop 33 px' 'the report should round the crop up' || return 1
-	assert_contains "$COMMAND_OUTPUT" 'canvas 2560x1440: screen 2620 px wide, strip width 0 px' 'a wide screen gets no strips' || return 1
+	assert_contains "$COMMAND_OUTPUT" 'canvas 2560x1440: screen 2560x1407 px, strip width 0 px, band height 16 px' \
+		'a screen wider than the canvas gets bands' || return 1
 	assert_contains "$COMMAND_OUTPUT" $'h264_vaapi: ok\n  hevc_vaapi: ok\n  av1_vaapi: failed' 'the report should list each trial encode' || return 1
 	assert_eq "$COMMAND_OUTPUT" "$(<"$FIXTURE_STATE/dotfiles/obs-diagnosis.txt")"$'\n'"Report saved: $FIXTURE_STATE/dotfiles/obs-diagnosis.txt" \
 		'the report should be saved as printed'

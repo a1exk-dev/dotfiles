@@ -487,3 +487,11 @@ Applies when: A Stow package generates deployed assets that a copied or user-own
 Guidance: Render the complete declared set, or stop with an error and keep the previous output. Render from the package apply path as well as from the Omarchy hook, so a package change reaches a consumer that was copied earlier.
 
 Reason: The copy leaves repository control, so a partial render stays invisible until the consumer reports its own missing files, often on another machine and long after the run that caused it. A warning printed inside a theme hook reaches nobody.
+
+## Fill leftover OBS canvas with chrome instead of black
+
+Applies when: Laying out an OBS scene, or adding an OBS machine set whose cropped screen does not fill the canvas.
+
+Guidance: Declare the leftover canvas per axis in the set's `geometry.json`: `strip_width` for width and `band_height` for height, both taken from `bin/dotfiles --action obs-diagnose`. Inset the screen rect by both, and anchor the Stream stack to that rect rather than to the canvas. Draw the chrome image whenever either is positive: it grounds the whole canvas in the theme background and puts the border line on each edge that has leftover canvas. Keep animated blocks in side strips only, and keep `band_height` optional so a geometry written before it renders as it did.
+
+Reason: The screen item uses `bounds_type` 2 with centred `bounds_align`, so OBS fits the cropped capture inside its bounds and the leftover shows the black canvas base. A monitor whose resolution matches the canvas leaves exactly the bar crop as leftover height, which is thinner than one block cell, so a band can carry the ground and the edge line but no blocks.

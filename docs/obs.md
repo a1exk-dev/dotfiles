@@ -71,7 +71,7 @@ The collection, `Omarchy Scene`, holds eight scenes:
 | Ending | A "thanks for watching" card. |
 | Privacy | A card with a red border. Switch to it by hand before you show something private. |
 
-Where the screen leaves canvas width free, animated blocks fill the sides. On a 16:9 monitor there are no side blocks. Every card has animated blocks around it.
+The bar crop changes the screen's shape, so it rarely fills the canvas exactly. Left-over width becomes side blocks. Left-over height becomes a thin band above and below the screen. The band takes the theme background and carries the screen's edge line. It is thinner than one block, so no blocks fit there. Every card has animated blocks around it.
 
 ### Following the theme
 
@@ -121,7 +121,7 @@ Close OBS, select `Remove Stow package`, then select `obs-scene`. The removal is
 Machine sets live in `obs/sets/<set>/`. Each set has an OBS profile named `Twitch` and the `Omarchy Scene` collection for its canvas. Two sets ship:
 
 - `laptop`: a 1920x1080 canvas for a 16:10 laptop panel, with side blocks.
-- `pc`: a 2560x1440 canvas, scaled to 1920x1080 output, for a 16:9 monitor.
+- `pc`: a 2560x1440 canvas, scaled to 1920x1080 output, for a 16:9 monitor, with bands above and below the screen.
 
 Both profiles use Advanced output mode at 60 fps with the VAAPI H.264 encoder. Streaming uses CBR at 6000 kbps with 2-second keyframes. Recording uses CQP 14 in hybrid MP4, saved to `~/Videos/Recordings`. The sets contain no stream key, so enter yours in OBS.
 
@@ -148,8 +148,8 @@ After the copy, the profile and the collection belong to OBS. The wizard keeps n
 
 ### Add a set
 
-1. Run `bin/dotfiles --action obs-diagnose` on the machine. It prints the monitor's resolution and scale, the bar crop and side-block widths for each canvas, and which VAAPI encoders work.
-2. Copy an existing set to `obs/sets/<name>/`. Set the canvas and output size in `profiles/Twitch/basic.ini`, and set `canvas`, `bar_crop` and `strip_width` in `scene/geometry.json`.
+1. Run `bin/dotfiles --action obs-diagnose` on the machine. It prints the monitor's resolution and scale, the screen size, strip width and band height for each canvas, and which VAAPI encoders work.
+2. Copy an existing set to `obs/sets/<name>/`. Set the canvas and output size in `profiles/Twitch/basic.ini`, and set `canvas`, `bar_crop`, `strip_width` and `band_height` in `scene/geometry.json`. The report gives the last two.
 3. Keep the stream's peak upload at or below 80% of your measured upload speed.
 4. Regenerate the collection:
 

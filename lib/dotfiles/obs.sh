@@ -220,8 +220,10 @@ obs_diagnose_machine() {
 			.[] | (($bar * .scale) | ceil) as $crop
 			| "  \(.name): \(.width)x\(.height) at scale \(.scale), bar crop \($crop) px",
 			  ([1080, 1440][] as $h | ($h * 16 / 9) as $w
-			  | (($h * .width / (.height - $crop)) | round) as $screen
-			  | "    canvas \($w)x\($h): screen \($screen) px wide, strip width \([(($w - $screen) / 2 | floor), 0] | max) px")
+			  | (($h * .width / (.height - $crop)) | round) as $wide
+			  | (($w * (.height - $crop) / .width) | round) as $tall
+			  | (if $wide <= $w then [(($w - $wide) / 2 | floor), 0] else [0, (($h - $tall) / 2 | floor)] end) as $slack
+			  | "    canvas \($w)x\($h): screen \([$wide, $w] | min)x\([$tall, $h] | min) px, strip width \($slack[0]) px, band height \($slack[1]) px")
 		' <<<"$monitors"; then
 			printf '  unavailable: hyprctl monitors failed\n'
 		fi
