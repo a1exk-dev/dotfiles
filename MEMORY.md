@@ -488,6 +488,22 @@ Guidance: Render the complete declared set, or stop with an error and keep the p
 
 Reason: The copy leaves repository control, so a partial render stays invisible until the consumer reports its own missing files, often on another machine and long after the run that caused it. A warning printed inside a theme hook reaches nobody.
 
+## Pin the display mode when EDID prefers a slow timing
+
+Applies when: Configuring a monitor in a Hyprland machine profile, or diagnosing a refresh rate below the panel's maximum.
+
+Guidance: Compare the active mode in `hyprctl monitors all` against that monitor's advertised maximum before accepting `mode = "preferred"`. The Gigabyte MO27Q2 gives `2560x1440@59.95` as its EDID preferred timing and keeps `2560x1440@239.97` in a DisplayID extension block, so `preferred` selects 60 Hz on a 240 Hz panel. Pin the intended mode in the machine profile.
+
+Reason: Hyprland follows the EDID preferred timing, and a monitor may advertise that well below the rate it supports.
+
+## Separate the compositor from the panel for display edge reports
+
+Applies when: A report says the desktop does not fill the screen, or a black band sits at a screen edge.
+
+Guidance: Capture the output with `grim` and read its edge pixel columns, then read the amdgpu connector properties `underscan`, `underscan hborder` and `scaling mode`. A capture at the full mode size with content in column 0 and in the last column, together with zero underscan and no scaling, proves the compositor and the GPU send a complete frame, so the panel owns the band. The pixel orbiter in Gigabyte's OLED Care moves the image about one pixel each minute on the MO27Q2, which walks a thin black band between edges over time. That monitor's DDC capability string exposes no geometry, scaling or OLED Care feature, so only its OSD changes the setting.
+
+Reason: Window gaps, GPU underscan and panel-side pixel shift look alike on screen, but each has a different owner and a different fix, and a dark wallpaper edge makes an ordinary gap read as a defect.
+
 ## Fill leftover OBS canvas with chrome instead of black
 
 Applies when: Laying out an OBS scene, or adding an OBS machine set whose cropped screen does not fill the canvas.

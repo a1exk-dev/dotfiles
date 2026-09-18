@@ -1,0 +1,2 @@
+-- Laptop hotkeys. Shared bindings stay in ~/.config/hypr/bindings.lua; keep only the
+-- bindings this machine's hardware justifies here.

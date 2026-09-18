@@ -16,6 +16,10 @@ The intended human interface for repository setup and operations. Guided setup r
 
 The Omarchy-native US English and Russian layout setup. The `hyprland` Stow package's `input.lua` sets `kb_layout = "us,ru"` with Omarchy's `grp:alts_toggle`, so Left Alt + Right Alt switches layouts, and stock Fcitx follows the compositor layout in its own clients. The stock `omarchy.keyboard-layout` indicator shows the active layout; the `shell-layout` action places it first in the bar's right section, before the system tray. The repository owns no switching logic, plugin, or Fcitx state.
 
+## Hyprland machine profile
+
+A tracked directory in the `hyprland` Stow package, named for the machine it configures (`pc` or `laptop`), holding that machine's `monitors.lua` and its machine-specific `bindings.lua`. The package links every profile into `~/.config/dotfiles/hypr/` and changes no active configuration. The shared `~/.config/hypr/monitors.lua` and `bindings.lua` load the selected profile through the `hypr.machine` module path and keep Omarchy's defaults while no profile is selected. The `Select Hyprland profile` action owns one link, `~/.config/hypr/machine`, and points it at the profile the human chooses, so the machine is never inferred from its hostname. Hotkeys that every machine uses stay in the shared `bindings.lua` rather than in a profile.
+
 ## Shared Brave configuration
 
 One repository-owned managed-policy intent for Brave Browser and Brave Origin. Both products consume the same system policy, while browser profiles, Omarchy-owned launch flags and color policy, theme state, and font settings remain outside this boundary. Product differences belong to installed-consumer detection and manual guidance rather than duplicated policy sources.

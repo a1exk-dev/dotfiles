@@ -87,7 +87,7 @@ test_top_level_menu_starts_with_guided_setup() {
 	run_dotfiles "$FIXTURE_ROOT"
 
 	assert_eq 0 "$COMMAND_STATUS" 'an empty menu choice should safely exit' || return 1
-	assert_contains "$COMMAND_OUTPUT" $'  1. Guided setup\n  2. Package status\n  3. Run structural checks\n  4. Apply Stow packages\n  5. Migrate existing target\n  6. Remove Stow package\n  7. Prepare prerequisites\n  8. Clean up Omarchy applications\n  9. Install optional applications\n  10. Install pinned global skills\n  11. Update pinned global skills\n  12. Recover ZTE USB modem\n  13. Manage Brave policy\n  14. Manage Telegram theme\n  15. Manage wallpapers\n  16. Apply wallpapers\n  17. Remove deployed wallpapers\n  18. Apply Shell layout\n  19. Manage screensaver effects\n  20. Manage laptop power policy\n  21. Patch Discord with Vencord\n  22. Install OBS set\n  23. Diagnose OBS machine\n  24. Select Voxtype profile\n  25. Exit' \
+	assert_contains "$COMMAND_OUTPUT" $'  1. Guided setup\n  2. Package status\n  3. Run structural checks\n  4. Apply Stow packages\n  5. Migrate existing target\n  6. Remove Stow package\n  7. Prepare prerequisites\n  8. Clean up Omarchy applications\n  9. Install optional applications\n  10. Install pinned global skills\n  11. Update pinned global skills\n  12. Recover ZTE USB modem\n  13. Manage Brave policy\n  14. Manage Telegram theme\n  15. Manage wallpapers\n  16. Apply wallpapers\n  17. Remove deployed wallpapers\n  18. Apply Shell layout\n  19. Manage screensaver effects\n  20. Manage laptop power policy\n  21. Patch Discord with Vencord\n  22. Install OBS set\n  23. Diagnose OBS machine\n  24. Select Voxtype profile\n  25. Select Hyprland profile\n  26. Exit' \
 		'optional applications should follow cleanup and later actions should remain available' || return 1
 	assert_contains "$COMMAND_OUTPUT" 'No action selected.' 'no action should be selected by default'
 }
@@ -155,7 +155,7 @@ test_legacy_and_invalid_entry_forms_are_rejected() {
 	run_dotfiles "$FIXTURE_ROOT" status
 	assert_eq 2 "$COMMAND_STATUS" 'a removed public route should be rejected' || return 1
 	assert_contains "$COMMAND_OUTPUT" 'Usage: bin/dotfiles [--action' 'invalid entry use should explain the supported interface' || return 1
-	assert_contains "$COMMAND_OUTPUT" 'applications|skills|skills-update|modem|brave|telegram-theme|wallpapers|wallpapers-apply|wallpapers-remove|shell-layout|screensaver-effects|screensaver-effects-migrate|power-policy|discord-patch|obs-set|obs-diagnose|voxtype-profile>]' \
+	assert_contains "$COMMAND_OUTPUT" 'applications|skills|skills-update|modem|brave|telegram-theme|wallpapers|wallpapers-apply|wallpapers-remove|shell-layout|screensaver-effects|screensaver-effects-migrate|power-policy|discord-patch|obs-set|obs-diagnose|voxtype-profile|hypr-profile>]' \
 		'usage should advertise every existing action' || return 1
 	assert_contains "$COMMAND_OUTPUT" 'wallpapers-apply: deploy the Wallpaper library' \
 		'usage should distinguish deployment Apply from curation' || return 1

@@ -147,13 +147,15 @@
 	}, {
 		"name": "hyprland",
 		"path": "config/hyprland",
-		"description": "Hyprland user configuration with Omarchy-native US and Russian layouts switched by Left Alt + Right Alt",
+		"description": "Hyprland user configuration with Omarchy-native US and Russian layouts and tracked pc and laptop machine profiles",
 		"dependencies": [],
 		"arch_packages": ["hyprland"],
 		"prerequisites": ["hyprctl"],
 		"validators": [],
+		"documentation": "docs/hyprland.md",
 		"cleanup": [
-			"Removal unlinks the repository-managed ~/.config/hypr files; Omarchy defaults apply until user files are restored"
+			"Removal unlinks the repository-managed ~/.config/hypr files; Omarchy defaults apply until user files are restored",
+			"A selected machine profile leaves ~/.config/hypr/machine as a broken link to the unlinked profile; delete that link, or apply the package and choose Select Hyprland profile again"
 		]
 	}, {
 		"name": "claude",

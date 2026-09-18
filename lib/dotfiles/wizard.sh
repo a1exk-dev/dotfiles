@@ -149,6 +149,7 @@ wizard_run_action() {
 		obs-set) install_obs_set "${@:2}" ;;
 		obs-diagnose) obs_diagnose_machine ;;
 		voxtype-profile) select_voxtype_profile ;;
+		hypr-profile) select_hypr_profile ;;
 		exit) printf 'No action selected.\n' ;;
 		*) printf 'Error: unknown wizard action: %s\n' "$action" >&2; return 2 ;;
 	esac
@@ -301,8 +302,8 @@ wizard() {
 		labels+=('Migrate competing screensaver clones')
 		actions+=(screensaver-effects-migrate)
 	fi
-	labels+=('Manage screensaver effects' 'Manage laptop power policy' 'Patch Discord with Vencord' 'Install OBS set' 'Diagnose OBS machine' 'Select Voxtype profile' 'Exit')
-	actions+=(screensaver-effects power-policy discord-patch obs-set obs-diagnose voxtype-profile exit)
+	labels+=('Manage screensaver effects' 'Manage laptop power policy' 'Patch Discord with Vencord' 'Install OBS set' 'Diagnose OBS machine' 'Select Voxtype profile' 'Select Hyprland profile' 'Exit')
+	actions+=(screensaver-effects power-policy discord-patch obs-set obs-diagnose voxtype-profile hypr-profile exit)
 	if ! choice=$(wizard_choose 'Choose an action (none selected by default)' "${labels[@]}"); then
 		printf 'No action selected.\n'
 		return 0

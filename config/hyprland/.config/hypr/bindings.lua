@@ -23,11 +23,6 @@
 -- Disable a default binding without replacing it.
 -- hl.unbind("SUPER + SHIFT + B")
 
--- Logitech MX Keys examples:
--- o.bind("SUPER + SHIFT + S", nil, "omarchy-capture-screenshot")
--- o.bind("SUPER + H", nil, "voxtype record toggle")
--- o.bind("SUPER + PERIOD", nil, "omarchy-shell shell toggle omarchy.emojis")
-
 -- Discord runs natively on Wayland, where its keybind recorder sees no keys.
 -- In Discord, turn Ctrl+M into its built-in Toggle Mute (Ctrl+Shift+M); every
 -- other window still receives Ctrl+M. Down/up split as in Omarchy's clipboard.lua.
@@ -46,3 +41,7 @@ o.bind("CTRL + M", "Discord toggle mute", function()
     send_shortcut_once("CTRL", "M")
   end
 end)
+
+-- Hotkeys that only one machine's hardware justifies belong to its machine profile.
+-- Choose one with: bin/dotfiles --action hypr-profile
+require("default.hypr.require_optional").module("hypr.machine.bindings")

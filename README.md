@@ -34,6 +34,8 @@ The `obs-theme` and `obs-scene` Stow packages and the `Install OBS set` action s
 
 The `voxtype` Stow package and the `Select Voxtype profile` action support Omarchy 4.0 and require Voxtype at `/usr/bin/voxtype`. They install nothing: install Voxtype yourself, then apply the package and select the profile for the machine.
 
+The `hyprland` Stow package and the `Select Hyprland profile` action support Omarchy 4.0 and require `hyprctl`. The package plan installs `hyprland` through Omarchy after confirmation. Applying the package alone does not change the active display or hotkey configuration. Select a machine profile to do that.
+
 The `telegram-theme` Stow package supports Omarchy 4.0 and Telegram Desktop 7.2. It was tested with Omarchy `4.0.3-1` and Telegram Desktop `7.2.5-1`. It requires Node.js 22.20.0 or newer, `zip`, `flock`, and writable absolute XDG state and runtime directories. The package plan installs `telegram-desktop` and `zip` through Omarchy after confirmation.
 
 The `screensaver-effects` Stow package was verified with Omarchy `4.0.3-1` and `ttfx 0.3.2-1`. Version mismatches produce warnings, but source, command, ownership, mapping, and lifecycle failures block the operation. The package requires Node.js 22.20.0 or newer, `omarchy`, `omarchy-shell`, `xdg-terminal-exec`, `hyprctl`, `omarchy-screensaver`, `omarchy-toggle-enabled`, and `omarchy-hyprland-monitor-focused`. Its package plan installs `ttfx`, `jq`, and `socat` through Omarchy after confirmation. Gum is optional.
@@ -89,6 +91,8 @@ Choose `Apply Shell layout` to move Omarchy's keyboard layout indicator to the s
 
 Choose `Select Voxtype profile` to point `~/.config/voxtype/config.toml` at the tracked `pc` or `laptop` profile. Applying the `voxtype` package alone links both profiles into `~/.config/dotfiles/voxtype/` without changing the active configuration. You can also run `bin/dotfiles --action voxtype-profile`, and `make voxtype` runs the same action.
 
+Choose `Select Hyprland profile` to point `~/.config/hypr/machine` at the tracked `pc` or `laptop` machine profile. A machine profile carries that machine's displays and its machine-specific hotkeys. Applying the `hyprland` package alone links both profiles into `~/.config/dotfiles/hypr/` and keeps Omarchy's defaults. You can also run `bin/dotfiles --action hypr-profile`.
+
 Choose `Patch Discord with Vencord` to patch the newest `~/.config/discord/app-*` directory after you confirm the command. Applying the `discord-system24` package does not patch Discord, and each Discord self-update requires the action again.
 
 Choose `Install OBS set` to copy this machine's OBS profile and the Omarchy scene into OBS. Close OBS first.
@@ -110,7 +114,7 @@ Place candidate images in `wallpapers/inbox/`, then choose `Manage wallpapers` o
 - `config/telegram-theme/`: Telegram Desktop theme generator and Omarchy integration assets
 - `config/screensaver-effects/`: tracked allowlist, Omarchy plugin clones, launcher, runtime shim, and selector
 - `config/discord-system24/`: Omarchy system24 theme template and the Vencord publication hooks
-- `config/hyprland/`: complete Hyprland user configuration, including US and Russian keyboard layouts
+- `config/hyprland/`: shared Hyprland user configuration with US and Russian keyboard layouts, and the tracked pc and laptop machine profiles
 - `config/obs-theme/`: OBS theme template and the Omarchy publication hooks
 - `config/obs-scene/`: OBS scene generator, Lua scene script and render hooks
 - `config/voxtype/`: tracked Voxtype pc and laptop configuration profiles
@@ -146,6 +150,7 @@ bash tests/opencode_test.sh
 - [Ghostty](docs/ghostty.md)
 - [btop](docs/btop.md)
 - [Voxtype](docs/voxtype.md)
+- [Hyprland](docs/hyprland.md)
 - [OpenCode](docs/opencode.md)
 - [Telegram Desktop theme integration](docs/telegram-theme.md)
 - [Discord system24 theme integration](docs/discord-system24.md)
