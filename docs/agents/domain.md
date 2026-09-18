@@ -20,7 +20,7 @@ Keep commands, procedures, task history, and temporary findings in their operati
 
 ## MEMORY.md: durable guidance
 
-`MEMORY.md` holds current guidance that future work must apply: durable constraints, recurring gotchas, proven lessons, and decisions with rationale. Create or update it in the same task that establishes one of those items.
+`MEMORY.md` holds current guidance that future work must apply: durable constraints, recurring gotchas, proven lessons, and decisions with rationale. Record only verified items that cannot be inferred cheaply from the repository. Create or update it in the same task that establishes one of those items.
 
 Give each item one actionable entry:
 
