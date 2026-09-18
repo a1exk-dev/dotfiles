@@ -38,6 +38,15 @@ validate_skill_manifest() {
 	fi
 }
 
+load_repository_skills() {
+	local skill_file name
+	for skill_file in "$REPOSITORY_ROOT"/.claude/skills/*/SKILL.md; do
+		[[ -f $skill_file ]] || continue
+		name=${skill_file%/SKILL.md}
+		REPOSITORY_SKILLS[${name##*/}]=true
+	done
+}
+
 skill_mutation_is_approved() {
 	local mode=$1
 	local source_index=$2
@@ -162,7 +171,9 @@ restore_skill_source() {
 	local name state
 	while IFS= read -r name; do
 		state=${SKILL_STATES[$name]}
-		if [[ $state != ADD ]]; then
+		if [[ $state == REPOSITORY ]]; then
+			continue
+		elif [[ $state != ADD ]]; then
 			rm -rf -- "$global_target/$name"
 			if cp --archive -- "$backup_root/$name" "$global_target/$name"; then
 				printf 'Restored: %s from %s\n' "$name" "$backup_root/$name" >&2
@@ -220,6 +231,8 @@ install_skills() {
 	declare -A SKILL_OWNERS=()
 	declare -A SKILLS_BY_SOURCE=()
 	declare -A SOURCE_HAS_MUTATION=()
+	declare -A REPOSITORY_SKILLS=()
+	load_repository_skills
 
 	printf 'Phase: inspect\n'
 	for ((source_index = 0; source_index < source_count; source_index++)); do
@@ -281,7 +294,13 @@ install_skills() {
 			candidate=${SKILL_CANDIDATES[$name]}
 			target=$global_target/$name
 			detail=''
-			if [[ ! -e $target && ! -L $target ]]; then
+			if [[ -n ${REPOSITORY_SKILLS[$name]-} && ! -e $target && ! -L $target ]]; then
+				state=REPOSITORY
+			elif [[ -n ${REPOSITORY_SKILLS[$name]-} && -d $target && ! -L $target ]]; then
+				state=REMOVE
+				has_mutation=true
+				SOURCE_HAS_MUTATION[$source_index]=true
+			elif [[ ! -e $target && ! -L $target ]]; then
 				state=ADD
 				has_mutation=true
 				SOURCE_HAS_MUTATION[$source_index]=true
@@ -355,7 +374,13 @@ install_skills() {
 			printf 'Source unchanged: %s (official global installer skipped)\n' "$(jq -r ".sources[$source_index].name" "$SKILL_MANIFEST")"
 			continue
 		fi
+		local -a install_names=() remove_names=()
 		while IFS= read -r name; do
+			case ${SKILL_STATES[$name]} in
+				REPOSITORY) continue ;;
+				REMOVE) remove_names+=("$name") ;;
+				*) install_names+=("$name") ;;
+			esac
 			if [[ ${SKILL_STATES[$name]} != ADD ]]; then
 				mkdir -p -- "$backup_root"
 				if ! cp --archive -- "$global_target/$name" "$backup_root/$name"; then
@@ -373,9 +398,16 @@ install_skills() {
 		local checkout=$work_root/source-$source_index
 		printf 'Phase: apply (%s)\n' "$(jq -r ".sources[$source_index].name" "$SKILL_MANIFEST")"
 		mkdir -p -- "$global_target"
-		if ! DISABLE_TELEMETRY=1 npm_config_cache="${XDG_CACHE_HOME:-$HOME/.cache}/npm" \
-			npx --yes "skills@$installer_version" add "$checkout" --global --yes; then
+		if ((${#install_names[@]} > 0)) && ! DISABLE_TELEMETRY=1 npm_config_cache="${XDG_CACHE_HOME:-$HOME/.cache}/npm" \
+			npx --yes "skills@$installer_version" add "$checkout" --global --yes --skill "${install_names[@]}"; then
 			printf 'Error: official global installer failed for %s\n' "$(jq -r ".sources[$source_index].url" "$SKILL_MANIFEST")" >&2
+			restore_skill_source "$source_index" "$global_target" "$backup_root"
+			restore_unrelated_skills "$global_target" "$unrelated_backup" source "$source_index" || true
+			return 1
+		fi
+		if ((${#remove_names[@]} > 0)) && ! DISABLE_TELEMETRY=1 npm_config_cache="${XDG_CACHE_HOME:-$HOME/.cache}/npm" \
+			npx --yes "skills@$installer_version" remove --global --yes --skill "${remove_names[@]}"; then
+			printf 'Error: official global remover failed for repository skills: %s\n' "${remove_names[*]}" >&2
 			restore_skill_source "$source_index" "$global_target" "$backup_root"
 			restore_unrelated_skills "$global_target" "$unrelated_backup" source "$source_index" || true
 			return 1
@@ -391,6 +423,16 @@ install_skills() {
 		while IFS= read -r name; do
 			candidate=${SKILL_CANDIDATES[$name]}
 			target=$global_target/$name
+			[[ ${SKILL_STATES[$name]} == REPOSITORY ]] && continue
+			if [[ ${SKILL_STATES[$name]} == REMOVE ]]; then
+				if [[ -e $target || -L $target || -e $HOME/.claude/skills/$name || -L $HOME/.claude/skills/$name ]]; then
+					printf 'Verification failed: repository skill is still installed globally: %s\n' "$name" >&2
+					source_failed=true
+					break
+				fi
+				printf 'Removed global copy: %s\n' "$name"
+				continue
+			fi
 			if [[ ! -d $target || -L $target ]] || ! diff --recursive --brief --no-dereference -- "$target" "$candidate" >/dev/null; then
 				printf 'Verification failed: %s: %s\n' "$name" "$target" >&2
 				source_failed=true
@@ -501,6 +543,9 @@ update_skills() {
 	declare -A UPDATE_SKILL_EXISTED=()
 	declare -A UPDATE_NEW_OWNERS=()
 	declare -A UPDATE_OLD_OWNERS=()
+	declare -A UPDATE_SOURCE_REPOSITORY_SKILLS=()
+	declare -A REPOSITORY_SKILLS=()
+	load_repository_skills
 	local has_update=false has_conflict=false
 
 	printf 'Phase: inspect\n'
@@ -591,8 +636,9 @@ update_skills() {
 				printf 'Error: pinned official skill name is owned by multiple sources: %s\n' "$name" >&2
 				return 1
 			fi
-			UPDATE_OLD_CANDIDATES[$name]=$candidate
 			UPDATE_OLD_OWNERS[$name]=$source_index
+			[[ -n ${REPOSITORY_SKILLS[$name]-} ]] && continue
+			UPDATE_OLD_CANDIDATES[$name]=$candidate
 			UPDATE_SOURCE_OLD_SKILLS[$source_index]+="$name "
 			[[ $source_changed == true ]] && UPDATE_AFFECTED_SKILLS[$name]=true
 		done
@@ -608,8 +654,12 @@ update_skills() {
 				printf 'Error: proposed official skill name is owned by multiple sources: %s (%s and %s)\n' "$name" "$existing_owner" "$source_name" >&2
 				return 1
 			fi
-			UPDATE_NEW_CANDIDATES[$name]=$candidate
 			UPDATE_NEW_OWNERS[$name]=$source_index
+			if [[ -n ${REPOSITORY_SKILLS[$name]-} ]]; then
+				UPDATE_SOURCE_REPOSITORY_SKILLS[$source_index]+="$name "
+				continue
+			fi
+			UPDATE_NEW_CANDIDATES[$name]=$candidate
 			UPDATE_SOURCE_NEW_SKILLS[$source_index]+="$name "
 			[[ $source_changed == true ]] && UPDATE_AFFECTED_SKILLS[$name]=true
 		done
@@ -656,6 +706,10 @@ update_skills() {
 				diff --recursive --no-dereference -- "$old_candidate" "$new_candidate" || true
 			fi
 		done < <(printf '%s\n' ${UPDATE_SOURCE_OLD_SKILLS[$source_index]-} ${UPDATE_SOURCE_NEW_SKILLS[$source_index]-} | sort -u)
+
+		for name in ${UPDATE_SOURCE_REPOSITORY_SKILLS[$source_index]-}; do
+			printf 'REPOSITORY %s\n' "$name"
+		done
 
 		printf 'Installed collection changes: %s\n' "$source_name"
 		while IFS= read -r name; do
@@ -771,8 +825,9 @@ update_skills() {
 			restore_skill_update "$global_target" "$backup_root" || true
 			return 1
 		fi
-		if ! DISABLE_TELEMETRY=1 npm_config_cache="${XDG_CACHE_HOME:-$HOME/.cache}/npm" \
-			npx --yes "skills@$installer_version" add "$source_checkout" --global --yes; then
+		local -a install_names=(${UPDATE_SOURCE_NEW_SKILLS[$source_index]-})
+		if ((${#install_names[@]} > 0)) && ! DISABLE_TELEMETRY=1 npm_config_cache="${XDG_CACHE_HOME:-$HOME/.cache}/npm" \
+			npx --yes "skills@$installer_version" add "$source_checkout" --global --yes --skill "${install_names[@]}"; then
 			printf 'Error: official global installer failed for %s\n' "$(jq -r ".sources[$source_index].url" "$SKILL_MANIFEST")" >&2
 			restore_skill_update "$global_target" "$backup_root" || true
 			return 1
@@ -820,8 +875,8 @@ update_skills() {
 				fi
 			done < <(printf '%s\n' ${UPDATE_SOURCE_OLD_SKILLS[$source_index]-})
 		fi
-		local expected
-		expected=$(jq ".sources[$source_index].expectedSkills" "$SKILL_MANIFEST")
+		local -a expected_names=(${UPDATE_SOURCE_NEW_SKILLS[$source_index]-})
+		local expected=${#expected_names[@]}
 		if [[ $source_failed == true || $verified_count -ne $expected ]]; then
 			[[ $source_failed == true ]] || printf 'Verification failed: expected %d skills, verified %d\n' "$expected" "$verified_count" >&2
 			restore_skill_update "$global_target" "$backup_root" || true

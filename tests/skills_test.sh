@@ -436,6 +436,66 @@ test_skills_update_restores_unrelated_installer_damage() {
 	done
 }
 
+test_skills_install_leaves_repository_skills_to_the_repository() {
+	new_fixture
+	configure_skill_fakes
+	seed_current_global_skills
+	local name
+	for name in matt-skill-02 matt-skill-03; do
+		mkdir -p "$FIXTURE_REPO/.claude/skills/$name"
+		printf 'repository %s\n' "$name" >"$FIXTURE_REPO/.claude/skills/$name/SKILL.md"
+	done
+	rm -rf "$FIXTURE_HOME/.agents/skills/matt-skill-03"
+	mkdir -p "$FIXTURE_HOME/.claude/skills"
+	ln -s ../../.agents/skills/matt-skill-02 "$FIXTURE_HOME/.claude/skills/matt-skill-02"
+
+	run_operation "$FIXTURE_ROOT" install_skills --yes
+
+	assert_eq 0 "$COMMAND_STATUS" 'removing a global copy of a repository skill should succeed' || return 1
+	assert_contains "$COMMAND_OUTPUT" 'REMOVE matt-skill-02' 'a global copy of a repository skill should be planned for removal' || return 1
+	assert_contains "$COMMAND_OUTPUT" 'REPOSITORY matt-skill-03' 'an absent repository skill should be reported as repository-owned' || return 1
+	assert_contains "$COMMAND_OUTPUT" 'Removed global copy: matt-skill-02' 'removal should be verified' || return 1
+	if [[ -e $FIXTURE_HOME/.agents/skills/matt-skill-02 || -L $FIXTURE_HOME/.claude/skills/matt-skill-02 || -e $FIXTURE_HOME/.agents/skills/matt-skill-03 ]]; then
+		printf '  repository skills must have no global copy or agent link after installation\n' >&2
+		return 1
+	fi
+	local -a backups=("$FIXTURE_STATE"/dotfiles/skill-backups/*/matt-skill-02/SKILL.md)
+	assert_eq 1 "${#backups[@]}" 'a removed global copy should be backed up first' || return 1
+	assert_eq 'approved matt-skill-04' "$(<"$FIXTURE_HOME/.agents/skills/matt-skill-04/SKILL.md")" 'other source skills should stay installed' || return 1
+	local calls
+	calls=$(grep "HOME=$FIXTURE_HOME|" "$CALL_LOG")
+	assert_contains "$calls" 'remove --global --yes --skill matt-skill-02|' 'the official remover should remove only the global repository copy' || return 1
+	if grep ' add ' <<<"$calls" | grep -qE 'matt-skill-0[23][ |]'; then
+		printf '  the official installer must not be asked for repository skills\n' >&2
+		return 1
+	fi
+
+	run_operation "$FIXTURE_ROOT" install_skills
+	assert_eq 0 "$COMMAND_STATUS" 'a converged install should need no approval' || return 1
+	assert_contains "$COMMAND_OUTPUT" 'All manifest-owned skills already match' 'repository skills should not count as missing global skills' || return 1
+}
+
+test_skills_update_skips_repository_skills() {
+	new_fixture
+	configure_skill_update_fakes
+	seed_current_global_skills
+	mkdir -p "$FIXTURE_REPO/.claude/skills/matt-skill-02"
+	printf 'repository matt-skill-02\n' >"$FIXTURE_REPO/.claude/skills/matt-skill-02/SKILL.md"
+	rm -rf "$FIXTURE_HOME/.agents/skills/matt-skill-02"
+
+	run_operation "$FIXTURE_ROOT" update_skills --yes
+
+	assert_eq 0 "$COMMAND_STATUS" 'an update with a repository skill should succeed' || return 1
+	assert_contains "$COMMAND_OUTPUT" 'REPOSITORY matt-skill-02' 'the plan should name the skipped repository skill' || return 1
+	assert_contains "$COMMAND_OUTPUT" 'Verified collection: matt-pocock-skills (35 skills)' 'verification should cover only globally installed skills' || return 1
+	assert_eq 36 "$(jq '.sources[1].expectedSkills' "$FIXTURE_REPO/skills.json")" 'the manifest should keep the full upstream discovery count' || return 1
+	[[ ! -e $FIXTURE_HOME/.agents/skills/matt-skill-02 ]] || {
+		printf '  an update must not reinstall a repository skill globally\n' >&2
+		return 1
+	}
+	assert_eq 'repository matt-skill-02' "$(<"$FIXTURE_REPO/.claude/skills/matt-skill-02/SKILL.md")" 'an update must leave the repository copy untouched' || return 1
+}
+
 set -e
 run_test test_skills_manifest_records_and_validates_approved_contract 'skills manifest records and validates the approved contract'
 run_test test_skills_preview_is_isolated_and_reports_every_comparison_state 'skills preview is isolated and reports every comparison state'
@@ -447,6 +507,7 @@ run_test test_skills_requires_distinct_omarchy_mismatch_approval_before_mutation
 run_test test_skills_skips_unchanged_only_source_when_another_source_mutates 'skills skips unchanged-only source when another source mutates'
 run_test test_skills_restores_unrelated_installer_damage 'skills restores unrelated installer modification, deletion, and addition'
 run_test test_skills_protects_other_manifest_source_during_install 'skills protects another manifest source during per-source installation'
+run_test test_skills_install_leaves_repository_skills_to_the_repository 'skills install leaves repository skills to the repository'
 run_test test_skills_update_no_change_is_read_only 'skills update no-change discovery is read-only'
 run_test test_skills_update_preview_reports_complete_plan_without_mutation 'skills update preview reports the complete plan without mutation'
 run_test test_skills_update_rejects_ownership_collision_with_unchanged_source 'skills update rejects ownership collision with an unchanged source'
@@ -455,4 +516,5 @@ run_test test_skills_update_requires_distinct_omarchy_mismatch_approval 'skills 
 run_test test_skills_update_install_failure_rolls_back_complete_transaction 'skills update installer failure rolls back the complete transaction'
 run_test test_skills_update_verification_failure_rolls_back_complete_transaction 'skills update verification failure rolls back the complete transaction'
 run_test test_skills_update_restores_unrelated_installer_damage 'skills update restores unrelated installer modification, deletion, and addition'
+run_test test_skills_update_skips_repository_skills 'skills update skips repository skills'
 finish_tests

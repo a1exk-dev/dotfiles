@@ -45,7 +45,23 @@ The root `skills.json` file stores each source URL, approved full Git commit ID,
 | `vercel-labs/skills` | `d6b37f62ae23c3825b0ed16c73e123eee0a41fdc` | 1 |
 | `coleam00/excalidraw-diagram-skill` | `8646fcc9f74f38539c6cdb4c969723336a96ddcd` | 1 |
 
-The pinned Skills CLI version is `1.5.22`. Skills install below `~/.agents/skills/`.
+The pinned Skills CLI version is `1.5.22`. Skills install below `~/.agents/skills/`. The expected skill counts include Repository skills.
+
+## Repository skills
+
+A Repository skill is a skill folder in this repository's `.claude/skills/` folder. Claude Code loads Repository skills as project skills, and only in this repository.
+
+Edit a Repository skill directly. The Dotfiles wizard does not change Repository skills when it installs or updates skills.
+
+A global skill with the same name overrides a Repository skill, so the global installer does not install Repository skills.
+
+The `wait-what` Repository skill does not have upstream's `disable-model-invocation` setting. Agents can run it for the commit and documentation gates in `AGENTS.md`.
+
+To add a Repository skill:
+
+1. Copy the skill folder into `.claude/skills/`.
+2. Run `make skills`.
+3. Check that the plan shows the global copy as `REMOVE`, then confirm.
 
 ## Installation
 
@@ -59,8 +75,12 @@ The wizard checks out each stored revision and runs its official installer in an
 | `UNCHANGED` | Installed content matches the candidate |
 | `CHANGE` | Installed files differ |
 | `CONFLICT` | The target has an unexpected type or symbolic link |
+| `REMOVE` | The skill is a Repository skill and has a global copy. The wizard removes the global copy |
+| `REPOSITORY` | The skill is a Repository skill. The wizard does not install it |
 
 A change includes a recursive diff. A conflict stops before global installation. The approved plan does not include unrelated global skills.
+
+After confirmation, the wizard backs up each `REMOVE` skill. Then it removes the skill with the official `skills remove` command, which also removes the skill's agent links.
 
 After confirmation, the wizard backs up every existing skill that a source installer can rewrite. It stores backups below `${XDG_STATE_HOME:-$HOME/.local/state}/dotfiles/skill-backups/<timestamp>/`.
 
@@ -81,7 +101,7 @@ The wizard compares stored revisions with upstream and shows:
 - Candidate skill additions, removals, and file changes
 - Differences from installed skills
 
-Each skill must have one source. An ownership collision stops before approval.
+Each skill must have one source. An ownership collision stops before approval. The update plan shows Repository skills as `REPOSITORY` and does not install them.
 
 After confirmation, the wizard backs up the old manifest and all affected global skills below `${XDG_STATE_HOME:-$HOME/.local/state}/dotfiles/skill-update-backups/<timestamp>/`. It updates `skills.json` and the affected global skill collections as one transaction.
 

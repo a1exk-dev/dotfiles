@@ -33,7 +33,7 @@ The file contains no credentials. Stop before you add a credential or token to i
 
 The first time you start `claude` interactively in a trusted folder, Claude Code installs the declared claude-hud plugin. The package and the wizard do not install plugins.
 
-The Dotfiles wizard installs global skills from `skills.json`. The package does not track skills.
+The Dotfiles wizard installs global skills from `skills.json`. The package does not track skills. Repository skills in `.claude/skills/` load only in this repository. See [Agent setup](agent-setup.md#repository-skills).
 
 ## What stays local
 

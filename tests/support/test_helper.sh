@@ -2798,15 +2798,25 @@ if [[ ${1-} == clone ]]; then
 	esac
 fi'
 	make_fake npx 'printf "npx %s|HOME=%s|STATE=%s|CACHE=%s|TELEMETRY=%s\n" "$*" "$HOME" "$XDG_STATE_HOME" "$npm_config_cache" "$DISABLE_TELEMETRY" >>"$DOTFILES_TEST_CALL_LOG"
+args="$*"
+selected=" ${args#*--skill } "
+[[ $* == *--skill* ]] || selected=""
+wanted() { [[ -z $selected || $selected == *" $1 "* ]]; }
+if [[ ${3-} == remove ]]; then
+	for name in $selected; do rm -rf "$HOME/.agents/skills/$name" "$HOME/.claude/skills/$name"; done
+	exit 0
+fi
 source_root=${4-}
 source_name=$(<"$source_root/.test-source")
 target=$HOME/.agents/skills
 mkdir -p "$target"
 if [[ $source_name == humanizer ]]; then
+	wanted humanizer || exit 0
 	mkdir -p "$target/humanizer/references"
 	printf "approved humanizer\n" >"$target/humanizer/SKILL.md"
 	printf "support file\n" >"$target/humanizer/references/style.md"
 elif [[ $source_name == find-skills || $source_name == excalidraw-diagram ]]; then
+	wanted "$source_name" || exit 0
 	mkdir -p "$target/$source_name"
 	printf "approved %s\n" "$source_name" >"$target/$source_name/SKILL.md"
 else
@@ -2814,6 +2824,7 @@ else
 	if [[ $DOTFILES_TEST_SKILL_COUNT_DRIFT == true ]]; then count=34; fi
 	for ((i = 1; i <= count; i++)); do
 		name=$(printf "matt-skill-%02d" "$i")
+		wanted "$name" || continue
 		mkdir -p "$target/$name/assets"
 		printf "approved %s\n" "$name" >"$target/$name/SKILL.md"
 		printf "payload %s\n" "$name" >"$target/$name/assets/example.txt"
@@ -2868,16 +2879,26 @@ if [[ ${1-} == -C ]]; then
 	esac
 fi'
 	make_fake npx 'printf "npx %s|HOME=%s|STATE=%s|CACHE=%s|TELEMETRY=%s\n" "$*" "$HOME" "$XDG_STATE_HOME" "$npm_config_cache" "$DISABLE_TELEMETRY" >>"$DOTFILES_TEST_CALL_LOG"
+args="$*"
+selected=" ${args#*--skill } "
+[[ $* == *--skill* ]] || selected=""
+wanted() { [[ -z $selected || $selected == *" $1 "* ]]; }
+if [[ ${3-} == remove ]]; then
+	for name in $selected; do rm -rf "$HOME/.agents/skills/$name" "$HOME/.claude/skills/$name"; done
+	exit 0
+fi
 source_root=${4-}
 source_name=$(<"$source_root/.test-source")
 revision=$(<"$source_root/.test-revision")
 target=$HOME/.agents/skills
 mkdir -p "$target"
 if [[ $source_name == humanizer ]]; then
+	wanted humanizer || exit 0
 	mkdir -p "$target/humanizer/references"
 	printf "approved humanizer\n" >"$target/humanizer/SKILL.md"
 	printf "support file\n" >"$target/humanizer/references/style.md"
 elif [[ $source_name == find-skills || $source_name == excalidraw-diagram ]]; then
+	wanted "$source_name" || exit 0
 	mkdir -p "$target/$source_name"
 	printf "approved %s\n" "$source_name" >"$target/$source_name/SKILL.md"
 else
@@ -2889,6 +2910,7 @@ else
 	fi
 	for i in $names; do
 		name=matt-skill-$i
+		wanted "$name" || continue
 		mkdir -p "$target/$name/assets"
 		if [[ $revision != "$old_matt" && $i == 01 ]]; then
 			printf "updated %s\n" "$name" >"$target/$name/SKILL.md"

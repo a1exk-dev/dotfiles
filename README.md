@@ -125,6 +125,7 @@ Place candidate images in `wallpapers/inbox/`, then choose `Manage wallpapers` o
 - `applications.json`: optional application catalog
 - `cleanup.json`: application cleanup profile
 - `skills.json`: pinned global skill sources
+- `.claude/skills/`: Repository skills that agents load in this repository
 - `tests/`: integration tests
 
 Run the test suite with:

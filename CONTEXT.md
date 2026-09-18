@@ -42,7 +42,11 @@ The repository-owned installation intent for standalone Arch applications that a
 
 ## Skill manifest
 
-The root `skills.json` file containing exact source revisions, each repository's official installation method, expected collection sizes, and installation requirements for global agent skills placed under `~/.agents/skills/`.
+The root `skills.json` file containing exact source revisions, each repository's official installation method, expected collection sizes, and installation requirements for global agent skills placed under `~/.agents/skills/`. Global installation skips every Repository skill.
+
+## Repository skill
+
+A skill folder under the repository's `.claude/skills/`, loaded by Claude Code as a project skill only inside this repository. The repository owns its content: humans edit it directly, and skill updates never rewrite it. A Repository skill has no global copy, because a personal skill of the same name would override it.
 
 ## Telegram theme integration
 
