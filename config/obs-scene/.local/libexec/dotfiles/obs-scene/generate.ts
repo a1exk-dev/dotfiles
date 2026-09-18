@@ -173,9 +173,8 @@ class Draw {
 		return `<rect x="${r.x}" y="${r.y}" width="${r.w}" height="${r.h}" fill="${this.t.background}" fill-opacity="0.88"/>`;
 	}
 
-	cell(x: number, y: number, fill: string): string {
-		const { s } = this.m;
-		return `<rect x="${x}" y="${y + s(2)}" width="${s(16)}" height="${s(16)}" fill="${fill}"/>`;
+	cell(x: number, y: number, fill: string, size: number): string {
+		return `<rect x="${x}" y="${y}" width="${size}" height="${size}" fill="${fill}"/>`;
 	}
 }
 
@@ -192,42 +191,76 @@ function random(seed: number): () => number {
 	};
 }
 
-type Blocks = { cells: string; pulses: string[] };
+// Where one block field puts its cells: the row tops, the column pitch, the
+// cell size and the drop from a row top to its cell.
+type Grid = { rows: number[]; pitch: number; startX: number; cell: number; drop: number };
+type Blocks = { cells: string[]; pulses: string[][] };
 
-function blocks(d: Draw, seed: number, density: (x: number, y: number) => number): Blocks {
-	const { W, H, s } = d.m;
+// The canvas-wide grid every field used before bands: cells designed at 1080p.
+function canvasGrid(d: Draw): Grid {
+	const { H, s } = d.m;
+	const rows: number[] = [];
+	for (let y = 0; y + s(20) <= H; y += s(20)) rows.push(y);
+	return { rows, pitch: s(20), startX: s(4), cell: s(16), drop: s(2) };
+}
+
+function emptyBlocks(): Blocks {
+	return { cells: [], pulses: Array.from({ length: PULSES }, () => []) };
+}
+
+function addBlocks(into: Blocks, from: Blocks): Blocks {
+	into.cells.push(...from.cells);
+	from.pulses.forEach((layer, k) => into.pulses[k].push(...layer));
+	return into;
+}
+
+function blocks(d: Draw, seed: number, grid: Grid, density: (x: number, y: number) => number): Blocks {
 	const next = random(seed);
 	const shades = [mix(d.t.background, d.t.foreground, 14), mix(d.t.background, d.t.foreground, 14), mix(d.t.background, d.t.foreground, 24)];
 	const glow = mix(d.t.background, d.t.foreground, 42);
-	const cells: string[] = [];
-	const pulses: string[][] = Array.from({ length: PULSES }, () => []);
-	for (let y = 0; y + s(20) <= H; y += s(20)) {
-		for (let x = s(4); x + s(16) <= W; x += s(20)) {
+	const out = emptyBlocks();
+	for (const y of grid.rows) {
+		for (let x = grid.startX; x + grid.cell <= d.m.W; x += grid.pitch) {
 			const p = density(x, y);
 			if (p <= 0 || next() >= p) continue;
-			cells.push(d.cell(x, y, shades[Math.floor(next() * shades.length)]));
-			if (next() < 0.3) pulses[Math.floor(next() * PULSES)].push(d.cell(x, y, glow));
+			out.cells.push(d.cell(x, y + grid.drop, shades[Math.floor(next() * shades.length)], grid.cell));
+			if (next() < 0.3) out.pulses[Math.floor(next() * PULSES)].push(d.cell(x, y + grid.drop, glow, grid.cell));
 		}
 	}
-	return { cells: cells.join(""), pulses: pulses.map((layer) => d.svg(layer.join(""), false)) };
+	return out;
 }
 
 // Side strips: denser toward the screen edge.
 function stripBlocks(d: Draw): Blocks {
 	const { screen, s } = d.m;
 	const right = screen.x + screen.w;
-	return blocks(d, 9, (x) => {
+	return blocks(d, 9, canvasGrid(d), (x) => {
 		if (x + s(16) <= screen.x - s(2)) return 0.25 + (0.2 * (x - s(4))) / s(20);
 		if (x >= right + s(4)) return 0.25 + (0.2 * (d.m.W - s(16) - x)) / s(20);
 		return 0;
 	});
 }
 
+// Bands: one row above and one below the screen, on a grid cut down to what the
+// band leaves inside its edge line, because the canvas cell does not fit the
+// bar crop's leftover height.
+function bandBlocks(d: Draw, band: number): Blocks {
+	const inside = band - d.m.stroke;
+	if (inside < 2) return emptyBlocks();
+	const scaled = (n: number) => Math.round((n * inside) / 20);
+	const cell = scaled(16);
+	const grid: Grid = {
+		rows: [0, d.m.H - inside], pitch: inside, startX: scaled(4), cell,
+		drop: Math.floor((inside - cell) / 2),
+	};
+	return blocks(d, 13, grid, () => 0.5);
+}
+
 // Card blocks: thinning toward the card, with a clear margin around it.
 function cardBlocks(d: Draw): Blocks {
 	const { card, s } = d.m;
 	const margin = s(40);
-	return blocks(d, 11, (x, y) => {
+	return blocks(d, 11, canvasGrid(d), (x, y) => {
 		const dx = Math.max(card.x - margin - x - s(16), x - (card.x + card.w + margin), 0);
 		const dy = Math.max(card.y - margin - y - s(18), y - (card.y + card.h + margin), 0);
 		const distance = Math.max(dx, dy);
@@ -241,17 +274,19 @@ function drawAssets(g: Geometry, t: Theme): Map<string, string> {
 	const files = new Map<string, string>();
 	const { s, screen } = m;
 
-	// Bands are the bar crop's leftover height, too thin for a block cell, so
-	// they carry the ground and the screen's edge alone.
+	// The chrome fills whatever canvas the screen leaves, with the same blocks
+	// in every leftover. The pulse layers keep their names across both fields.
 	if (m.strips || m.bands) {
-		const strips = m.strips ? stripBlocks(d) : { cells: "", pulses: [] as string[] };
+		const chrome = emptyBlocks();
+		if (m.strips) addBlocks(chrome, stripBlocks(d));
+		if (m.bands) addBlocks(chrome, bandBlocks(d, screen.y));
 		const edges = (m.strips ? [screen.x - m.stroke / 2, screen.x + screen.w + m.stroke / 2] : [])
 			.map((x) => `<line x1="${x}" y1="0" x2="${x}" y2="${m.H}" stroke="${d.border}" stroke-width="${m.stroke}"/>`)
 			.concat((m.bands ? [screen.y - m.stroke / 2, screen.y + screen.h + m.stroke / 2] : [])
 				.map((y) => `<line x1="0" y1="${y}" x2="${m.W}" y2="${y}" stroke="${d.border}" stroke-width="${m.stroke}"/>`))
 			.join("");
-		files.set("screen.svg", d.svg(strips.cells + edges, true));
-		strips.pulses.forEach((layer, k) => files.set(`strip-pulse-${k}.svg`, layer));
+		files.set("screen.svg", d.svg(chrome.cells.join("") + edges, true));
+		chrome.pulses.forEach((layer, k) => files.set(`strip-pulse-${k}.svg`, d.svg(layer.join(""), false)));
 	}
 
 	let overlay = "";
@@ -267,10 +302,10 @@ function drawAssets(g: Geometry, t: Theme): Map<string, string> {
 	files.set("cam-frame.svg", d.svg(frame + d.box(m.fullCam, "camera", t.accent), false));
 
 	const cards = cardBlocks(d);
-	cards.pulses.forEach((layer, k) => files.set(`card-pulse-${k}.svg`, layer));
+	cards.pulses.forEach((layer, k) => files.set(`card-pulse-${k}.svg`, d.svg(layer.join(""), false)));
 	for (const card of CARDS) {
 		const color = card.color === "red" ? t.red : t.accent;
-		let body = cards.cells + d.box(m.card, card.label, color, m.stroke + s(1));
+		let body = cards.cells.join("") + d.box(m.card, card.label, color, m.stroke + s(1));
 		if (card.headline) body += d.text(Math.floor(m.W / 2), m.card.y + s(140), card.headline, t.foreground, s(64), "middle", "bold");
 		body += d.text(Math.floor(m.W / 2), m.card.y + m.card.h - s(70), card.sub, d.muted, m.fontSize, "middle");
 		files.set(`card-${card.key}.svg`, d.svg(body, true));
@@ -560,8 +595,7 @@ function scenes(m: Metrics): [string, Placement[]][] {
 		return [{ source: "Camera", x, y, bounds }, ...AVATAR_SOURCES.map((name) => ({ source: name, x, y, bounds, point: true }))];
 	};
 	const screen: Placement[] = [
-		...(m.strips || m.bands ? [at("Screen chrome")] : []),
-		...(m.strips ? pulses("Strip").map((name) => at(name)) : []),
+		...(m.strips || m.bands ? [at("Screen chrome"), ...pulses("Strip").map((name) => at(name))] : []),
 		{ source: "Screen", x: m.screen.x, y: m.screen.y, bounds: [m.screen.w, m.screen.h], cropTop: m.barCrop },
 	];
 	const text = (name: keyof Metrics["texts"], align = ALIGN_TOP_LEFT): Placement => ({
@@ -610,8 +644,8 @@ function collection(g: Geometry): Json {
 		...CARDS.map((card) => image(`Card ${card.key}`, `card-${card.key}.svg`)),
 		...pulses("Card").map((name, k) => image(name, `card-pulse-${k}.svg`, [opacityFilter(name, "pulse", 0.0)])),
 	];
-	if (m.strips || m.bands) sources.push(image("Screen chrome", "screen.svg"));
-	if (m.strips) {
+	if (m.strips || m.bands) {
+		sources.push(image("Screen chrome", "screen.svg"));
 		sources.push(...pulses("Strip").map((name, k) => image(name, `strip-pulse-${k}.svg`, [opacityFilter(name, "pulse", 0.0)])));
 	}
 	const order = scenes(m);

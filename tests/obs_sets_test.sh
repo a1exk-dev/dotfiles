@@ -143,14 +143,13 @@ test_collections_hold_the_eight_scenes_and_their_sources() {
 			"$(scene_items "$collection" Starting)" "$set: the Starting card" || return 1
 		assert_contains "$(scene_items "$collection" Stream)" $'Chat\nClock\nDate' "$set: the Stream stack" || return 1
 	done
-	assert_contains "$(scene_items "$OBS_SETS/laptop/scene/$COLLECTION_FILE" Full)" $'Screen chrome\nStrip pulse 0' 'laptop screen scenes have strips' || return 1
-	# The pc bands hold the chrome ground alone, so they carry no pulse layers.
-	for scene in Stream Full 'Full cam'; do
-		assert_contains "$(scene_items "$OBS_SETS/pc/scene/$COLLECTION_FILE" "$scene")" 'Screen chrome' "pc $scene has the chrome" || return 1
-		if scene_items "$OBS_SETS/pc/scene/$COLLECTION_FILE" "$scene" | grep -Eq '^Strip pulse'; then
-			printf '  pc %s should have no strip pulse layers\n' "$scene" >&2
-			return 1
-		fi
+	# Both sets leave canvas around the screen, so every screen scene carries the
+	# chrome and its pulse layers: side strips on the laptop, bands on the pc.
+	for set in laptop pc; do
+		for scene in Stream Full 'Full cam'; do
+			assert_contains "$(scene_items "$OBS_SETS/$set/scene/$COLLECTION_FILE" "$scene")" $'Screen chrome\nStrip pulse 0' \
+				"$set $scene carries the chrome and its pulses" || return 1
+		done
 	done
 }
 

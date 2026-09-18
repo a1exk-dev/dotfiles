@@ -71,7 +71,7 @@ The collection, `Omarchy Scene`, holds eight scenes:
 | Ending | A "thanks for watching" card. |
 | Privacy | A card with a red border. Switch to it by hand before you show something private. |
 
-The bar crop changes the screen's shape, so it rarely fills the canvas exactly. Left-over width becomes side blocks. Left-over height becomes a thin band above and below the screen. The band takes the theme background and carries the screen's edge line. It is thinner than one block, so no blocks fit there. Every card has animated blocks around it.
+The bar crop changes the screen's shape, so it rarely fills the canvas exactly. Left-over width becomes side strips of animated blocks. Left-over height becomes a thin band above and below the screen. A band holds the screen's edge line and one row of blocks sized to fit it. Every card has animated blocks around it.
 
 ### Following the theme
 

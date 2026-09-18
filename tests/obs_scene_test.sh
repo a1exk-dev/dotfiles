@@ -9,9 +9,12 @@ readonly LAPTOP_GEOMETRY='{"canvas": {"width": 1920, "height": 1080}, "bar_crop"
 readonly PC_GEOMETRY='{"canvas": {"width": 2560, "height": 1440}, "bar_crop": 52, "strip_width": 0, "band_height": 16}'
 readonly FLUSH_GEOMETRY='{"canvas": {"width": 2560, "height": 1440}, "bar_crop": 52, "strip_width": 0}'
 # The pc bands leave 16 px above and below the screen, so their edge lines sit
-# half a 2 px stroke inside each band.
+# half a 2 px stroke inside each band, and their blocks fit the 14 px that is
+# left inside those lines.
 readonly PC_TOP_EDGE=15
 readonly PC_BOTTOM_EDGE=1425
+readonly PC_BAND_CELL=11
+readonly PC_BAND_ROWS='1 1427'
 readonly -a SCENE_SVGS=(
 	cam-frame.svg card-brb.svg card-ending.svg card-intro.svg card-privacy.svg card-starting.svg
 	card-pulse-0.svg card-pulse-1.svg card-pulse-2.svg card-pulse-3.svg card-pulse-4.svg card-pulse-5.svg
@@ -137,10 +140,9 @@ svg_size() {
 # The chrome argument is strips, bands or none: which leftover canvas the
 # geometry leaves around the screen.
 assert_scene_render() {
-	local width=$1 height=$2 chrome=$3 context=$4 name expected background foreground accent border
+	local width=$1 height=$2 chrome=$3 context=$4 name expected background foreground accent border rows
 	local -a names=(chat.css geometry.json theme.txt title.txt "${AVATAR_LAYERS[@]}" "${SCENE_SVGS[@]}")
-	[[ $chrome == none ]] || names+=("$CHROME_SVG")
-	[[ $chrome != strips ]] || names+=("${STRIP_PULSE_SVGS[@]}")
+	[[ $chrome == none ]] || names+=("$CHROME_SVG" "${STRIP_PULSE_SVGS[@]}")
 	expected=$(printf '%s\n' "${names[@]}" | sort)
 	assert_eq "$expected" "$(scene_file_list)" "$context: the render should write exactly the listed files" || return 1
 	for name in "${SCENE_SVGS[@]}"; do
@@ -172,7 +174,11 @@ assert_scene_render() {
 		assert_contains "$(<"$SCENE_OUTPUT/$CHROME_SVG")" "<line x1=\"0\" y1=\"$PC_BOTTOM_EDGE\" x2=\"$width\" y2=\"$PC_BOTTOM_EDGE\" stroke=\"$border\"" \
 			"$context: the bottom band ends at the screen edge" || return 1
 		assert_eq 2 "$(grep -o '<line ' "$SCENE_OUTPUT/$CHROME_SVG" | wc -l)" "$context: bands carry no side edges" || return 1
-		assert_eq 1 "$(grep -o '<rect ' "$SCENE_OUTPUT/$CHROME_SVG" | wc -l)" "$context: bands are too thin for block cells" || return 1
+		assert_contains "$(<"$SCENE_OUTPUT/$CHROME_SVG")" "width=\"$PC_BAND_CELL\" height=\"$PC_BAND_CELL\"" \
+			"$context: band blocks are cut down to the band" || return 1
+		rows=$(grep -o "y=\"[0-9]*\" width=\"$PC_BAND_CELL\"" "$SCENE_OUTPUT/$CHROME_SVG" | sed 's/y="\([0-9]*\)".*/\1/' | sort -un | paste -sd' ')
+		assert_eq "$PC_BAND_ROWS" "$rows" "$context: band blocks sit in both bands, clear of the edge lines" || return 1
+		assert_eq "${width}x$height" "$(svg_size "$SCENE_OUTPUT/strip-pulse-0.svg")" "$context: band pulses use the canvas size" || return 1
 	fi
 
 	assert_eq 'face=JetBrainsMono Nerd Font' "$(head -n 1 "$SCENE_OUTPUT/theme.txt")" "$context: theme.txt names the font face" || return 1
