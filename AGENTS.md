@@ -1,6 +1,6 @@
 ## Agent skills
 
-- **Tickets:** Before creating, locating, changing, reviewing, blocking, or completing local specs, maps, and tickets, read `docs/agents/issue-tracker.md`.
+- **Tickets:** Before creating, locating, changing, reviewing, blocking, or completing GitHub issues, maps, and tickets, read `docs/agents/issue-tracker.md`.
 - **Triage:** When a skill names a canonical triage role, translate it through `docs/agents/triage-labels.md`.
 - **Grilling:** Ask one question at a time, provide concrete answer options with a recommended option first, and wait for the human's answer before asking the next question. This rule replaces any skill's batched-round format; ask each question through the question tool.
 - **Tests:** Run focused affected tests for changed scopes. When the complete repository suite is required, give test commands no wall-clock limit, use the execution tool's longest supported timeout, never wrap a test command with `timeout`, rerun only failed or incomplete portions, and collect one final result.

@@ -1,15 +1,15 @@
-# Triage Status Mapping
+# Triage Labels
 
-Use this mapping when an engineering skill names a canonical triage role. `issue-tracker.md` remains the sole authority for status transitions and their required evidence.
+The skills speak in terms of five canonical triage roles. This file maps those roles to the actual label strings used in this repo's issue tracker.
 
-| Canonical role      | Persisted result   | Translation                                                        |
-| ------------------- | ------------------ | ------------------------------------------------------------------ |
-| `needs-triage`      | evaluate now       | Persist `waiting-for-info`, `declined`, or `to-do` in the same operation |
-| `needs-info`        | `waiting-for-info` | Record the unanswered question and expected source                 |
-| `ready-for-agent`   | `to-do`            | Ensure the accepted-ticket gate passes and record the role          |
-| `ready-for-human`   | `to-do`            | Ensure the accepted-ticket gate passes and record the role          |
-| `wontfix`           | `declined`         | Record the maintainer's decision and rationale                     |
+| Label in mattpocock/skills | Label in our tracker | Meaning                                  |
+| -------------------------- | -------------------- | ---------------------------------------- |
+| `needs-triage`             | `needs-triage`       | Maintainer needs to evaluate this issue  |
+| `needs-info`               | `needs-info`         | Waiting on reporter for more information |
+| `ready-for-agent`          | `ready-for-agent`    | Fully specified, ready for an AFK agent  |
+| `ready-for-human`          | `ready-for-human`    | Requires human implementation            |
+| `wontfix`                  | `wontfix`            | Will not be actioned                     |
 
-This tracker persists workflow status only. It has no untriaged status or executor-routing field. `issue-tracker.md` defines the meaning and claim eligibility of `to-do`; comments retain triage rationale without adding another state field.
+When a skill mentions a role (e.g. "apply the AFK-ready triage label"), use the corresponding label string from this table.
 
-Translate `needs-triage` in the same operation. For a new request, publish an accepted `to-do` ticket, record a `waiting-for-info` intake, or record a `declined` intake through `issue-tracker.md`. For an existing ticket, use its corresponding transition. Append a comment naming the canonical role and rationale. Translation is complete when the resulting status is valid under `issue-tracker.md` and that comment exists.
+Edit the right-hand column to match whatever vocabulary you actually use.

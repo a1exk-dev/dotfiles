@@ -464,13 +464,13 @@ Guidance: Configure layouts in the `hyprland` package's `input.lua` with Omarchy
 
 Reason: Stock Fcitx follows the compositor's XKB group in its own clients through `hl-virtual-keyboard-fcitx5`, verified in Ghostty and Brave on Omarchy 4.0.3 with Fcitx 5.1.22. The retired exact-stack plugin and Fcitx helper broke on a Hyprland ABI update and still left Fcitx clients typing Latin.
 
-## Apply subagent ticket transitions from the dispatching session
+## Keep subagent findings uncommitted
 
-Applies when: Dispatching a subagent, especially a worktree-isolated `/wayfinder` research agent, to resolve a `.scratch/` ticket.
+Applies when: Dispatching a subagent, especially a worktree-isolated `/wayfinder` research agent.
 
-Guidance: Have the subagent write its findings file and return the ticket answer as text; the dispatching session applies the claim, answer, and submit-review transitions to the ticket. Tell the subagent to leave its findings uncommitted until the human gives a `Commit` decision, even where a skill says to capture findings on a research branch.
+Guidance: Tell the subagent to leave its findings uncommitted until the human gives a `Commit` decision, even where a skill says to capture findings on a research branch.
 
-Reason: `.scratch/` is Git-ignored, so a worktree has no copy of the ticket and its write guard blocks the shared checkout path. The `AGENTS.md` commit gate applies to subagents too, and a dispatch prompt cannot grant it.
+Reason: The `AGENTS.md` commit gate applies to subagents too, and a dispatch prompt cannot grant it.
 
 ## Keep Omarchy hook data out of hook folders
 
