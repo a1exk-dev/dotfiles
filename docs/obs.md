@@ -58,11 +58,12 @@ Close OBS, select `Remove Stow package`, then select `obs-theme`. The removal is
 
 The `obs-scene` package links a scene generator, a Lua script for OBS, and two hooks. The hooks render the scene files into `~/.config/obs-studio/omarchy-scene/` for your machine's canvas. They render only after `Install OBS set` has written `geometry.json` there. Until then, they do nothing. Once a set is installed, `Apply Stow packages` renders the scene again, so a package update reaches the collection OBS already holds.
 
-The collection, `Omarchy Scene`, holds eight scenes:
+The collection, `Omarchy Scene`, holds nine scenes:
 
 | Scene | Use |
 | --- | --- |
 | Stream | Your screen at full height, with the Omarchy bar cropped. A stack of boxes sits on the screen's right edge: camera, chat, and the time and date. |
+| Stream no cam | Stream without the camera box. The chat box takes its place. |
 | Full | Your screen at full height. |
 | Full cam | Full, plus a boxed camera in the bottom-right corner. Use it for recorded videos. |
 | Starting | A card with a countdown. |
@@ -78,6 +79,8 @@ The bar crop changes the screen's shape, so it rarely fills the canvas exactly. 
 With OBS running, `omarchy theme set` and `omarchy font set` update the boxes, the cards, the avatar, the text and the chat within about 2 seconds. OBS reloads the images by itself. The Lua script pushes the new colours and font into the text and the chat.
 
 ### Chat
+
+Both stream scenes share one Chat source, so you paste the URL once. The browser renders at the height the no-camera scene needs. The Stream scene shows the lower part of it, where the newest messages are.
 
 The Chat source starts blank. In OBS, open the Chat source's properties and paste a chat URL:
 

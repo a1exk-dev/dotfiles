@@ -75,12 +75,14 @@ function metrics(g: Geometry) {
 	const time: Rect = { x: stackX, y: screen.y + screen.h - gap - s(84), w: boxW, h: s(84) };
 	const chatY = cam.y + cam.h + pad;
 	const chat: Rect = { x: stackX, y: chatY, w: boxW, h: time.y - pad - chatY };
+	// The stack without a camera box: the chat takes the camera's place.
+	const chatFull: Rect = { x: stackX, y: cam.y, w: boxW, h: time.y - pad - cam.y };
 	const fullCam: Rect = { x: stackX, y: screen.y + screen.h - gap - cam.h, w: boxW, h: cam.h };
 	const cardW = s(1000);
 	const cardH = s(380);
 	const card: Rect = { x: Math.floor((W - cardW) / 2), y: Math.floor((H - cardH) / 2), w: cardW, h: cardH };
 	return {
-		W, H, s, screen, inset, camW, camH, cam, time, chat, fullCam, card,
+		W, H, s, screen, inset, camW, camH, cam, time, chat, chatFull, fullCam, card,
 		strips: g.strip_width > 0,
 		bands: g.band_height > 0,
 		barCrop: g.bar_crop,
@@ -289,14 +291,18 @@ function drawAssets(g: Geometry, t: Theme): Map<string, string> {
 		chrome.pulses.forEach((layer, k) => files.set(`strip-pulse-${k}.svg`, d.svg(layer.join(""), false)));
 	}
 
-	let overlay = "";
-	for (const [name, r] of [["camera", m.cam], ["chat", m.chat], ["time", m.time]] as const) {
-		overlay += d.translucent(r) + d.box(r, name, name === "camera" ? t.accent : d.border);
-	}
-	["now", "date"].forEach((label, i) => {
-		overlay += d.text(m.time.x + s(20), m.time.y + s(28) + i * s(30), label, d.muted);
-	});
-	files.set("stream-overlay.svg", d.svg(overlay, false));
+	// Two stream overlays, drawn from one stack: with the camera box, and with
+	// the chat grown into its place.
+	const streamOverlay = (boxes: [string, Rect][]) => {
+		let overlay = "";
+		for (const [name, r] of boxes) overlay += d.translucent(r) + d.box(r, name, name === "camera" ? t.accent : d.border);
+		["now", "date"].forEach((label, i) => {
+			overlay += d.text(m.time.x + s(20), m.time.y + s(28) + i * s(30), label, d.muted);
+		});
+		return d.svg(overlay, false);
+	};
+	files.set("stream-overlay.svg", streamOverlay([["camera", m.cam], ["chat", m.chat], ["time", m.time]]));
+	files.set("stream-no-cam-overlay.svg", streamOverlay([["chat", m.chatFull], ["time", m.time]]));
 
 	const frame = `<rect x="${m.fullCam.x}" y="${m.fullCam.y}" width="${m.fullCam.w}" height="${m.fullCam.h}" fill="${t.background}"/>`;
 	files.set("cam-frame.svg", d.svg(frame + d.box(m.fullCam, "camera", t.accent), false));
@@ -601,12 +607,16 @@ function scenes(m: Metrics): [string, Placement[]][] {
 	const text = (name: keyof Metrics["texts"], align = ALIGN_TOP_LEFT): Placement => ({
 		source: name, x: m.texts[name].x, y: m.texts[name].y, align,
 	});
+	// The Chat browser renders at the no-camera height for both scenes, and
+	// Stream crops away the top of it, so one source takes one chat URL.
+	const chat = (r: Rect): Placement => ({ source: "Chat", ...inside(r), cropTop: m.chatFull.h - r.h });
 	const cardText: Record<string, Placement[]> = {
 		starting: [text("Countdown", ALIGN_CENTER)],
 		intro: [text("Title", ALIGN_CENTER)],
 	};
 	return [
-		["Stream", [...screen, at("Stream overlay"), ...camera(m.cam), { source: "Chat", ...inside(m.chat) }, text("Clock"), text("Date")]],
+		["Stream", [...screen, at("Stream overlay"), ...camera(m.cam), chat(m.chat), text("Clock"), text("Date")]],
+		["Stream no cam", [...screen, at("Stream no cam overlay"), chat(m.chatFull), text("Clock"), text("Date")]],
 		["Full", screen],
 		["Full cam", [...screen, at("Camera frame"), ...camera(m.fullCam)]],
 		...CARDS.map((card): [string, Placement[]] => [
@@ -628,7 +638,7 @@ function collection(g: Geometry): Json {
 		source("Screen", "pipewire-screen-capture-source", {}),
 		source("Camera", "v4l2_input", {}, { filters: [blur] }),
 		source("Chat", "browser_source", {
-			url: "about:blank", width: m.camW, height: m.chat.h - 2 * m.inset, css: "",
+			url: "about:blank", width: m.camW, height: m.chatFull.h - 2 * m.inset, css: "",
 			reroute_audio: false, shutdown: false, restart_when_active: false,
 		}),
 		textSource("Clock", m.texts.Clock.size, { text: "--:--:--" }),
@@ -636,6 +646,7 @@ function collection(g: Geometry): Json {
 		textSource("Countdown", m.texts.Countdown.size, { text: "05:00" }),
 		textSource("Title", m.texts.Title.size, { from_file: true, text_file: `${SCENE_ASSETS}/title.txt` }),
 		image("Stream overlay", "stream-overlay.svg"),
+		image("Stream no cam overlay", "stream-no-cam-overlay.svg"),
 		image("Camera frame", "cam-frame.svg"),
 		...AVATAR_SOURCES.map((name) => {
 			const layer = name.replace("Avatar ", "");

@@ -6,7 +6,7 @@ readonly OBS_SETS=$SOURCE_REPO/obs/sets
 readonly GENERATOR=$SOURCE_REPO/config/obs-scene/.local/libexec/dotfiles/obs-scene/generate.ts
 readonly COLLECTION_FILE=Omarchy_Scene.json
 readonly HOST_BUN=$(command -v bun)
-readonly -a SCENE_NAMES=(Stream Full 'Full cam' Starting Intro BRB Ending Privacy)
+readonly -a SCENE_NAMES=(Stream 'Stream no cam' Full 'Full cam' Starting Intro BRB Ending Privacy)
 readonly -a AVATAR_ITEMS=('Avatar back' 'Avatar head1' 'Avatar head2' 'Avatar head3' 'Avatar eyes' 'Avatar glow')
 
 # ---------------------------------------------------------------------------
@@ -113,8 +113,12 @@ source_field() {
 	jq -r --arg name "$2" ".sources[] | select(.name == \$name) | $3" "$1"
 }
 
-test_collections_hold_the_eight_scenes_and_their_sources() {
-	local set collection scene
+scene_item_field() {
+	jq -r --arg scene "$2" --arg item "$3" ".sources[] | select(.name == \$scene) | .settings.items[] | select(.name == \$item) | $4" "$1"
+}
+
+test_collections_hold_the_nine_scenes_and_their_sources() {
+	local set collection scene tall cropped
 	for set in laptop pc; do
 		collection=$OBS_SETS/$set/scene/$COLLECTION_FILE
 		assert_eq 'Omarchy Scene' "$(jq -r .name "$collection")" "$set: collection name" || return 1
@@ -128,6 +132,15 @@ test_collections_hold_the_eight_scenes_and_their_sources() {
 			"$(source_field "$collection" Camera '"\(.id) \(.settings | tojson) \(.filters[0].id) \(.filters[0].settings.blur_background)"')" \
 			"$set: the camera has no device and a strength-4 blur" || return 1
 		assert_eq 'browser_source about:blank' "$(source_field "$collection" Chat '"\(.id) \(.settings.url)"')" "$set: blank chat" || return 1
+		# One Chat browser serves both stream scenes: it renders at the no-camera
+		# height, and Stream crops away the top of it.
+		tall=$(source_field "$collection" Chat .settings.height)
+		assert_eq 0 "$(scene_item_field "$collection" 'Stream no cam' Chat .crop_top)" "$set: the no-camera chat is uncropped" || return 1
+		cropped=$(scene_item_field "$collection" Stream Chat .crop_top)
+		[[ $cropped -gt 0 && $cropped -lt $tall ]] || {
+			printf '  %s: Stream should crop the top of the %s px chat, got %s\n' "$set" "$tall" "$cropped" >&2
+			return 1
+		}
 		for scene in Clock Date Countdown Title; do
 			assert_eq text_ft2_source "$(source_field "$collection" "$scene" .id)" "$set: $scene is a FreeType text source" || return 1
 		done
@@ -146,10 +159,16 @@ test_collections_hold_the_eight_scenes_and_their_sources() {
 	# Both sets leave canvas around the screen, so every screen scene carries the
 	# chrome and its pulse layers: side strips on the laptop, bands on the pc.
 	for set in laptop pc; do
-		for scene in Stream Full 'Full cam'; do
+		for scene in Stream 'Stream no cam' Full 'Full cam'; do
 			assert_contains "$(scene_items "$OBS_SETS/$set/scene/$COLLECTION_FILE" "$scene")" $'Screen chrome\nStrip pulse 0' \
 				"$set $scene carries the chrome and its pulses" || return 1
 		done
+	done
+	for set in laptop pc; do
+		if scene_items "$OBS_SETS/$set/scene/$COLLECTION_FILE" 'Stream no cam' | grep -Eq '^(Camera|Avatar )'; then
+			printf '  %s Stream no cam should hold no camera or avatar items\n' "$set" >&2
+			return 1
+		fi
 	done
 }
 
@@ -449,7 +468,7 @@ run_test test_every_tracked_set_is_portable 'every tracked OBS set passes the po
 run_test test_portability_rules_catch_each_forbidden_addition 'portability rules catch each forbidden addition'
 run_test test_sets_carry_the_approved_profile_values 'OBS sets carry the approved profile values'
 run_test test_committed_collections_equal_a_fresh_generation 'committed OBS collections equal a fresh generation'
-run_test test_collections_hold_the_eight_scenes_and_their_sources 'OBS collections hold the eight scenes and their sources'
+run_test test_collections_hold_the_nine_scenes_and_their_sources 'OBS collections hold the nine scenes and their sources'
 run_test test_install_copies_profiles_and_scene_and_selects_them 'Install OBS set copies profiles and scene, then selects them'
 run_test test_install_without_obs_scene_copies_profiles_and_skips_the_scene 'Install OBS set without obs-scene copies profiles and skips the scene'
 run_test test_install_is_blocked_without_the_obs_command 'Install OBS set is blocked without the obs command'

@@ -18,7 +18,7 @@ readonly PC_BAND_ROWS='1 1427'
 readonly -a SCENE_SVGS=(
 	cam-frame.svg card-brb.svg card-ending.svg card-intro.svg card-privacy.svg card-starting.svg
 	card-pulse-0.svg card-pulse-1.svg card-pulse-2.svg card-pulse-3.svg card-pulse-4.svg card-pulse-5.svg
-	stream-overlay.svg
+	stream-overlay.svg stream-no-cam-overlay.svg
 )
 readonly CHROME_SVG=screen.svg
 readonly -a STRIP_PULSE_SVGS=(
@@ -163,6 +163,11 @@ assert_scene_render() {
 	assert_contains "$(<"$SCENE_OUTPUT/stream-overlay.svg")" "fill=\"$background\" fill-opacity=\"0.88\"" "$context: overlay boxes are translucent" || return 1
 	assert_contains "$(<"$SCENE_OUTPUT/stream-overlay.svg")" "stroke=\"$border\"" "$context: overlay boxes use the border mix" || return 1
 	assert_contains "$(<"$SCENE_OUTPUT/cam-frame.svg")" "stroke=\"$accent\"" "$context: the camera box uses an accent border" || return 1
+	assert_contains "$(<"$SCENE_OUTPUT/stream-no-cam-overlay.svg")" "stroke=\"$border\"" "$context: the no-camera overlay keeps the box borders" || return 1
+	if grep -q "stroke=\"$accent\"" "$SCENE_OUTPUT/stream-no-cam-overlay.svg"; then
+		printf '  %s: the no-camera overlay should draw no camera box\n' "$context" >&2
+		return 1
+	fi
 	if [[ $chrome == strips ]]; then
 		assert_contains "$(<"$SCENE_OUTPUT/$CHROME_SVG")" "stroke=\"$border\"" "$context: the screen edges use the border mix" || return 1
 		assert_eq "${width}x$height" "$(svg_size "$SCENE_OUTPUT/strip-pulse-0.svg")" "$context: strip pulses use the canvas size" || return 1

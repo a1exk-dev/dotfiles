@@ -511,3 +511,11 @@ Applies when: Laying out an OBS scene, or adding an OBS machine set whose croppe
 Guidance: Declare the leftover canvas per axis in the set's `geometry.json`: `strip_width` for width and `band_height` for height, both taken from `bin/dotfiles --action obs-diagnose`. Inset the screen rect by both, and anchor the Stream stack to that rect rather than to the canvas. Draw the chrome image whenever either is positive: it grounds the whole canvas in the theme background, puts the border line on each edge that has leftover canvas, and fills each leftover with blocks. Give each block field its own grid instead of the canvas grid alone, and keep `band_height` optional so a geometry written before it renders as it did.
 
 Reason: The screen item uses `bounds_type` 2 with centred `bounds_align`, so OBS fits the cropped capture inside its bounds and the leftover shows the black canvas base. Grounding a band in the theme background is not enough, because a plain band still reads as a gap. A monitor whose resolution matches the canvas leaves exactly the bar crop as leftover height, 16 px against a 21 px canvas cell, so a band needs a grid fitted to what it leaves inside its own edge line.
+
+## Share one chat browser across OBS scenes through a crop
+
+Applies when: Adding an OBS scene that shows the chat at a size another scene does not use.
+
+Guidance: Render the Chat browser source at the tallest layout any scene needs, and give each shorter scene a `crop_top` of the height difference while placing the item at its own box. Do not add a second browser source.
+
+Reason: A browser source has one configured resolution, and scaling it up blurs the text. A second source doubles the running CEF instances and makes the human paste the chat URL once per source, while cropping the top of a bottom-anchored chat hides only the oldest messages.
