@@ -1,0 +1,7 @@
+{
+  "name": "prototype-wizard-flow",
+  "private": true,
+  "description": "PROTOTYPE - throwaway. Wizard flow and status report for issue #7.",
+  "scripts": { "start": "bun index.ts" },
+  "dependencies": { "@clack/prompts": "1.8.1" }
+}
